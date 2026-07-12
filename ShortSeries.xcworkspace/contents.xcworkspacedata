@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Workspace
+   version = "1.0">
+   <FileRef
+      location = "group:ShortSeries.xcodeproj">
+   </FileRef>
+   <FileRef
+      location = "group:Packages/AppFoundation">
+   </FileRef>
+   <FileRef
+      location = "group:Packages/DesignSystem">
+   </FileRef>
+   <FileRef
+      location = "group:Packages/ContentKit">
+   </FileRef>
+   <FileRef
+      location = "group:Packages/AnalyticsKit">
+   </FileRef>
+   <FileRef
+      location = "group:Packages/PlayerKit">
+   </FileRef>
+   <FileRef
+      location = "group:Packages/DiscoverKit">
+   </FileRef>
+   <FileRef
+      location = "group:Packages/LibraryKit">
+   </FileRef>
+   <FileRef
+      location = "group:Packages/WalletKit">
+   </FileRef>
+   <FileRef
+      location = "group:Packages/RewardsKit">
+   </FileRef>
+   <FileRef
+      location = "group:Packages/ProfileKit">
+   </FileRef>
+   <FileRef
+      location = "group:docs">
+   </FileRef>
+</Workspace>

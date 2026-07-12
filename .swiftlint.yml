@@ -1,0 +1,41 @@
+# ShortSeries — SwiftLint yapılandırması (SS-004)
+included:
+  - App
+  - Packages
+excluded:
+  - .build
+  - DerivedData
+  - Packages/*/.build
+  - Packages/*/Tests/__Snapshots__
+
+analyzer_rules:
+  - unused_import
+
+opt_in_rules:
+  - empty_count
+  - closure_spacing
+  - contains_over_first_not_nil
+  - fatal_error_message
+  - first_where
+  - sorted_first_last
+  - redundant_nil_coalescing
+
+line_length:
+  warning: 130
+  error: 160
+  ignores_comments: true
+
+identifier_name:
+  min_length: 2
+  excluded: [x, y, z, id]
+
+custom_rules:
+  # E2 kuralı: feature modülleri ham renk kullanamaz — yalnız DesignSystem semantic token'ları.
+  # DesignSystem paketi bu kuraldan muaftır (token tanımları orada yaşar).
+  no_raw_colors:
+    name: "Ham renk yasağı (DesignSystem token kullan)"
+    regex: '(?:UIColor|Color)\s*\(\s*(?:red|hue|white|\.sRGB|#colorLiteral)'
+    match_kinds: [identifier, keyword]
+    message: "Ham renk yasak — DSColors semantic token'ı kullan (03-mimari.md DesignSystem token sözleşmesi)."
+    severity: error
+    excluded: "Packages/DesignSystem/.*"

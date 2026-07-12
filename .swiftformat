@@ -1,0 +1,16 @@
+# ShortSeries — SwiftFormat yapılandırması (SS-004)
+--swiftversion 6.0
+
+# Kurallar
+--indent 4
+--maxwidth 130
+--wraparguments before-first
+--wrapcollections before-first
+--stripunusedargs closure-only
+--self remove
+--importgrouping testable-bottom
+--commas inline
+--trimwhitespace always
+
+# Kapsam dışı
+--exclude .build,DerivedData,docs,Scripts

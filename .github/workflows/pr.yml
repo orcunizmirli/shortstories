@@ -1,0 +1,37 @@
+name: PR Validation
+on:
+  pull_request:
+  push: { branches: [main] }
+concurrency:
+  group: pr-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo xcode-select -s /Applications/Xcode_26.6.app
+      - name: Dependency lint (03 §4 R1-R7)
+        run: swift Scripts/dependency-lint.swift
+      - name: SwiftLint + SwiftFormat
+        run: |
+          brew install swiftlint swiftformat
+          swiftlint lint --strict
+          swiftformat --lint .
+
+  build-test:
+    runs-on: macos-26
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [AppFoundation, DesignSystem, ContentKit, AnalyticsKit,
+                  PlayerKit, DiscoverKit, LibraryKit, WalletKit, RewardsKit, ProfileKit]
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo xcode-select -s /Applications/Xcode_26.6.app
+      - name: Build & test ${{ matrix.package }}
+        working-directory: Packages/${{ matrix.package }}
+        run: |
+          DEST="platform=iOS Simulator,name=$(xcrun simctl list devices available | grep -m1 -o 'iPhone [^(]*' | sed 's/ *$//')"
+          xcodebuild test -scheme "${{ matrix.package }}-Package" -destination "$DEST" -quiet

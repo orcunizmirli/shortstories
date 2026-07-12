@@ -1,0 +1,52 @@
+name: ShortSeries
+options:
+  bundleIdPrefix: com.shortseries
+  deploymentTarget: { iOS: "17.0" }
+packages:
+  AppFoundation:  { path: Packages/AppFoundation }
+  DesignSystem:   { path: Packages/DesignSystem }
+  ContentKit:     { path: Packages/ContentKit }
+  AnalyticsKit:   { path: Packages/AnalyticsKit }
+  PlayerKit:      { path: Packages/PlayerKit }
+  DiscoverKit:    { path: Packages/DiscoverKit }
+  LibraryKit:     { path: Packages/LibraryKit }
+  WalletKit:      { path: Packages/WalletKit }
+  RewardsKit:     { path: Packages/RewardsKit }
+  ProfileKit:     { path: Packages/ProfileKit }
+targets:
+  ShortSeriesApp:
+    type: application
+    platform: iOS
+    sources:
+      # CatalogHost yalnız DesignSystemCatalog target'ına aittir; iki @main çakışmasını önler.
+      - path: App
+        excludes: ["CatalogHost/**"]
+    dependencies:
+      - { package: AppFoundation }
+      - { package: DesignSystem }
+      - { package: ContentKit }
+      - { package: AnalyticsKit }
+      - { package: PlayerKit }
+      - { package: DiscoverKit }
+      - { package: LibraryKit }
+      - { package: WalletKit }
+      - { package: RewardsKit }
+      - { package: ProfileKit }
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.shortseries.app
+        MARKETING_VERSION: 0.1.0
+        CURRENT_PROJECT_VERSION: 1
+        TARGETED_DEVICE_FAMILY: "1"            # iPhone-only (kanon §2)
+        SWIFT_VERSION: "6.0"
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait   # portrait-locked
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        CODE_SIGN_STYLE: Automatic
+  DesignSystemCatalog:                          # SS-007 demo target
+    type: application
+    platform: iOS
+    sources: [App/CatalogHost]                  # DSCatalogView'i host eden ~20 satırlık @main
+    dependencies: [{ package: DesignSystem }]
+    settings:
+      base: { PRODUCT_BUNDLE_IDENTIFIER: com.shortseries.catalog, GENERATE_INFOPLIST_FILE: YES }

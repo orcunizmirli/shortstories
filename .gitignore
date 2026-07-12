@@ -1,0 +1,8 @@
+.DS_Store
+xcuserdata/
+DerivedData/
+.build/
+.swiftpm/
+*.xcresult
+# K1a: .xcodeproj XcodeGen ile üretilir (project.yml kaynağı), commit'lenmez
+ShortSeries.xcodeproj/
