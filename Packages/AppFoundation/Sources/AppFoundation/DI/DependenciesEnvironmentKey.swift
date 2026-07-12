@@ -4,10 +4,10 @@
 import SwiftUI
 
 public extension EnvironmentValues {
-    // Cross-cutting servis erişimi (analytics, feature flag, theme — 03 §5.2).
-    // ViewModel bağımlılıkları HER ZAMAN init-injection'dır; Environment yalnız derin
-    // view ağaçlarındaki cross-cutting ihtiyaçlar içindir.
-    // `defaultValue` `PreviewDependencies` olduğundan her `#Preview` sıfır
-    // konfigürasyonla çalışır.
+    /// Cross-cutting servis erişimi (analytics, feature flag, theme — 03 §5.2).
+    /// ViewModel bağımlılıkları HER ZAMAN init-injection'dır; Environment yalnız derin
+    /// view ağaçlarındaki cross-cutting ihtiyaçlar içindir.
+    /// `defaultValue` `PreviewDependencies` olduğundan her `#Preview` sıfır
+    /// konfigürasyonla çalışır.
     @Entry var dependencies: any Dependencies = PreviewDependencies()
 }
