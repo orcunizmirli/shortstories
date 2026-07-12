@@ -46,10 +46,12 @@ struct RetryPolicyTests {
     }
 
     @Test func ozelPolitikaParametreleriUygulanir() throws {
-        let policy = RetryPolicy(maxRetries: 1,
-                                 baseDelay: .milliseconds(10),
-                                 multiplier: 3,
-                                 jitter: 1.0...1.0)
+        let policy = RetryPolicy(
+            maxRetries: 1,
+            baseDelay: .milliseconds(10),
+            multiplier: 3,
+            jitter: 1.0 ... 1.0
+        )
         let delay0 = try #require(policy.delay(afterAttempt: 0, error: retryableError))
         #expect(abs(seconds(delay0) - 0.010) < 0.0001)
         #expect(policy.delay(afterAttempt: 1, error: retryableError) == nil)

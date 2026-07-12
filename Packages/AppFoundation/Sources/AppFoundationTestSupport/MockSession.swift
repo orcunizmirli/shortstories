@@ -1,5 +1,5 @@
-import Foundation
 import AppFoundation
+import Foundation
 
 public final class MockSession: SessionManaging, @unchecked Sendable {
     private let lock = NSLock()
@@ -9,7 +9,7 @@ public final class MockSession: SessionManaging, @unchecked Sendable {
     private var stubbedBootstrapError: AppError?
 
     public init(state: SessionState = .guest(userID: "mock-guest")) {
-        self.currentState = state
+        currentState = state
     }
 
     // MARK: - Stub / spy
@@ -55,7 +55,9 @@ public final class MockSession: SessionManaging, @unchecked Sendable {
             bootstrapCalls += 1
             return (stubbedBootstrapError, currentState)
         }
-        if let error { throw error }
+        if let error {
+            throw error
+        }
         return state
     }
 }

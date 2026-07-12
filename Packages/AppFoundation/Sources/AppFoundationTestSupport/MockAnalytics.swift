@@ -1,5 +1,5 @@
-import Foundation
 import AppFoundation
+import Foundation
 
 public final class MockAnalytics: AnalyticsTracking, @unchecked Sendable {
     public struct Event: Sendable, Equatable {

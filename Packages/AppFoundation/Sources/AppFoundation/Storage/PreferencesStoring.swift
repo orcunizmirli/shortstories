@@ -33,7 +33,7 @@ public enum PreferenceKeys {
 public protocol PreferencesStoring: Sendable {
     func value<V: PreferenceValue>(for key: PreferenceKey<V>) -> V
     func set<V: PreferenceValue>(_ value: V, for key: PreferenceKey<V>)
-    func removeValue<V: PreferenceValue>(for key: PreferenceKey<V>)
+    func removeValue(for key: PreferenceKey<some PreferenceValue>)
 }
 
 /// Canlı UserDefaults uygulaması.
@@ -53,7 +53,7 @@ public struct UserDefaultsPreferences: PreferencesStoring, @unchecked Sendable {
         defaults.set(value, forKey: key.name)
     }
 
-    public func removeValue<V: PreferenceValue>(for key: PreferenceKey<V>) {
+    public func removeValue(for key: PreferenceKey<some PreferenceValue>) {
         defaults.removeObject(forKey: key.name)
     }
 }

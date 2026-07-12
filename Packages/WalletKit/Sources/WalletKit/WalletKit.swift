@@ -1,6 +1,6 @@
+import AnalyticsKit
 import AppFoundation
 import DesignSystem
-import AnalyticsKit
 
 /// WalletKit — coin cüzdanı (WalletStore actor), StoreKit 2, entitlement;
 /// UnlockSheet/CoinMagazasi/VIPAbonelik ekranları (KANON §4).

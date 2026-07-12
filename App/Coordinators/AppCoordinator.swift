@@ -6,7 +6,6 @@ import Observation
 /// deep link (`PendingRoute`) çözümü ve zorunlu güncelleme/bakım overlay'leri F1'de.
 @Observable @MainActor
 final class AppCoordinator {
-
     enum LaunchState {
         case splash
         case onboarding
@@ -22,7 +21,7 @@ final class AppCoordinator {
 
     init(dependencies: any Dependencies) {
         self.dependencies = dependencies
-        self.tabCoordinator = TabCoordinator()
+        tabCoordinator = TabCoordinator()
     }
 
     // TODO(F1): SessionState'e göre launch routing — Splash → Onboarding | Tabs (03 §3.1).

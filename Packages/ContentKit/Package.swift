@@ -7,16 +7,16 @@ let package = Package(
     platforms: [.iOS(.v17)],
     products: [.library(name: "ContentKit", targets: ["ContentKit"])],
     dependencies: [
-        .package(path: "../AppFoundation"),
+        .package(path: "../AppFoundation")
     ],
     targets: [
         .target(name: "ContentKit", dependencies: [
-            .product(name: "AppFoundation", package: "AppFoundation"),
+            .product(name: "AppFoundation", package: "AppFoundation")
         ]),
         .testTarget(name: "ContentKitTests", dependencies: [
             "ContentKit",
-            .product(name: "AppFoundationTestSupport", package: "AppFoundation"),
-        ]),
+            .product(name: "AppFoundationTestSupport", package: "AppFoundation")
+        ])
     ],
     swiftLanguageModes: [.v6]
 )

@@ -9,18 +9,18 @@ let package = Package(
     dependencies: [
         .package(path: "../AppFoundation"),
         .package(path: "../DesignSystem"),
-        .package(path: "../AnalyticsKit"),
+        .package(path: "../AnalyticsKit")
     ],
     targets: [
         .target(name: "ProfileKit", dependencies: [
             .product(name: "AppFoundation", package: "AppFoundation"),
             .product(name: "DesignSystem", package: "DesignSystem"),
-            .product(name: "AnalyticsKit", package: "AnalyticsKit"),
+            .product(name: "AnalyticsKit", package: "AnalyticsKit")
         ]),
         .testTarget(name: "ProfileKitTests", dependencies: [
             "ProfileKit",
-            .product(name: "AppFoundationTestSupport", package: "AppFoundation"),
-        ]),
+            .product(name: "AppFoundationTestSupport", package: "AppFoundation")
+        ])
     ],
     swiftLanguageModes: [.v6]
 )

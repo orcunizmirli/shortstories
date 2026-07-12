@@ -5,7 +5,6 @@ import UIKit
 /// bildirim izni İSTENMEZ (Onboarding'de, değer önerisinden sonra — kanon §3).
 @MainActor
 final class AppDelegate: NSObject, UIApplicationDelegate {
-
     func application(
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil

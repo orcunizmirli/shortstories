@@ -33,5 +33,9 @@ jobs:
       - name: Build & test ${{ matrix.package }}
         working-directory: Packages/${{ matrix.package }}
         run: |
-          DEST="platform=iOS Simulator,name=$(xcrun simctl list devices available | grep -m1 -o 'iPhone [^(]*' | sed 's/ *$//')"
-          xcodebuild test -scheme "${{ matrix.package }}-Package" -destination "$DEST" -quiet
+          # En YENİ runtime'daki iPhone'u seç (simctl çıktısında runtime bölümleri artan sürümle sıralı;
+          # eski runtime cihazları güncel Xcode'da destination olarak kabul edilmeyebiliyor)
+          DEST="platform=iOS Simulator,name=$(xcrun simctl list devices available | grep -o 'iPhone [^(]*' | tail -1 | sed 's/ *$//')"
+          # Şema commit'li paylaşımlı CI şemasıdır (.swiftpm/xcode/xcshareddata/xcschemes) —
+          # otomatik üretilen "-Package" şeması temiz checkout'ta güvenilir değil.
+          xcodebuild test -scheme "${{ matrix.package }}-CI" -destination "$DEST" -quiet

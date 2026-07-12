@@ -1,5 +1,5 @@
-import Foundation
 import AppFoundation
+import Foundation
 
 /// Programlanabilir flag store'u: override edilmeyen anahtarlar kod içi varsayılana düşer.
 public final class MockFeatureFlags: FeatureFlagReading, @unchecked Sendable {
@@ -13,7 +13,7 @@ public final class MockFeatureFlags: FeatureFlagReading, @unchecked Sendable {
         lock.withLock { overrides[key.name] = value.flagRawValue }
     }
 
-    public func removeOverride<V: FlagValue>(for key: FlagKey<V>) {
+    public func removeOverride(for key: FlagKey<some FlagValue>) {
         lock.withLock { overrides[key.name] = nil }
     }
 

@@ -5,7 +5,6 @@ import Observation
 /// ve `PlayerFeed` pause/resume sinyali F1'de bağlanır.
 @Observable @MainActor
 final class TabCoordinator {
-
     /// Kanonik 5 sekme (kanon §3). Varsayılan `anaSayfa` — uygulama doğrudan
     /// video ile açılır.
     enum Tab: Hashable, CaseIterable {

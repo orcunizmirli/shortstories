@@ -61,7 +61,7 @@ public final class StubSessionManager: SessionManaging, @unchecked Sendable {
     private var currentState: SessionState
 
     public init(state: SessionState = .guest(userID: "preview-guest")) {
-        self.currentState = state
+        currentState = state
     }
 
     public var state: SessionState {
@@ -116,7 +116,7 @@ public final class InMemoryPreferences: PreferencesStoring, @unchecked Sendable 
         lock.withLock { storage[key.name] = value }
     }
 
-    public func removeValue<V: PreferenceValue>(for key: PreferenceKey<V>) {
+    public func removeValue(for key: PreferenceKey<some PreferenceValue>) {
         lock.withLock { storage[key.name] = nil }
     }
 }

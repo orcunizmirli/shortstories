@@ -3,7 +3,6 @@ import SwiftUI
 /// Semantic tipografi katmanı. Tüm stiller text-style tabanlıdır ve Dynamic
 /// Type'a tepki verir; tek istisna `playerOverlay(size:weight:)`.
 public enum DSTypography {
-
     /// Splash / kampanya başlıkları.
     public static let display = Font.system(.largeTitle, design: .default, weight: .bold)
 

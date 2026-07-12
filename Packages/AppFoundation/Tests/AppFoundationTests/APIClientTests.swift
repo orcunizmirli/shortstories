@@ -1,7 +1,7 @@
+import AppFoundationTestSupport
 import Foundation
 import Testing
 @testable import AppFoundation
-import AppFoundationTestSupport
 
 private struct TestPayload: Codable, Equatable, Sendable {
     let value: String
@@ -11,27 +11,51 @@ private struct GetTestEndpoint: Endpoint {
     typealias Response = TestPayload
     // Testleri hızlı tutmak için milisaniyelik backoff (jitter dahil deterministik sınırlı).
     var retry = RetryPolicy(maxRetries: 2, baseDelay: .milliseconds(1))
-    var path: String { "/test" }
-    var method: HTTPMethod { .get }
-    var retryPolicy: RetryPolicy { retry }
+    var path: String {
+        "/test"
+    }
+
+    var method: HTTPMethod {
+        .get
+    }
+
+    var retryPolicy: RetryPolicy {
+        retry
+    }
 }
 
 private struct PostTestEndpoint: Endpoint {
     typealias Response = TestPayload
     var idempotency: String?
-    var path: String { "/things" }
-    var method: HTTPMethod { .post }
-    var body: (any Encodable)? { TestPayload(value: "gonderilen") }
-    var retryPolicy: RetryPolicy { RetryPolicy(maxRetries: 2, baseDelay: .milliseconds(1)) }
-    var idempotencyKey: String? { idempotency }
+    var path: String {
+        "/things"
+    }
+
+    var method: HTTPMethod {
+        .post
+    }
+
+    var body: (any Encodable)? {
+        TestPayload(value: "gonderilen")
+    }
+
+    var retryPolicy: RetryPolicy {
+        RetryPolicy(maxRetries: 2, baseDelay: .milliseconds(1))
+    }
+
+    var idempotencyKey: String? {
+        idempotency
+    }
 }
 
 /// URLProtocolStub statik durum taşıdığı için seri koşar.
 @Suite(.serialized)
 struct APIClientTests {
     private let client = APIClient(
-        configuration: APIConfiguration(environment: .development,
-                                        baseURL: URL(string: "https://api.test.local/v1")!),
+        configuration: APIConfiguration(
+            environment: .development,
+            baseURL: URL(string: "https://api.test.local/v1")!
+        ),
         urlSession: URLProtocolStub.makeSession()
     )
 
@@ -41,8 +65,10 @@ struct APIClientTests {
 
     @Test func basariliYanitiDecodeEder() async throws {
         URLProtocolStub.setHandler { request in
-            (URLProtocolStub.httpResponse(for: request, status: 200),
-             Data(#"{"value":"ok"}"#.utf8))
+            (
+                URLProtocolStub.httpResponse(for: request, status: 200),
+                Data(#"{"value":"ok"}"#.utf8)
+            )
         }
 
         let response = try await client.send(GetTestEndpoint())
@@ -50,7 +76,7 @@ struct APIClientTests {
         #expect(response == TestPayload(value: "ok"))
         #expect(URLProtocolStub.receivedRequests.count == 1)
         #expect(URLProtocolStub.receivedRequests.first?.url?.absoluteString
-                == "https://api.test.local/v1/test")
+            == "https://api.test.local/v1/test")
     }
 
     @Test func gecici500SonrasiRetryIleBasarir() async throws {
@@ -59,8 +85,10 @@ struct APIClientTests {
             if URLProtocolStub.receivedRequests.count < 2 {
                 return (URLProtocolStub.httpResponse(for: request, status: 500), Data())
             }
-            return (URLProtocolStub.httpResponse(for: request, status: 200),
-                    Data(#"{"value":"ok"}"#.utf8))
+            return (
+                URLProtocolStub.httpResponse(for: request, status: 200),
+                Data(#"{"value":"ok"}"#.utf8)
+            )
         }
 
         let response = try await client.send(GetTestEndpoint())
@@ -97,8 +125,10 @@ struct APIClientTests {
             if URLProtocolStub.receivedRequests.count < 2 {
                 return (URLProtocolStub.httpResponse(for: request, status: 500), Data())
             }
-            return (URLProtocolStub.httpResponse(for: request, status: 200),
-                    Data(#"{"value":"ok"}"#.utf8))
+            return (
+                URLProtocolStub.httpResponse(for: request, status: 200),
+                Data(#"{"value":"ok"}"#.utf8)
+            )
         }
 
         let response = try await client.send(PostTestEndpoint(idempotency: "tx-123"))
@@ -133,8 +163,10 @@ struct APIClientTests {
 
     @Test func bozukJSONDecodingHatasinaEslenir() async {
         URLProtocolStub.setHandler { request in
-            (URLProtocolStub.httpResponse(for: request, status: 200),
-             Data("bu-json-degil".utf8))
+            (
+                URLProtocolStub.httpResponse(for: request, status: 200),
+                Data("bu-json-degil".utf8)
+            )
         }
 
         await #expect(throws: AppError.network(.decoding)) {

@@ -6,15 +6,26 @@ private struct EmptyResponse: Decodable, Sendable {}
 
 private struct MinimalEndpoint: Endpoint {
     typealias Response = EmptyResponse
-    var path: String { "/minimal" }
-    var method: HTTPMethod { .get }
+    var path: String {
+        "/minimal"
+    }
+
+    var method: HTTPMethod {
+        .get
+    }
 }
 
 private struct FeedLikeEndpoint: Endpoint {
     typealias Response = EmptyResponse
     let cursor: String?
-    var path: String { "/feed" }
-    var method: HTTPMethod { .get }
+    var path: String {
+        "/feed"
+    }
+
+    var method: HTTPMethod {
+        .get
+    }
+
     var query: [URLQueryItem] {
         cursor.map { [URLQueryItem(name: "cursor", value: $0)] } ?? []
     }
@@ -22,23 +33,43 @@ private struct FeedLikeEndpoint: Endpoint {
 
 private struct UnlockLikeEndpoint: Endpoint {
     typealias Response = EmptyResponse
-    var path: String { "episodes/unlock" } // baş slash'sız — normalize edilmeli
-    var method: HTTPMethod { .post }
-    var body: (any Encodable)? { ["episodeID": "e1"] }
-    var retryPolicy: RetryPolicy { .never }
-    var idempotencyKey: String? { "tx-1" }
+    var path: String {
+        "episodes/unlock"
+    } // baş slash'sız — normalize edilmeli
+    var method: HTTPMethod {
+        .post
+    }
+
+    var body: (any Encodable)? {
+        ["episodeID": "e1"]
+    }
+
+    var retryPolicy: RetryPolicy {
+        .never
+    }
+
+    var idempotencyKey: String? {
+        "tx-1"
+    }
 }
 
 private struct PlainPostEndpoint: Endpoint {
     typealias Response = EmptyResponse
-    var path: String { "/things" }
-    var method: HTTPMethod { .post }
+    var path: String {
+        "/things"
+    }
+
+    var method: HTTPMethod {
+        .post
+    }
 }
 
 struct EndpointTests {
     private let client = APIClient(
-        configuration: APIConfiguration(environment: .development,
-                                        baseURL: URL(string: "https://api.test.local/v1")!)
+        configuration: APIConfiguration(
+            environment: .development,
+            baseURL: URL(string: "https://api.test.local/v1")!
+        )
     )
 
     @Test func protokolVarsayilanlari() {

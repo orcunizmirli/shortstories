@@ -13,7 +13,7 @@ struct FeatureFlagStoreTests {
             "test.bool": .bool(true),
             "test.int": .int(9),
             "test.double": .double(1.5),
-            "test.string": .string("canli"),
+            "test.string": .string("canli")
         ])
         #expect(store.value(for: boolFlag) == true)
         #expect(store.value(for: intFlag) == 9)
@@ -49,7 +49,7 @@ struct FeatureFlagStoreTests {
             "test.bool": .bool(true),
             "test.int": .int(7),
             "test.double": .double(2.5),
-            "test.string": .string("kayitli"),
+            "test.string": .string("kayitli")
         ], to: defaults)
 
         let store = FeatureFlagStore(userDefaults: defaults)

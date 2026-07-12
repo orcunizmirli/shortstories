@@ -2,7 +2,6 @@ import SwiftUI
 
 /// Yüzey konteyneri — raf kartları ve OdulMerkezi kartlarının tabanı.
 public struct DSCard<Content: View>: View {
-
     private let padding: CGFloat
     private let content: Content
 

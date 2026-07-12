@@ -2,7 +2,10 @@
 xcuserdata/
 DerivedData/
 .build/
-.swiftpm/
+# .swiftpm altında yalnız Xcode'un ürettiği workspace cache'i ignore edilir;
+# paylaşılan CI test şemaları (xcshareddata/xcschemes) COMMIT'lenir
+.swiftpm/xcode/package.xcworkspace/
+.swiftpm/configuration/
 *.xcresult
 # K1a: .xcodeproj XcodeGen ile üretilir (project.yml kaynağı), commit'lenmez
 ShortSeries.xcodeproj/

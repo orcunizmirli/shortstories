@@ -10,19 +10,19 @@ let package = Package(
         .package(path: "../AppFoundation"),
         .package(path: "../DesignSystem"),
         .package(path: "../ContentKit"),
-        .package(path: "../AnalyticsKit"),
+        .package(path: "../AnalyticsKit")
     ],
     targets: [
         .target(name: "PlayerKit", dependencies: [
             .product(name: "AppFoundation", package: "AppFoundation"),
             .product(name: "DesignSystem", package: "DesignSystem"),
             .product(name: "ContentKit", package: "ContentKit"),
-            .product(name: "AnalyticsKit", package: "AnalyticsKit"),
+            .product(name: "AnalyticsKit", package: "AnalyticsKit")
         ]),
         .testTarget(name: "PlayerKitTests", dependencies: [
             "PlayerKit",
-            .product(name: "AppFoundationTestSupport", package: "AppFoundation"),
-        ]),
+            .product(name: "AppFoundationTestSupport", package: "AppFoundation")
+        ])
     ],
     swiftLanguageModes: [.v6]
 )

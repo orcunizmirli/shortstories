@@ -1,5 +1,5 @@
-import Foundation
 import AppFoundation
+import Foundation
 
 public final class MockLogger: Logging, @unchecked Sendable {
     public struct Entry: Sendable, Equatable {

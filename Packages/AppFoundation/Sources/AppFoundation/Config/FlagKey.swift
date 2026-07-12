@@ -16,41 +16,49 @@ public protocol FlagValue: Sendable, Equatable {
 
 extension Bool: FlagValue {
     public init?(flagRawValue: FlagRawValue) {
-        guard case .bool(let value) = flagRawValue else { return nil }
+        guard case let .bool(value) = flagRawValue else { return nil }
         self = value
     }
 
-    public var flagRawValue: FlagRawValue { .bool(self) }
+    public var flagRawValue: FlagRawValue {
+        .bool(self)
+    }
 }
 
 extension Int: FlagValue {
     public init?(flagRawValue: FlagRawValue) {
-        guard case .int(let value) = flagRawValue else { return nil }
+        guard case let .int(value) = flagRawValue else { return nil }
         self = value
     }
 
-    public var flagRawValue: FlagRawValue { .int(self) }
+    public var flagRawValue: FlagRawValue {
+        .int(self)
+    }
 }
 
 extension Double: FlagValue {
     public init?(flagRawValue: FlagRawValue) {
         switch flagRawValue {
-        case .double(let value): self = value
-        case .int(let value): self = Double(value) // config 2.0 yerine 2 gönderebilir
+        case let .double(value): self = value
+        case let .int(value): self = Double(value) // config 2.0 yerine 2 gönderebilir
         default: return nil
         }
     }
 
-    public var flagRawValue: FlagRawValue { .double(self) }
+    public var flagRawValue: FlagRawValue {
+        .double(self)
+    }
 }
 
 extension String: FlagValue {
     public init?(flagRawValue: FlagRawValue) {
-        guard case .string(let value) = flagRawValue else { return nil }
+        guard case let .string(value) = flagRawValue else { return nil }
         self = value
     }
 
-    public var flagRawValue: FlagRawValue { .string(self) }
+    public var flagRawValue: FlagRawValue {
+        .string(self)
+    }
 }
 
 /// Tipli flag anahtarı (03 §11). Varsayılan değer KODDADIR — config gelmezse uygulama

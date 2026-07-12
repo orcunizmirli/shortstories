@@ -21,12 +21,12 @@ struct LiveDependencies: Dependencies {
     /// - Parameter configuration: F0 varsayılanı `.development`; xcconfig tabanlı
     ///   ortam seçimi SS-006'da bağlanır.
     init(configuration: APIConfiguration = .development) {
-        self.apiClient = APIClient(configuration: configuration)
-        self.session = StubSessionManager()
-        self.featureFlags = FeatureFlagStore() // UserDefaults snapshot; remote fetch SS-024
-        self.logger = OSLogger(category: "App")
-        self.analytics = NoopAnalyticsTracker()
-        self.secureStore = InMemorySecureStore()
-        self.preferences = UserDefaultsPreferences()
+        apiClient = APIClient(configuration: configuration)
+        session = StubSessionManager()
+        featureFlags = FeatureFlagStore() // UserDefaults snapshot; remote fetch SS-024
+        logger = OSLogger(category: "App")
+        analytics = NoopAnalyticsTracker()
+        secureStore = InMemorySecureStore()
+        preferences = UserDefaultsPreferences()
     }
 }

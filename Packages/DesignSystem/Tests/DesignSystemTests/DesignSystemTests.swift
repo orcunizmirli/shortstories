@@ -5,11 +5,10 @@ import UIKit
 
 @Suite("Token sanity")
 struct TokenSanityTests {
-
     @Test func spacingOlcegiKesinArtan() {
         let scale: [CGFloat] = [
             DSSpacing.xxs, DSSpacing.xs, DSSpacing.s, DSSpacing.m,
-            DSSpacing.l, DSSpacing.xl, DSSpacing.xxl, DSSpacing.xxxl,
+            DSSpacing.l, DSSpacing.xl, DSSpacing.xxl, DSSpacing.xxxl
         ]
         for (smaller, larger) in zip(scale, scale.dropFirst()) {
             #expect(smaller < larger)
@@ -56,7 +55,7 @@ struct TokenSanityTests {
             DSColors.surfaceTabBar, DSColors.textPrimary, DSColors.textSecondary,
             DSColors.textTertiary, DSColors.accent, DSColors.coinGold,
             DSColors.success, DSColors.warning, DSColors.danger,
-            DSColors.overlayScrim, DSColors.borderSubtle,
+            DSColors.overlayScrim, DSColors.borderSubtle
         ]
         for token in tokens {
             var alpha: CGFloat = -1
@@ -69,7 +68,6 @@ struct TokenSanityTests {
 @Suite("Bileşen kurulum smoke")
 @MainActor
 struct ComponentSmokeTests {
-
     @Test func dsButtonTumStilVeDurumlarKuruluyor() {
         let styles: [DSButton.Style] = [.primary, .secondary, .coinCTA]
         let sizes: [DSButton.Size] = [.regular, .compact]

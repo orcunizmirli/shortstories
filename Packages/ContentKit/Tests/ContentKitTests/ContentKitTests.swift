@@ -1,5 +1,5 @@
-import Testing
 import AppFoundation
+import Testing
 @testable import ContentKit
 
 @Test func modulDerleniyorVeAppFoundationGorunur() {

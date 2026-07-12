@@ -18,13 +18,15 @@ public enum SessionState: Sendable, Equatable {
     /// Opak kullanıcı kimliği; log'larda kullanıcı YALNIZ bununla anılır (PII kuralı).
     public var userID: String? {
         switch self {
-        case .unauthenticated: return nil
-        case .guest(let userID): return userID
-        case .linked(let userID, _): return userID
+        case .unauthenticated: nil
+        case let .guest(userID): userID
+        case let .linked(userID, _): userID
         }
     }
 
-    public var isAuthenticated: Bool { userID != nil }
+    public var isAuthenticated: Bool {
+        userID != nil
+    }
 }
 
 /// Oturum yönetimi protokolü — F0'da STUB; canlı `SessionManager` (misafir bootstrap,

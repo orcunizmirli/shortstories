@@ -1,5 +1,5 @@
-import Foundation
 import AppFoundation
+import Foundation
 
 public final class MockSecureStore: SecureStoring, @unchecked Sendable {
     public enum Operation: Sendable, Equatable {
@@ -32,7 +32,9 @@ public final class MockSecureStore: SecureStoring, @unchecked Sendable {
     public func data(forKey key: SecureStoreKey) throws -> Data? {
         try lock.withLock {
             operations.append(.read(key))
-            if let stubbedError { throw stubbedError }
+            if let stubbedError {
+                throw stubbedError
+            }
             return storage[key]
         }
     }
@@ -40,7 +42,9 @@ public final class MockSecureStore: SecureStoring, @unchecked Sendable {
     public func setData(_ data: Data, forKey key: SecureStoreKey) throws {
         try lock.withLock {
             operations.append(.write(key))
-            if let stubbedError { throw stubbedError }
+            if let stubbedError {
+                throw stubbedError
+            }
             storage[key] = data
         }
     }
@@ -48,7 +52,9 @@ public final class MockSecureStore: SecureStoring, @unchecked Sendable {
     public func removeData(forKey key: SecureStoreKey) throws {
         try lock.withLock {
             operations.append(.remove(key))
-            if let stubbedError { throw stubbedError }
+            if let stubbedError {
+                throw stubbedError
+            }
             storage[key] = nil
         }
     }

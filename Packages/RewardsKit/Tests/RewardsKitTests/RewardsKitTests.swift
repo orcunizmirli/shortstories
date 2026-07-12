@@ -1,5 +1,5 @@
-import Testing
 import AppFoundation
+import Testing
 @testable import RewardsKit
 
 @Test func modulDerleniyorVeIDTipleriContentKitsizGorunur() {

@@ -18,10 +18,12 @@ public struct RetryPolicy: Sendable, Equatable {
     /// Hesaplanan nominal gecikmeye uygulanan rastgele çarpan aralığı.
     public var jitter: ClosedRange<Double>
 
-    public init(maxRetries: Int,
-                baseDelay: Duration = .milliseconds(500),
-                multiplier: Double = 2.0,
-                jitter: ClosedRange<Double> = 0.8...1.2) {
+    public init(
+        maxRetries: Int,
+        baseDelay: Duration = .milliseconds(500),
+        multiplier: Double = 2.0,
+        jitter: ClosedRange<Double> = 0.8 ... 1.2
+    ) {
         self.maxRetries = maxRetries
         self.baseDelay = baseDelay
         self.multiplier = multiplier

@@ -11,6 +11,11 @@ excluded:
 analyzer_rules:
   - unused_import
 
+# TODO'lar bilinçli: iskelet kodda her TODO bir task ID (SS-###) veya faz (F1) taşır ve
+# docs/09-yol-haritasi-tasklar.md'de takip edilir — strict modda build kırmasın.
+disabled_rules:
+  - todo
+
 opt_in_rules:
   - empty_count
   - closure_spacing
@@ -27,7 +32,8 @@ line_length:
 
 identifier_name:
   min_length: 2
-  excluded: [x, y, z, id]
+  # s/m/l: DSSpacing 4pt ölçeğinin kanonik token adları; r/g/b/a: renk bileşeni tuple'ları
+  excluded: [x, y, z, id, s, m, l, r, g, b, a]
 
 custom_rules:
   # E2 kuralı: feature modülleri ham renk kullanamaz — yalnız DesignSystem semantic token'ları.

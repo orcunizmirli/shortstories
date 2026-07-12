@@ -1,5 +1,5 @@
-import Foundation
 import AppFoundation
+import Foundation
 
 public final class MockPreferences: PreferencesStoring, @unchecked Sendable {
     private let lock = NSLock()
@@ -24,7 +24,7 @@ public final class MockPreferences: PreferencesStoring, @unchecked Sendable {
         }
     }
 
-    public func removeValue<V: PreferenceValue>(for key: PreferenceKey<V>) {
+    public func removeValue(for key: PreferenceKey<some PreferenceValue>) {
         lock.withLock { storage[key.name] = nil }
     }
 }

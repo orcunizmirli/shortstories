@@ -67,19 +67,19 @@ public extension AppError {
     /// kopması retryable'dır; diğer 4xx, auth ve cüzdan hataları DEĞİLDİR.
     var isRetryable: Bool {
         switch self {
-        case .network(let error):
+        case let .network(error):
             switch error {
             case .offline, .timeout:
-                return true
-            case .server(let status):
-                return status >= 500 || status == 429
+                true
+            case let .server(status):
+                status >= 500 || status == 429
             case .decoding:
-                return false
+                false
             }
-        case .playback(let error):
-            return error == .signedURLExpired
+        case let .playback(error):
+            error == .signedURLExpired
         case .auth, .wallet, .content, .storage, .featureDisabled, .unexpected:
-            return false
+            false
         }
     }
 
@@ -87,72 +87,72 @@ public extension AppError {
     /// hataları için `nil` (gösterim stratejisi: 03 §10.2).
     var userFacingMessage: LocalizedStringResource? {
         switch self {
-        case .network(let error):
+        case let .network(error):
             switch error {
             case .offline:
-                return "You're offline. Check your connection and try again."
+                "You're offline. Check your connection and try again."
             case .timeout:
-                return "The connection timed out. Please try again."
+                "The connection timed out. Please try again."
             case .server:
-                return "Something went wrong on our side. Please try again."
+                "Something went wrong on our side. Please try again."
             case .decoding:
-                return "Something went wrong. Please try again."
+                "Something went wrong. Please try again."
             }
-        case .auth(let error):
+        case let .auth(error):
             switch error {
             case .sessionExpired:
-                return "Your session has expired. Please try again."
+                "Your session has expired. Please try again."
             case .linkingFailed:
-                return "We couldn't link your account. Please try again."
+                "We couldn't link your account. Please try again."
             case .guestBootstrapFailed:
-                return "We couldn't set up your account. Check your connection and try again."
+                "We couldn't set up your account. Check your connection and try again."
             }
-        case .playback(let error):
+        case let .playback(error):
             switch error {
             case .assetUnavailable:
-                return "This episode can't be played right now."
+                "This episode can't be played right now."
             case .drmDenied:
-                return "This content can't be played on this device."
+                "This content can't be played on this device."
             case .signedURLExpired:
-                return nil // player katmanı URL'i sessizce tazeler
+                nil // player katmanı URL'i sessizce tazeler
             }
-        case .wallet(let error):
+        case let .wallet(error):
             switch error {
             case .insufficientCoins:
                 // "Hata" değil akıştır: CoinMagazasi'na yönlendirir (03 §10.2)
-                return "You don't have enough coins."
-            case .purchaseFailed(let status):
+                "You don't have enough coins."
+            case let .purchaseFailed(status):
                 switch status {
                 case .userCancelled:
-                    return nil
+                    nil
                 case .pending:
-                    return "Your purchase is still processing. Your coins will arrive shortly."
+                    "Your purchase is still processing. Your coins will arrive shortly."
                 case .verificationFailed, .unknown:
-                    return "The purchase couldn't be completed. Please try again."
+                    "The purchase couldn't be completed. Please try again."
                 }
             case .receiptValidationFailed:
-                return "We're verifying your purchase. Your coins will be added shortly."
+                "We're verifying your purchase. Your coins will be added shortly."
             case .transactionConflict:
-                return "This transaction was already processed."
+                "This transaction was already processed."
             }
-        case .content(let error):
+        case let .content(error):
             switch error {
             case .notFound:
-                return "This content is no longer available."
+                "This content is no longer available."
             case .regionBlocked:
-                return "This content isn't available in your region."
+                "This content isn't available in your region."
             case .episodeLockedStateStale:
-                return "This episode's unlock status changed. Please refresh."
+                "This episode's unlock status changed. Please refresh."
             }
-        case .storage(let error):
+        case let .storage(error):
             switch error {
             case .diskFull:
-                return "Your device is low on storage."
+                "Your device is low on storage."
             case .migrationFailed, .keychainUnavailable:
-                return nil
+                nil
             }
         case .featureDisabled, .unexpected:
-            return nil
+            nil
         }
     }
 }

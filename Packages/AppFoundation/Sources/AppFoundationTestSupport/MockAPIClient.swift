@@ -1,5 +1,5 @@
-import Foundation
 import AppFoundation
+import Foundation
 
 /// §5.3 kalıbı: programlanabilir stub cevap + spy kayıt. Cevaplar `path` ile anahtarlanır.
 public final class MockAPIClient: APIClientProtocol, @unchecked Sendable {
@@ -32,7 +32,7 @@ public final class MockAPIClient: APIClientProtocol, @unchecked Sendable {
         lock.withLock { responses[path] = result }
     }
 
-    public func stub<R: Encodable>(_ path: String, returning value: R) throws {
+    public func stub(_ path: String, returning value: some Encodable) throws {
         let data = try encoder.encode(value)
         lock.withLock { responses[path] = .success(data) }
     }
@@ -48,7 +48,7 @@ public final class MockAPIClient: APIClientProtocol, @unchecked Sendable {
     }
 
     public var receivedPaths: [String] {
-        lock.withLock { received.map { $0.path } }
+        lock.withLock { received.map(\.path) }
     }
 
     // MARK: - APIClientProtocol
@@ -62,13 +62,13 @@ public final class MockAPIClient: APIClientProtocol, @unchecked Sendable {
             throw AppError.unexpected(underlying: "MockAPIClient: '\(endpoint.path)' için stub tanımlı değil")
         }
         switch result {
-        case .success(let data):
+        case let .success(data):
             do {
                 return try decoder.decode(E.Response.self, from: data)
             } catch {
                 throw AppError.network(.decoding)
             }
-        case .failure(let error):
+        case let .failure(error):
             throw error
         }
     }

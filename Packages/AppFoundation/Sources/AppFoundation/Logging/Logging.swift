@@ -21,8 +21,19 @@ public protocol Logging: Sendable {
 }
 
 public extension Logging {
-    func debug(_ message: String) { log(.debug, message) }
-    func info(_ message: String) { log(.info, message) }
-    func error(_ message: String) { log(.error, message) }
-    func fault(_ message: String) { log(.fault, message) }
+    func debug(_ message: String) {
+        log(.debug, message)
+    }
+
+    func info(_ message: String) {
+        log(.info, message)
+    }
+
+    func error(_ message: String) {
+        log(.error, message)
+    }
+
+    func fault(_ message: String) {
+        log(.fault, message)
+    }
 }

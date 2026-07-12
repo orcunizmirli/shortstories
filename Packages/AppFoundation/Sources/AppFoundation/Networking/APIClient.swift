@@ -19,9 +19,11 @@ public struct APIClient: APIClientProtocol {
     let decoder: JSONDecoder
     let encoder: JSONEncoder
 
-    public init(configuration: APIConfiguration,
-                urlSession: URLSession = .shared,
-                interceptors: [any RequestInterceptor] = []) {
+    public init(
+        configuration: APIConfiguration,
+        urlSession: URLSession = .shared,
+        interceptors: [any RequestInterceptor] = []
+    ) {
         self.configuration = configuration
         self.urlSession = urlSession
         self.interceptors = interceptors
@@ -57,9 +59,11 @@ public struct APIClient: APIClientProtocol {
 
     // MARK: - İstek kurulumu (test edilebilirlik için internal)
 
-    func makeRequest<E: Endpoint>(_ endpoint: E) throws -> URLRequest {
-        guard var components = URLComponents(url: configuration.baseURL,
-                                             resolvingAgainstBaseURL: false) else {
+    func makeRequest(_ endpoint: some Endpoint) throws -> URLRequest {
+        guard var components = URLComponents(
+            url: configuration.baseURL,
+            resolvingAgainstBaseURL: false
+        ) else {
             throw AppError.unexpected(underlying: "Geçersiz baseURL: \(configuration.baseURL)")
         }
         let path = endpoint.path.hasPrefix("/") ? endpoint.path : "/" + endpoint.path
@@ -88,7 +92,7 @@ public struct APIClient: APIClientProtocol {
         return request
     }
 
-    func isIdempotent<E: Endpoint>(_ endpoint: E) -> Bool {
+    func isIdempotent(_ endpoint: some Endpoint) -> Bool {
         endpoint.method == .get || endpoint.idempotencyKey != nil
     }
 
@@ -113,7 +117,9 @@ public struct APIClient: APIClientProtocol {
         do {
             (data, response) = try await urlSession.data(for: request)
         } catch let urlError as URLError {
-            if urlError.code == .cancelled { throw CancellationError() }
+            if urlError.code == .cancelled {
+                throw CancellationError()
+            }
             throw Self.appError(from: urlError)
         } catch {
             throw AppError.unexpected(underlying: String(describing: error))
@@ -133,7 +139,7 @@ public struct APIClient: APIClientProtocol {
             throw AppError.unexpected(underlying: "HTTP olmayan yanıt: \(type(of: response))")
         }
         switch http.statusCode {
-        case 200..<300:
+        case 200 ..< 300:
             return
         case 401:
             // Retry değil; refresh akışı SS-021'de bağlanır (03 §8.2).
@@ -146,13 +152,13 @@ public struct APIClient: APIClientProtocol {
     static func appError(from urlError: URLError) -> AppError {
         switch urlError.code {
         case .timedOut:
-            return .network(.timeout)
+            .network(.timeout)
         case .notConnectedToInternet, .networkConnectionLost, .dataNotAllowed,
              .internationalRoamingOff, .cannotConnectToHost, .cannotFindHost,
              .dnsLookupFailed:
-            return .network(.offline)
+            .network(.offline)
         default:
-            return .unexpected(underlying: "URLError(\(urlError.code.rawValue))")
+            .unexpected(underlying: "URLError(\(urlError.code.rawValue))")
         }
     }
 }

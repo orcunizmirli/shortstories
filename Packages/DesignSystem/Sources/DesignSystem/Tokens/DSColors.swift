@@ -22,7 +22,6 @@ private enum Palette {
 /// dışında lint ile yasaktır. Light değerleri F0'da makul başlangıçlardır
 /// (uygulama sistem temasını takip etmez; dark birincil kaynaktır).
 public enum DSColors {
-
     // MARK: - Zemin
 
     /// OLED siyahı ana zemin (#000000).

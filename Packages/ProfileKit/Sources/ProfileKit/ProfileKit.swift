@@ -1,6 +1,6 @@
+import AnalyticsKit
 import AppFoundation
 import DesignSystem
-import AnalyticsKit
 
 /// ProfileKit — Profil, Ayarlar, hesap bağlama/auth UI (KANON §4).
 /// F1 kapsamı: SS-130…SS-133 (docs/09 §E12; hesap bağlama Apple F1, Google/e-posta F2)

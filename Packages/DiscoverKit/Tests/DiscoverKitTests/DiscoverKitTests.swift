@@ -1,6 +1,6 @@
-import Testing
 import AppFoundation
 import ContentKit
+import Testing
 @testable import DiscoverKit
 
 @Test func modulDerleniyorVeBagimliliklarGorunur() {

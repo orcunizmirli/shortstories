@@ -3,7 +3,6 @@ import SwiftUI
 /// Tür filtresi / etiket chip'i (Kesfet filtreleri, Onboarding tür seçimi).
 /// Her zaman kapsül biçimlidir (DSRadius.chip sözleşmesi).
 public struct DSChip: View {
-
     private let title: LocalizedStringKey
     private let isSelected: Bool
     private let onTap: () -> Void

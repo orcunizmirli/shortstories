@@ -7,13 +7,15 @@ let package = Package(
     platforms: [.iOS(.v17)],
     products: [
         .library(name: "AppFoundation", targets: ["AppFoundation"]),
-        .library(name: "AppFoundationTestSupport", targets: ["AppFoundationTestSupport"]),
+        .library(name: "AppFoundationTestSupport", targets: ["AppFoundationTestSupport"])
     ],
     targets: [
         .target(name: "AppFoundation"),
         .target(name: "AppFoundationTestSupport", dependencies: ["AppFoundation"]),
-        .testTarget(name: "AppFoundationTests",
-                    dependencies: ["AppFoundation", "AppFoundationTestSupport"]),
+        .testTarget(
+            name: "AppFoundationTests",
+            dependencies: ["AppFoundation", "AppFoundationTestSupport"]
+        )
     ],
     swiftLanguageModes: [.v6]
 )

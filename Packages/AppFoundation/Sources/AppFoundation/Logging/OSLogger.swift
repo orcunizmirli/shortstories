@@ -9,7 +9,7 @@ public struct OSLogger: Logging {
 
     /// - Parameter category: Modül adı (ör. "ContentKit", "PlayerKit", "App").
     public init(category: String) {
-        self.logger = os.Logger(subsystem: Self.subsystem, category: category)
+        logger = os.Logger(subsystem: Self.subsystem, category: category)
     }
 
     public func log(_ level: LogLevel, _ message: String) {
@@ -19,7 +19,7 @@ public struct OSLogger: Logging {
         switch level {
         case .debug:
             #if DEBUG
-            logger.debug("\(message, privacy: .public)")
+                logger.debug("\(message, privacy: .public)")
             #endif
             return
         case .info:

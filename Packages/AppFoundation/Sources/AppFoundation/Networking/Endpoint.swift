@@ -31,10 +31,27 @@ public protocol Endpoint: Sendable {
 }
 
 public extension Endpoint {
-    var query: [URLQueryItem] { [] }
-    var body: (any Encodable)? { nil }
-    var requiresAuth: Bool { true }
-    var retryPolicy: RetryPolicy { .default }
-    var idempotencyKey: String? { nil }
-    var cachePolicy: APICachePolicy { .networkOnly }
+    var query: [URLQueryItem] {
+        []
+    }
+
+    var body: (any Encodable)? {
+        nil
+    }
+
+    var requiresAuth: Bool {
+        true
+    }
+
+    var retryPolicy: RetryPolicy {
+        .default
+    }
+
+    var idempotencyKey: String? {
+        nil
+    }
+
+    var cachePolicy: APICachePolicy {
+        .networkOnly
+    }
 }

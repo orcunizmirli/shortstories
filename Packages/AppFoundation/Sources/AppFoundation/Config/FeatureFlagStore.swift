@@ -22,7 +22,7 @@ public struct FeatureFlagStore: FeatureFlagReading {
 
     public init(userDefaults: UserDefaults = .standard) {
         let stored = userDefaults.dictionary(forKey: Self.snapshotDefaultsKey) ?? [:]
-        self.snapshot = stored.compactMapValues(FlagRawValue.init(bridging:))
+        snapshot = stored.compactMapValues(FlagRawValue.init(bridging:))
     }
 
     public func value<V: FlagValue>(for key: FlagKey<V>) -> V {
@@ -31,10 +31,14 @@ public struct FeatureFlagStore: FeatureFlagReading {
 
     /// Bir sonraki launch'ta okunacak snapshot'ı yazar — SS-024 remote fetch'in yazma
     /// yolu; F0'da test ve tohumlama için.
-    public static func persistSnapshot(_ snapshot: [String: FlagRawValue],
-                                       to userDefaults: UserDefaults = .standard) {
-        userDefaults.set(snapshot.mapValues(\.propertyListObject),
-                         forKey: snapshotDefaultsKey)
+    public static func persistSnapshot(
+        _ snapshot: [String: FlagRawValue],
+        to userDefaults: UserDefaults = .standard
+    ) {
+        userDefaults.set(
+            snapshot.mapValues(\.propertyListObject),
+            forKey: snapshotDefaultsKey
+        )
     }
 }
 
@@ -59,10 +63,10 @@ extension FlagRawValue {
 
     var propertyListObject: Any {
         switch self {
-        case .bool(let value): return value
-        case .int(let value): return value
-        case .double(let value): return value
-        case .string(let value): return value
+        case let .bool(value): value
+        case let .int(value): value
+        case let .double(value): value
+        case let .string(value): value
         }
     }
 }

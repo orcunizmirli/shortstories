@@ -10,8 +10,8 @@ public final class URLProtocolStub: URLProtocol {
     public typealias Handler = @Sendable (URLRequest) throws -> (HTTPURLResponse, Data)
 
     private static let lock = NSLock()
-    nonisolated(unsafe) private static var handler: Handler?
-    nonisolated(unsafe) private static var requests: [URLRequest] = []
+    private nonisolated(unsafe) static var handler: Handler?
+    private nonisolated(unsafe) static var requests: [URLRequest] = []
 
     // MARK: - Test API
 
@@ -39,18 +39,24 @@ public final class URLProtocolStub: URLProtocol {
     }
 
     /// Kolaylık: verilen istek için `HTTPURLResponse` üretir.
-    public static func httpResponse(for request: URLRequest,
-                                    status: Int,
-                                    headers: [String: String]? = nil) -> HTTPURLResponse {
-        HTTPURLResponse(url: request.url ?? URL(string: "https://invalid.test")!,
-                        statusCode: status,
-                        httpVersion: "HTTP/1.1",
-                        headerFields: headers)!
+    public static func httpResponse(
+        for request: URLRequest,
+        status: Int,
+        headers: [String: String]? = nil
+    ) -> HTTPURLResponse {
+        HTTPURLResponse(
+            url: request.url ?? URL(string: "https://invalid.test")!,
+            statusCode: status,
+            httpVersion: "HTTP/1.1",
+            headerFields: headers
+        )!
     }
 
     /// URLProtocol içinde `httpBody` nil gelir; gövdeyi `httpBodyStream`'den okur.
     public static func body(of request: URLRequest) -> Data? {
-        if let body = request.httpBody { return body }
+        if let body = request.httpBody {
+            return body
+        }
         guard let stream = request.httpBodyStream else { return nil }
         stream.open()
         defer { stream.close() }
@@ -67,9 +73,16 @@ public final class URLProtocolStub: URLProtocol {
 
     // MARK: - URLProtocol
 
-    override public class func canInit(with request: URLRequest) -> Bool { true }
+    // URLProtocol'ün class func API'sini override ediyoruz — static'e çevrilemez.
+    // swiftlint:disable:next static_over_final_class
+    override public class func canInit(with request: URLRequest) -> Bool {
+        true
+    }
 
-    override public class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    // swiftlint:disable:next static_over_final_class
+    override public class func canonicalRequest(for request: URLRequest) -> URLRequest {
+        request
+    }
 
     override public func startLoading() {
         let currentHandler = Self.lock.withLock { () -> Handler? in

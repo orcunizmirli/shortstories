@@ -3,7 +3,6 @@ import SwiftUI
 /// Standart buton. Bileşen-içi renk türetimleri (zemin üstü metin renkleri)
 /// 03 §4.1 katman 3 gereği yalnız bu dosyada yaşar.
 public struct DSButton: View {
-
     public enum Style: Sendable {
         case primary
         case secondary
@@ -96,5 +95,7 @@ public struct DSPrimaryButtonStyle: ButtonStyle {
 }
 
 public extension ButtonStyle where Self == DSPrimaryButtonStyle {
-    static var dsPrimary: DSPrimaryButtonStyle { DSPrimaryButtonStyle() }
+    static var dsPrimary: DSPrimaryButtonStyle {
+        DSPrimaryButtonStyle()
+    }
 }

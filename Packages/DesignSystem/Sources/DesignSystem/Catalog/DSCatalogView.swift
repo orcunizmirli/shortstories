@@ -3,7 +3,6 @@ import SwiftUI
 /// Tüm token ve bileşenleri state'leriyle sergileyen katalog (SS-007 demo
 /// yüzeyi). `DesignSystemCatalog` app target'ı bu view'i host eder.
 public struct DSCatalogView: View {
-
     @State private var selectedGenre = "Dram"
     @State private var isLoadingDemo = true
 
@@ -23,7 +22,7 @@ public struct DSCatalogView: View {
         ("warning", DSColors.warning),
         ("danger", DSColors.danger),
         ("overlayScrim", DSColors.overlayScrim),
-        ("borderSubtle", DSColors.borderSubtle),
+        ("borderSubtle", DSColors.borderSubtle)
     ]
 
     private let typographyTokens: [(name: String, font: Font)] = [
@@ -34,13 +33,13 @@ public struct DSCatalogView: View {
         ("bodyEmphasized", DSTypography.bodyEmphasized),
         ("caption", DSTypography.caption),
         ("captionEmphasized", DSTypography.captionEmphasized),
-        ("playerOverlay(size: 15)", DSTypography.playerOverlay(size: 15)),
+        ("playerOverlay(size: 15)", DSTypography.playerOverlay(size: 15))
     ]
 
     private let spacingTokens: [(name: String, value: CGFloat)] = [
         ("xxs", DSSpacing.xxs), ("xs", DSSpacing.xs), ("s", DSSpacing.s),
         ("m", DSSpacing.m), ("l", DSSpacing.l), ("xl", DSSpacing.xl),
-        ("xxl", DSSpacing.xxl), ("xxxl", DSSpacing.xxxl),
+        ("xxl", DSSpacing.xxl), ("xxxl", DSSpacing.xxxl)
     ]
 
     public init() {}
