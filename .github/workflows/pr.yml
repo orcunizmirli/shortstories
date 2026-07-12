@@ -16,7 +16,10 @@ jobs:
         run: swift Scripts/dependency-lint.swift
       - name: SwiftLint + SwiftFormat
         run: |
-          brew install swiftlint swiftformat
+          # Runner imajındaki araçlar eski kalabiliyor ve kural davranışı sürümle değişiyor —
+          # geliştirici makineleriyle aynı (brew latest) sürüme çek.
+          brew upgrade swiftlint swiftformat 2>/dev/null || brew install swiftlint swiftformat
+          swiftlint version && swiftformat --version
           swiftlint lint --strict
           swiftformat --lint .
 

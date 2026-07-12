@@ -3,7 +3,7 @@ import Foundation
 import Testing
 @testable import AppFoundation
 
-private struct TestPayload: Codable, Equatable, Sendable {
+private struct TestPayload: Codable, Equatable {
     let value: String
 }
 

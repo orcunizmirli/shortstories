@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import AppFoundation
 
-private struct EmptyResponse: Decodable, Sendable {}
+private struct EmptyResponse: Decodable {}
 
 private struct MinimalEndpoint: Endpoint {
     typealias Response = EmptyResponse
