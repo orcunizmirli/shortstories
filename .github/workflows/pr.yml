@@ -15,13 +15,20 @@ jobs:
       - name: Dependency lint (03 §4 R1-R7)
         run: swift Scripts/dependency-lint.swift
       - name: SwiftLint + SwiftFormat
+        env:
+          # SwiftFormat SÜRÜMÜ PİNLİ: kural davranışı sürümle değişiyor ve runner brew
+          # indeksi bayat kalabiliyor (0.61.1'e sabitlenip yerelle çelişti). Yerel geliştirme
+          # sürümüyle birlikte, bilinçli bir PR ile güncellenir.
+          SWIFTFORMAT_VERSION: "0.62.1"
         run: |
-          # Runner imajındaki araçlar eski kalabiliyor ve kural davranışı sürümle değişiyor —
-          # geliştirici makineleriyle aynı (brew latest) sürüme çek.
-          brew upgrade swiftlint swiftformat 2>/dev/null || brew install swiftlint swiftformat
-          swiftlint version && swiftformat --version
+          brew install swiftlint 2>/dev/null || true
+          curl -fsSL -o /tmp/sf.zip "https://github.com/nicklockwood/SwiftFormat/releases/download/${SWIFTFORMAT_VERSION}/swiftformat.artifactbundle.zip"
+          unzip -q -o /tmp/sf.zip -d /tmp/sf
+          SF="/tmp/sf/swiftformat.artifactbundle/swiftformat-${SWIFTFORMAT_VERSION}-macos/bin/swiftformat"
+          chmod +x "$SF"
+          swiftlint version && "$SF" --version
           swiftlint lint --strict
-          swiftformat --lint .
+          "$SF" --lint .
 
   build-test:
     runs-on: macos-26
