@@ -13,10 +13,14 @@ let package = Package(
         .target(name: "ContentKit", dependencies: [
             .product(name: "AppFoundation", package: "AppFoundation")
         ]),
-        .testTarget(name: "ContentKitTests", dependencies: [
-            "ContentKit",
-            .product(name: "AppFoundationTestSupport", package: "AppFoundation")
-        ])
+        .testTarget(
+            name: "ContentKitTests",
+            dependencies: [
+                "ContentKit",
+                .product(name: "AppFoundationTestSupport", package: "AppFoundation")
+            ],
+            resources: [.copy("Fixtures")]
+        )
     ],
     swiftLanguageModes: [.v6]
 )

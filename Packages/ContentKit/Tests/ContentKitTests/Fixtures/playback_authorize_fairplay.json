@@ -1,0 +1,11 @@
+{
+  "episodeId": "ep_5410be",
+  "playbackURL": "https://cdn.shortseries.app/hls/ep_5410be/master.m3u8?tk=abc",
+  "expiresAt": "2026-07-11T12:00:00Z",
+  "drm": {
+    "scheme": "fairplay",
+    "licenseURL": "https://drm.shortseries.app/fps/license",
+    "certificateURL": "https://drm.shortseries.app/fps/cert",
+    "licenseToken": "lt_abc..."
+  }
+}

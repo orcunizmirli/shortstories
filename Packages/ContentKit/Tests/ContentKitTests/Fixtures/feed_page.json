@@ -1,0 +1,86 @@
+{
+  "items": [
+    {
+      "id": "fi_001",
+      "type": "episode",
+      "series": {
+        "id": "srs_9f2c1a",
+        "title": "Midnight Heir",
+        "synopsis": "Gece yarısı dönen gizli varis, aile imparatorluğunu geri almak için yemin eder.",
+        "coverURL": "https://cdn.shortseries.app/c/srs_9f2c1a.jpg",
+        "bannerURL": "https://cdn.shortseries.app/b/srs_9f2c1a.jpg",
+        "genres": [
+          { "id": "gnr_romance", "name": "Romantik", "iconURL": "https://cdn.shortseries.app/g/gnr_romance.png" }
+        ],
+        "tags": [
+          { "id": "tag_revenge", "name": "İntikam" }
+        ],
+        "episodeCount": 80,
+        "releasedEpisodeCount": 42,
+        "freeEpisodeCount": 8,
+        "releaseState": "ongoing",
+        "nextEpisodeAt": "2026-07-17T00:00:00Z",
+        "stats": { "viewCount": 1200000, "favoriteCount": 45000, "trendingRank": 3 },
+        "localeInfo": { "audioLanguage": "en", "subtitleLanguages": ["en", "tr", "es", "pt"] },
+        "updatedAt": "2026-07-10T09:30:00Z"
+      },
+      "episode": {
+        "id": "ep_5410be",
+        "seriesId": "srs_9f2c1a",
+        "index": 1,
+        "durationSec": 92,
+        "thumbnailURL": "https://cdn.shortseries.app/t/ep_5410be.jpg",
+        "access": { "kind": "free", "unlockPrice": null, "adUnlockEligible": false },
+        "publishedAt": "2026-06-20T00:00:00Z"
+      },
+      "progress": null,
+      "reason": null
+    },
+    {
+      "id": "fi_002",
+      "type": "episode",
+      "series": {
+        "id": "srs_9f2c1a",
+        "title": "Midnight Heir",
+        "synopsis": "Gece yarısı dönen gizli varis, aile imparatorluğunu geri almak için yemin eder.",
+        "coverURL": "https://cdn.shortseries.app/c/srs_9f2c1a.jpg",
+        "bannerURL": "https://cdn.shortseries.app/b/srs_9f2c1a.jpg",
+        "genres": [
+          { "id": "gnr_romance", "name": "Romantik", "iconURL": "https://cdn.shortseries.app/g/gnr_romance.png" }
+        ],
+        "tags": [
+          { "id": "tag_revenge", "name": "İntikam" }
+        ],
+        "episodeCount": 80,
+        "releasedEpisodeCount": 42,
+        "freeEpisodeCount": 8,
+        "releaseState": "ongoing",
+        "nextEpisodeAt": "2026-07-17T00:00:00Z",
+        "stats": { "viewCount": 1200000, "favoriteCount": 45000, "trendingRank": 3 },
+        "localeInfo": { "audioLanguage": "en", "subtitleLanguages": ["en", "tr", "es", "pt"] },
+        "updatedAt": "2026-07-10T09:30:00Z"
+      },
+      "episode": {
+        "id": "ep_5410bf",
+        "seriesId": "srs_9f2c1a",
+        "index": 9,
+        "title": "The Reveal",
+        "durationSec": 88,
+        "thumbnailURL": "https://cdn.shortseries.app/t/ep_5410bf.jpg",
+        "access": { "kind": "locked", "unlockPrice": 60, "adUnlockEligible": true },
+        "publishedAt": "2026-06-28T00:00:00Z"
+      },
+      "progress": {
+        "episodeId": "ep_5410bf",
+        "seriesId": "srs_9f2c1a",
+        "positionSec": 12.5,
+        "durationSec": 88.0,
+        "completed": false,
+        "watchedAt": "2026-07-11T09:31:02Z"
+      },
+      "reason": "Romantik izlediğin için"
+    }
+  ],
+  "nextCursor": "eyJvZmZzZXQiOiIxMCJ9",
+  "ttlSec": 300
+}

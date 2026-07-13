@@ -1,0 +1,70 @@
+{
+  "banners": [
+    {
+      "id": "bnr_summer01",
+      "imageURL": "https://cdn.shortseries.app/bn/bnr_summer01.jpg",
+      "deeplink": "shortseries://series/srs_9f2c1a",
+      "title": "Summer Binge",
+      "startsAt": "2026-07-01T00:00:00Z",
+      "endsAt": "2026-08-01T00:00:00Z"
+    }
+  ],
+  "collections": [
+    {
+      "id": "col_trending",
+      "kind": "trending",
+      "title": "Trend",
+      "seriesList": [
+        {
+          "id": "srs_9f2c1a",
+          "title": "Midnight Heir",
+          "synopsis": "Gece yarısı dönen gizli varis, aile imparatorluğunu geri almak için yemin eder.",
+          "coverURL": "https://cdn.shortseries.app/c/srs_9f2c1a.jpg",
+          "bannerURL": "https://cdn.shortseries.app/b/srs_9f2c1a.jpg",
+          "genres": [
+            { "id": "gnr_romance", "name": "Romantik", "iconURL": null }
+          ],
+          "tags": [
+            { "id": "tag_revenge", "name": "İntikam" }
+          ],
+          "episodeCount": 80,
+          "releasedEpisodeCount": 42,
+          "freeEpisodeCount": 8,
+          "releaseState": "ongoing",
+          "nextEpisodeAt": "2026-07-17T00:00:00Z",
+          "stats": { "viewCount": 1200000, "favoriteCount": 45000, "trendingRank": 1 },
+          "localeInfo": { "audioLanguage": "en", "subtitleLanguages": ["en", "tr"] },
+          "updatedAt": "2026-07-10T09:30:00Z"
+        }
+      ],
+      "nextCursor": "eyJ2IjoxLCJrIjoiY29sX3RyZW5kaW5nIn0"
+    },
+    {
+      "id": "col_top10",
+      "kind": "top10",
+      "title": "Top 10",
+      "seriesList": [
+        {
+          "id": "srs_77aa10",
+          "title": "Crown of Ashes",
+          "synopsis": "Tamamlanmış saray entrikası: küllerin arasından yükselen taht kavgası.",
+          "coverURL": "https://cdn.shortseries.app/c/srs_77aa10.jpg",
+          "bannerURL": null,
+          "genres": [
+            { "id": "gnr_drama", "name": "Dram", "iconURL": null }
+          ],
+          "tags": [],
+          "episodeCount": 60,
+          "releasedEpisodeCount": 60,
+          "freeEpisodeCount": 5,
+          "releaseState": "completed",
+          "nextEpisodeAt": null,
+          "stats": { "viewCount": 5400000, "favoriteCount": 210000, "trendingRank": null },
+          "localeInfo": { "audioLanguage": "en", "subtitleLanguages": ["en", "tr"] },
+          "updatedAt": "2026-07-01T00:00:00Z"
+        }
+      ],
+      "nextCursor": null
+    }
+  ]
+}

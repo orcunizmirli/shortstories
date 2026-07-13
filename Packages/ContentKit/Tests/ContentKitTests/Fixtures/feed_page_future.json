@@ -1,0 +1,69 @@
+{
+  "items": [
+    {
+      "id": "fi_900",
+      "type": "surpriseCard",
+      "series": {
+        "id": "srs_9f2c1a",
+        "title": "Midnight Heir",
+        "synopsis": "Gece yarısı dönen gizli varis, aile imparatorluğunu geri almak için yemin eder.",
+        "coverURL": "https://cdn.shortseries.app/c/srs_9f2c1a.jpg",
+        "bannerURL": null,
+        "genres": [
+          { "id": "gnr_romance", "name": "Romantik", "iconURL": null }
+        ],
+        "tags": [],
+        "episodeCount": 80,
+        "releasedEpisodeCount": 42,
+        "freeEpisodeCount": 8,
+        "releaseState": "paused",
+        "nextEpisodeAt": null,
+        "stats": { "viewCount": 1200000, "favoriteCount": 45000, "trendingRank": null },
+        "localeInfo": { "audioLanguage": "en", "subtitleLanguages": ["en"] },
+        "updatedAt": "2026-07-10T09:30:00Z",
+        "moodScore": 0.87
+      },
+      "episode": null,
+      "progress": null,
+      "reason": null,
+      "highlightColor": "#FF00AA"
+    },
+    {
+      "id": "fi_901",
+      "type": "episode",
+      "series": {
+        "id": "srs_9f2c1a",
+        "title": "Midnight Heir",
+        "synopsis": "Gece yarısı dönen gizli varis, aile imparatorluğunu geri almak için yemin eder.",
+        "coverURL": "https://cdn.shortseries.app/c/srs_9f2c1a.jpg",
+        "bannerURL": null,
+        "genres": [
+          { "id": "gnr_romance", "name": "Romantik", "iconURL": null }
+        ],
+        "tags": [],
+        "episodeCount": 80,
+        "releasedEpisodeCount": 42,
+        "freeEpisodeCount": 8,
+        "releaseState": "ongoing",
+        "nextEpisodeAt": null,
+        "stats": { "viewCount": 1200000, "favoriteCount": 45000, "trendingRank": null },
+        "localeInfo": { "audioLanguage": "en", "subtitleLanguages": ["en"] },
+        "updatedAt": "2026-07-10T09:30:00Z"
+      },
+      "episode": {
+        "id": "ep_5410ff",
+        "seriesId": "srs_9f2c1a",
+        "index": 12,
+        "durationSec": 95,
+        "thumbnailURL": "https://cdn.shortseries.app/t/ep_5410ff.jpg",
+        "access": { "kind": "vipOnly", "unlockPrice": null, "adUnlockEligible": false, "regionHint": "US" },
+        "publishedAt": "2026-06-30T00:00:00Z"
+      },
+      "progress": null,
+      "reason": null
+    }
+  ],
+  "nextCursor": null,
+  "ttlSec": 300,
+  "experimental": { "nested": true }
+}

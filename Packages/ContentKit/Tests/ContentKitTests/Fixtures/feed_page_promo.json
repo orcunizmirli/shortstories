@@ -1,0 +1,73 @@
+{
+  "items": [
+    {
+      "id": "fi_promo01",
+      "type": "seriesPromo",
+      "series": {
+        "id": "srs_77aa10",
+        "title": "Crown of Ashes",
+        "synopsis": "Tamamlanmış saray entrikası: küllerin arasından yükselen taht kavgası.",
+        "coverURL": "https://cdn.shortseries.app/c/srs_77aa10.jpg",
+        "bannerURL": null,
+        "genres": [
+          { "id": "gnr_drama", "name": "Dram", "iconURL": null }
+        ],
+        "tags": [],
+        "episodeCount": 60,
+        "releasedEpisodeCount": 60,
+        "freeEpisodeCount": 5,
+        "releaseState": "completed",
+        "nextEpisodeAt": null,
+        "stats": { "viewCount": 5400000, "favoriteCount": 210000, "trendingRank": null },
+        "localeInfo": { "audioLanguage": "en", "subtitleLanguages": ["en", "tr"] },
+        "updatedAt": "2026-07-01T00:00:00Z"
+      },
+      "episode": null,
+      "progress": null,
+      "reason": "Tamamlanmış diziler arasında öne çıkıyor"
+    },
+    {
+      "id": "fi_100",
+      "type": "episode",
+      "series": {
+        "id": "srs_9f2c1a",
+        "title": "Midnight Heir",
+        "synopsis": "Gece yarısı dönen gizli varis, aile imparatorluğunu geri almak için yemin eder.",
+        "coverURL": "https://cdn.shortseries.app/c/srs_9f2c1a.jpg",
+        "bannerURL": null,
+        "genres": [
+          { "id": "gnr_romance", "name": "Romantik", "iconURL": null }
+        ],
+        "tags": [],
+        "episodeCount": 80,
+        "releasedEpisodeCount": 42,
+        "freeEpisodeCount": 8,
+        "releaseState": "ongoing",
+        "nextEpisodeAt": null,
+        "stats": { "viewCount": 1200000, "favoriteCount": 45000, "trendingRank": 3 },
+        "localeInfo": { "audioLanguage": "en", "subtitleLanguages": ["en"] },
+        "updatedAt": "2026-07-10T09:30:00Z"
+      },
+      "episode": {
+        "id": "ep_5410be",
+        "seriesId": "srs_9f2c1a",
+        "index": 1,
+        "durationSec": 92,
+        "thumbnailURL": "https://cdn.shortseries.app/t/ep_5410be.jpg",
+        "access": { "kind": "free", "unlockPrice": null, "adUnlockEligible": false },
+        "publishedAt": "2026-06-20T00:00:00Z"
+      },
+      "progress": {
+        "episodeId": "ep_5410be",
+        "seriesId": "srs_9f2c1a",
+        "positionSec": 12.5,
+        "durationSec": 92.0,
+        "completed": false,
+        "watchedAt": "2026-07-11T09:31:02.123Z"
+      },
+      "reason": null
+    }
+  ],
+  "nextCursor": null,
+  "ttlSec": 300
+}

@@ -1,0 +1,40 @@
+{
+  "items": [
+    {
+      "id": "fi_003",
+      "type": "episode",
+      "series": {
+        "id": "srs_9f2c1a",
+        "title": "Midnight Heir",
+        "synopsis": "Gece yarısı dönen gizli varis, aile imparatorluğunu geri almak için yemin eder.",
+        "coverURL": "https://cdn.shortseries.app/c/srs_9f2c1a.jpg",
+        "bannerURL": null,
+        "genres": [
+          { "id": "gnr_romance", "name": "Romantik", "iconURL": null }
+        ],
+        "tags": [],
+        "episodeCount": 80,
+        "releasedEpisodeCount": 42,
+        "freeEpisodeCount": 8,
+        "releaseState": "ongoing",
+        "nextEpisodeAt": null,
+        "stats": { "viewCount": 1200000, "favoriteCount": 45000, "trendingRank": null },
+        "localeInfo": { "audioLanguage": "en", "subtitleLanguages": ["en"] },
+        "updatedAt": "2026-07-10T09:30:00Z"
+      },
+      "episode": {
+        "id": "ep_5410c0",
+        "seriesId": "srs_9f2c1a",
+        "index": 2,
+        "durationSec": 90,
+        "thumbnailURL": "https://cdn.shortseries.app/t/ep_5410c0.jpg",
+        "access": { "kind": "free", "unlockPrice": null, "adUnlockEligible": false },
+        "publishedAt": "2026-06-21T00:00:00Z"
+      },
+      "progress": null,
+      "reason": null
+    }
+  ],
+  "nextCursor": null,
+  "ttlSec": 300
+}

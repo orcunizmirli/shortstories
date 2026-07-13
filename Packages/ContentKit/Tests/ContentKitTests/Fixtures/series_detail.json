@@ -1,0 +1,19 @@
+{
+  "id": "srs_77aa10",
+  "title": "Crown of Ashes",
+  "synopsis": "Tamamlanmış saray entrikası: küllerin arasından yükselen taht kavgası.",
+  "coverURL": "https://cdn.shortseries.app/c/srs_77aa10.jpg",
+  "bannerURL": null,
+  "genres": [
+    { "id": "gnr_drama", "name": "Dram", "iconURL": null }
+  ],
+  "tags": [],
+  "episodeCount": 60,
+  "releasedEpisodeCount": 60,
+  "freeEpisodeCount": 5,
+  "releaseState": "completed",
+  "nextEpisodeAt": null,
+  "stats": { "viewCount": 5400000, "favoriteCount": 210000, "trendingRank": null },
+  "localeInfo": { "audioLanguage": "en", "subtitleLanguages": ["en", "tr"] },
+  "updatedAt": "2026-07-01T00:00:00Z"
+}
