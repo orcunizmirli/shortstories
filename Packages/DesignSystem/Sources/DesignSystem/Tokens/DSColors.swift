@@ -76,6 +76,11 @@ public enum DSColors {
     /// ileride tema ekseni eklense bile her temada koyu kalır.
     public static let overlayScrim = Color(Palette.black.withAlphaComponent(0.60))
 
+    /// Poster/scrim üstü ön plan (kilit ikonu, Top-10 numarası vb.).
+    /// Theme-invariant: overlay sınıfındaki içerik koyu görsel/scrim üstünde
+    /// okunur kalmak için her temada beyazdır — trait dinamiği YOKTUR.
+    public static let overlayForeground = Color(Palette.white)
+
     // MARK: - Kenar
 
     public static let borderSubtle = dynamic(

@@ -49,13 +49,21 @@ struct TokenSanityTests {
         #expect(dark == light)
     }
 
+    @Test func overlayForegroundThemeInvariant() {
+        // Overlay sınıfı (03 §4.1): poster/scrim üstü ön plan her temada aynıdır.
+        let base = UIColor(DSColors.overlayForeground)
+        let dark = base.resolvedColor(with: UITraitCollection(userInterfaceStyle: .dark))
+        let light = base.resolvedColor(with: UITraitCollection(userInterfaceStyle: .light))
+        #expect(dark == light)
+    }
+
     @Test func semanticRenklerCozumleniyor() {
         let tokens: [Color] = [
             DSColors.background, DSColors.surface, DSColors.surfaceElevated,
             DSColors.surfaceTabBar, DSColors.textPrimary, DSColors.textSecondary,
             DSColors.textTertiary, DSColors.accent, DSColors.coinGold,
             DSColors.success, DSColors.warning, DSColors.danger,
-            DSColors.overlayScrim, DSColors.borderSubtle
+            DSColors.overlayScrim, DSColors.overlayForeground, DSColors.borderSubtle
         ]
         for token in tokens {
             var alpha: CGFloat = -1

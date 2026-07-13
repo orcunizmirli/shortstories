@@ -3,8 +3,18 @@ import SwiftUI
 /// Tüm token ve bileşenleri state'leriyle sergileyen katalog (SS-007 demo
 /// yüzeyi). `DesignSystemCatalog` app target'ı bu view'i host eder.
 public struct DSCatalogView: View {
+    private enum StateDemo: String, CaseIterable {
+        case loading = "Yükleniyor"
+        case loadingGrid = "Izgara"
+        case empty = "Boş"
+        case error = "Hata"
+        case offline = "Offline"
+    }
+
     @State private var selectedGenre = "Dram"
     @State private var isLoadingDemo = true
+    @State private var stateDemo: StateDemo = .empty
+    @State private var progressDemo = 0.62
 
     private let genres = ["Dram", "Romantik", "Gerilim", "Komedi"]
 
@@ -22,6 +32,7 @@ public struct DSCatalogView: View {
         ("warning", DSColors.warning),
         ("danger", DSColors.danger),
         ("overlayScrim", DSColors.overlayScrim),
+        ("overlayForeground", DSColors.overlayForeground),
         ("borderSubtle", DSColors.borderSubtle)
     ]
 
@@ -54,6 +65,14 @@ public struct DSCatalogView: View {
                 section("DSButton") { buttonStates }
                 section("DSChip") { chipStates }
                 section("DSCard") { cardSample }
+                section("DSBadge") { badgeStates }
+                section("DSProgressBar") { progressStates }
+                section("DSSectionHeader") { sectionHeaderStates }
+                section("DSSeriesCard") { seriesCardStates }
+                section("DSStateView") { stateViewStates }
+                section("DSOfflineBanner") { offlineBannerStates }
+                section("DSCoinLabel") { coinLabelStates }
+                section("DSAvatar") { avatarStates }
             }
             .padding(DSSpacing.l)
         }
@@ -193,6 +212,116 @@ public struct DSCatalogView: View {
                     .foregroundStyle(DSColors.textSecondary)
                 DSButton("Devam Et", size: .compact) {}
             }
+        }
+    }
+}
+
+// MARK: - F1 bileşen bölümleri (E2 devamı)
+
+private extension DSCatalogView {
+    var badgeStates: some View {
+        HStack(alignment: .center, spacing: DSSpacing.l) {
+            DSBadge(.newEpisode)
+            DSBadge(.vip)
+            DSBadge(.locked)
+            DSBadge(.topRank(1))
+        }
+    }
+
+    var progressStates: some View {
+        VStack(spacing: DSSpacing.m) {
+            ForEach([0.0, 0.33, 1.0], id: \.self) { value in
+                DSProgressBar(progress: value)
+            }
+            DSProgressBar(progress: progressDemo, height: 6)
+            HStack(spacing: DSSpacing.m) {
+                Text("progress")
+                    .font(DSTypography.caption)
+                    .foregroundStyle(DSColors.textSecondary)
+                Slider(value: $progressDemo, in: 0 ... 1)
+                    .tint(DSColors.accent)
+                    .accessibilityLabel("İzleme ilerlemesi demo değeri")
+            }
+        }
+    }
+
+    var sectionHeaderStates: some View {
+        VStack(spacing: DSSpacing.m) {
+            DSSectionHeader("Trend", onSeeAll: {})
+            DSSectionHeader("Senin İçin")
+        }
+    }
+
+    var seriesCardStates: some View {
+        VStack(alignment: .leading, spacing: DSSpacing.l) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(alignment: .top, spacing: DSSpacing.m) {
+                    DSSeriesCard(title: "Kayıp Varis", subtitle: "Dram", badge: .newEpisode) {}
+                    DSSeriesCard(title: "CEO'nun Sırrı", badge: .vip) {}
+                    DSSeriesCard(title: "İntikam Gecesi", badge: .locked, progress: progressDemo) {}
+                    DSSeriesCard(title: "Gizli Miras", badge: .topRank(1)) {}
+                    DSSeriesCard(title: "Devam Et Kartı — Çok Uzun Bir Dizi Adı", progress: 0.4) {}
+                }
+            }
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: DSSpacing.m), count: 3), spacing: DSSpacing.m) {
+                DSSeriesCard(title: "Izgara Kartı", size: .grid) {}
+                DSSeriesCard(title: "Yeni Bölüm", size: .grid, badge: .newEpisode) {}
+                DSSeriesCard(title: "İki Satıra Taşan Dizi Adı Örneği", size: .grid, progress: 0.8) {}
+            }
+        }
+    }
+
+    var stateViewStates: some View {
+        VStack(spacing: DSSpacing.m) {
+            Picker("Durum", selection: $stateDemo) {
+                ForEach(StateDemo.allCases, id: \.self) { demo in
+                    Text(demo.rawValue).tag(demo)
+                }
+            }
+            .pickerStyle(.segmented)
+            Group {
+                switch stateDemo {
+                case .loading:
+                    DSStateView(.loading)
+                case .loadingGrid:
+                    DSStateView(.loading(skeleton: .grid(columns: 3)))
+                case .empty:
+                    DSStateView(
+                        .empty(
+                            message: "Henüz favorin yok — kalbe dokun, burada birikir",
+                            systemImage: "heart",
+                            action: DSStateView.EmptyAction(title: "Keşfet'e Git", handler: {})
+                        )
+                    )
+                case .error:
+                    DSStateView(.error(message: "Bir şeyler ters gitti", retry: {}))
+                case .offline:
+                    DSStateView(.offline(retry: {}))
+                }
+            }
+            .frame(minHeight: 220)
+        }
+    }
+
+    var offlineBannerStates: some View {
+        VStack(spacing: DSSpacing.m) {
+            DSOfflineBanner()
+            DSOfflineBanner(onRetry: {})
+        }
+    }
+
+    var coinLabelStates: some View {
+        VStack(alignment: .leading, spacing: DSSpacing.m) {
+            DSCoinLabel(amount: 70)
+            DSCoinLabel(amount: 12500, size: .large)
+        }
+    }
+
+    var avatarStates: some View {
+        HStack(spacing: DSSpacing.l) {
+            DSAvatar(name: "Ayşe Yılmaz")
+            DSAvatar(name: "Zeynep", diameter: 56)
+            DSAvatar(name: "")
         }
     }
 }
