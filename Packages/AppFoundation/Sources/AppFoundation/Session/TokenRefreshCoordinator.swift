@@ -4,14 +4,30 @@ import Foundation
 /// `TokenRefreshCoordinator`.
 public protocol AuthTokenRefreshing: Sendable {
     /// Tek-uçuş token yenileme; başarıda geçerli access token döner.
+    /// `ifStaleTokenWas`: 401'i alan isteğin kullandığı access token. Mevcut token bundan
+    /// farklıysa rotasyon o istek uçuştayken zaten tamamlanmıştır — yeni refresh
+    /// BAŞLATILMAZ, mevcut token döner (geç-401 yarışı; 03 §8.2'nin tekillik amacı).
     @discardableResult
-    func refreshAccessToken() async throws -> String
+    func refreshAccessToken(ifStaleTokenWas staleToken: String?) async throws -> String
 
     /// 401 + `TOKEN_INVALID` sonrası (05 §10.2): refresh DENENMEZ — Keychain temizliği +
     /// misafir yeniden-bootstrap (SessionManager yolu; bağlı hesapta `.loggedOut`).
+    /// `ifStaleTokenWas` bayat çıkarsa yıkıcı kurtarma da ATLANIR (mevcut token döner).
     /// Başarıda yeni access token döner.
     @discardableResult
-    func recoverFromInvalidToken() async throws -> String
+    func recoverFromInvalidToken(ifStaleTokenWas staleToken: String?) async throws -> String
+}
+
+public extension AuthTokenRefreshing {
+    @discardableResult
+    func refreshAccessToken() async throws -> String {
+        try await refreshAccessToken(ifStaleTokenWas: nil)
+    }
+
+    @discardableResult
+    func recoverFromInvalidToken() async throws -> String {
+        try await recoverFromInvalidToken(ifStaleTokenWas: nil)
+    }
 }
 
 /// Refresh zinciri koptuğunda oturum sahibinin (SessionManager) düşüş stratejisi (05 §4.2):
@@ -42,16 +58,38 @@ public actor TokenRefreshCoordinator: AuthTokenRefreshing {
     }
 
     @discardableResult
-    public func refreshAccessToken() async throws -> String {
-        try await singleFlight { try await self.performRefresh() }
+    public func refreshAccessToken(ifStaleTokenWas staleToken: String?) async throws -> String {
+        try await singleFlight {
+            if let current = await self.currentTokenIfRotated(since: staleToken) {
+                return current
+            }
+            return try await self.performRefresh()
+        }
     }
 
     /// TOKEN_INVALID'de refresh token da geçersiz sayılır: `/auth/refresh` HİÇ denenmez,
     /// doğrudan SessionManager düşüş yoluna gidilir (token temizliği + misafir
     /// yeniden-bootstrap; bağlı hesapta `.loggedOut`). Eşzamanlı çağrılar aynı uçuşu paylaşır.
     @discardableResult
-    public func recoverFromInvalidToken() async throws -> String {
-        try await singleFlight { try await self.recoverViaFallback() }
+    public func recoverFromInvalidToken(ifStaleTokenWas staleToken: String?) async throws -> String {
+        try await singleFlight {
+            if let current = await self.currentTokenIfRotated(since: staleToken) {
+                return current
+            }
+            return try await self.recoverViaFallback()
+        }
+    }
+
+    /// Geç-401 yarışı: istek `staleToken` ile kurulmuş ama Keychain'deki token artık farklıysa
+    /// rotasyon o istek uçuştayken tamamlanmıştır — çağıran yeni token'la tekrar etmelidir.
+    private func currentTokenIfRotated(since staleToken: String?) -> String? {
+        guard let staleToken,
+              let current = try? secureStore.string(forKey: .accessToken),
+              !current.isEmpty, current != staleToken
+        else {
+            return nil
+        }
+        return current
     }
 
     private func singleFlight(_ operation: @escaping @Sendable () async throws -> String) async throws -> String {

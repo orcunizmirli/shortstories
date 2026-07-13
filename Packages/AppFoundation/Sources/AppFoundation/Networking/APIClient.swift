@@ -41,15 +41,16 @@ public struct APIClient: APIClientProtocol {
     public func send<E: Endpoint>(_ endpoint: E) async throws -> E.Response {
         var attempt = 0
         var hasRecoveredAuth = false
+        var usedBearer: String?
         while true {
             do {
-                return try await performOnce(endpoint)
+                return try await performOnce(endpoint, usedBearer: &usedBearer)
             } catch let error as AppError {
                 // 401 (TOKEN_EXPIRED / kod yok) → tek-uçuş refresh → orijinal istek BİR KEZ
                 // tekrar (03 §8.2). İkinci 401 refresh tetiklemez; refresh hatası olduğu gibi yüzer.
                 let isRecoverable = error == .auth(.sessionExpired) && endpoint.requiresAuth && !hasRecoveredAuth
                 if isRecoverable, let tokenRefresher {
-                    try await tokenRefresher.refreshAccessToken()
+                    try await tokenRefresher.refreshAccessToken(ifStaleTokenWas: usedBearer)
                     hasRecoveredAuth = true
                     continue
                 }
@@ -67,7 +68,7 @@ public struct APIClient: APIClientProtocol {
                 guard endpoint.requiresAuth, !hasRecoveredAuth, let tokenRefresher else {
                     throw AppError.auth(.sessionExpired)
                 }
-                try await tokenRefresher.recoverFromInvalidToken()
+                try await tokenRefresher.recoverFromInvalidToken(ifStaleTokenWas: usedBearer)
                 hasRecoveredAuth = true
             } catch let signal as RetryAfterSignal {
                 // 429 + Retry-After (05 §10.2): retry hakkı varsa backoff YERİNE sunucunun
@@ -122,7 +123,7 @@ public struct APIClient: APIClientProtocol {
 
     // MARK: - Tek deneme
 
-    private func performOnce<E: Endpoint>(_ endpoint: E) async throws -> E.Response {
+    private func performOnce<E: Endpoint>(_ endpoint: E, usedBearer: inout String?) async throws -> E.Response {
         var request = try makeRequest(endpoint)
         let context = RequestContext(requiresAuth: endpoint.requiresAuth)
         do {
@@ -135,6 +136,11 @@ public struct APIClient: APIClientProtocol {
             throw CancellationError()
         } catch {
             throw AppError.unexpected(underlying: "Interceptor hatası: \(error)")
+        }
+        // Geç-401 yarışı için: bu denemenin kullandığı token, kurtarma çağrısına
+        // bayat-token kontrolü olarak geçirilir (bkz. AuthTokenRefreshing).
+        usedBearer = request.value(forHTTPHeaderField: "Authorization").map { header in
+            header.hasPrefix("Bearer ") ? String(header.dropFirst(7)) : header
         }
 
         let data: Data

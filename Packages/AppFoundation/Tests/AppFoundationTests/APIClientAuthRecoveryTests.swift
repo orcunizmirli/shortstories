@@ -59,7 +59,7 @@ private final class SpyTokenRefresher: AuthTokenRefreshing, @unchecked Sendable 
         lock.withLock { result = newResult }
     }
 
-    func refreshAccessToken() async throws -> String {
+    func refreshAccessToken(ifStaleTokenWas _: String?) async throws -> String {
         let current = lock.withLock {
             calls += 1
             return result
@@ -67,7 +67,7 @@ private final class SpyTokenRefresher: AuthTokenRefreshing, @unchecked Sendable 
         return try current.get()
     }
 
-    func recoverFromInvalidToken() async throws -> String {
+    func recoverFromInvalidToken(ifStaleTokenWas _: String?) async throws -> String {
         let current = lock.withLock {
             invalidTokenCalls += 1
             return result

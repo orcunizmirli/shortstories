@@ -249,4 +249,50 @@ struct TokenRefreshCoordinatorTests {
         #expect(token == "at_new")
         #expect(apiClient.receivedPaths == ["/auth/refresh", "/auth/refresh"])
     }
+
+    // MARK: - Bayat-token kontrolü (geç 401: istek eski token'la kurulmuş, rotasyon zaten olmuş)
+
+    @Test func bayatTokenIleGelen401RotasyonSonrasiYeniRefreshTetiklemez() async throws {
+        // Rotasyon tamamlanmış: Keychain'de artık at_new var; geç kalan istek at_old kullanmıştı.
+        try secureStore.setString("at_new", forKey: .accessToken)
+        try secureStore.setString("rt_new", forKey: .refreshToken)
+        let coordinator = TokenRefreshCoordinator(apiClient: apiClient, secureStore: secureStore)
+
+        let token = try await coordinator.refreshAccessToken(ifStaleTokenWas: "at_old")
+
+        #expect(token == "at_new")
+        #expect(apiClient.receivedPaths.isEmpty) // /auth/refresh HİÇ çağrılmadı
+    }
+
+    @Test func gecerliTokenIleBayatKontrolNormalRefreshYurutur() async throws {
+        // İstek mevcut token'la kurulmuştu (rotasyon OLMAMIŞ) — normal refresh akışı işler.
+        try seedRefreshToken() // access = at_old
+        try stubRefreshSuccess(on: apiClient)
+        let coordinator = TokenRefreshCoordinator(apiClient: apiClient, secureStore: secureStore)
+
+        let token = try await coordinator.refreshAccessToken(ifStaleTokenWas: "at_old")
+
+        #expect(token == "at_new")
+        #expect(apiClient.receivedPaths == ["/auth/refresh"])
+    }
+
+    @Test func bayatTokenIleGelenInvalidSinyaliYikiciKurtarmayiAtlar() async throws {
+        // Geç TOKEN_INVALID: token zaten rotasyondan geçmişse Keychain temizliği/misafir
+        // yeniden-bootstrap YAPILMAZ — mevcut token döner (05 §10.2 kurtarma yalnız gerçekten
+        // geçersiz oturum içindir).
+        try secureStore.setString("at_new", forKey: .accessToken)
+        try secureStore.setString("rt_new", forKey: .refreshToken)
+        let handler = FakeRefreshFailureHandler(tokenToReturn: "at_bootstrap")
+        let coordinator = TokenRefreshCoordinator(
+            apiClient: apiClient,
+            secureStore: secureStore,
+            failureHandler: handler
+        )
+
+        let token = try await coordinator.recoverFromInvalidToken(ifStaleTokenWas: "at_old")
+
+        #expect(token == "at_new")
+        #expect(handler.callCount == 0) // yıkıcı kurtarma çağrılmadı
+        #expect(try secureStore.string(forKey: .refreshToken) == "rt_new") // Keychain dokunulmadı
+    }
 }
