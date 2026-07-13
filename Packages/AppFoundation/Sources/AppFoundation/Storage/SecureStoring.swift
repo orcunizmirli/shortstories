@@ -11,12 +11,19 @@ public struct SecureStoreKey: RawRepresentable, Hashable, Sendable {
     public static let accessToken = SecureStoreKey(rawValue: "auth.accessToken")
     public static let refreshToken = SecureStoreKey(rawValue: "auth.refreshToken")
     public static let guestAccountID = SecureStoreKey(rawValue: "auth.guestAccountID")
+    /// Cihaz başına bir kez üretilen kalıcı kimlik; `POST /auth/guest` gövdesindeki `deviceId`.
+    /// Reinstall'da devam kanonu bu anahtara dayanır (05 §4.2).
+    public static let deviceID = SecureStoreKey(rawValue: "auth.deviceID")
+    /// Oturum kimliği snapshot'ı (`StoredSessionSnapshot` JSON'u): userID + bağlama sağlayıcısı.
+    public static let sessionSnapshot = SecureStoreKey(rawValue: "auth.sessionSnapshot")
 }
 
 /// Keychain soyutlaması (03 §9): access/refresh token, anonim hesap kimliği saklar;
-/// büyük veri ve tercihler BURAYA GİRMEZ. F0'da STUB — canlı Keychain uygulaması
-/// SS-021'de gelir (kSecAttrAccessible: afterFirstUnlockThisDeviceOnly).
-/// Uygulamalar hataları `AppError.storage(.keychainUnavailable)` olarak fırlatır.
+/// büyük veri ve tercihler BURAYA GİRMEZ. Canlı uygulama: `KeychainSecureStore`
+/// (kSecAttrAccessible: afterFirstUnlockThisDeviceOnly — 03 §9 birebir; reinstall'da
+/// devam kanonu korunur, yalnız yedek/iCloud ile başka cihaza taşınma engellenir —
+/// `deviceId` fraud sinyalidir). Uygulamalar hataları
+/// `AppError.storage(.keychainUnavailable)` olarak fırlatır.
 public protocol SecureStoring: Sendable {
     func data(forKey key: SecureStoreKey) throws -> Data?
     func setData(_ data: Data, forKey key: SecureStoreKey) throws

@@ -19,7 +19,8 @@ public protocol Endpoint: Sendable {
     var method: HTTPMethod { get }
     var query: [URLQueryItem] { get }
     var body: (any Encodable)? { get }
-    /// Varsayılan: true. F0'da auth interceptor yoktur (SS-021); alan sözleşme için tanımlıdır.
+    /// Varsayılan: true. `AuthInterceptor` yalnız true olan uçlara Bearer ekler;
+    /// 401 → refresh → tek tekrar akışı da yalnız true olan uçlarda çalışır (03 §8.2).
     var requiresAuth: Bool { get }
     /// Varsayılan: .default
     var retryPolicy: RetryPolicy { get }

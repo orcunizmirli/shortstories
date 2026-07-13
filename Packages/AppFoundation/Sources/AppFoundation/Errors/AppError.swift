@@ -53,7 +53,52 @@ public enum WalletError: Sendable, Equatable {
 public enum ContentError: Sendable, Equatable {
     case notFound
     case regionBlocked
+    /// 403 + `EPISODE_LOCKED` (05 §10.2): kilitli bölüm. UnlockSheet'in TEK istekle
+    /// açılması kabul kriteri, ilişkili `details` yüküne dayanır (fiyat + bakiye; 05 §4.4).
+    case episodeLocked(EpisodeLockDetails)
     case episodeLockedStateStale
+}
+
+/// `403 EPISODE_LOCKED` yanıtındaki `details` yükü (05 §4.4): UnlockSheet ekstra round-trip
+/// olmadan bu alanlarla açılır. `unlockPrice == nil` = coin yolu kapalı kilit
+/// (05 §2.2 genişleme noktası; salt-VIP içerik).
+public struct EpisodeLockDetails: Decodable, Sendable, Equatable {
+    /// Görüntüleme amaçlı bakiye anlık görüntüsü; doğruluk kaynağı SUNUCUDUR (03 §9).
+    public struct WalletSnapshot: Decodable, Sendable, Equatable {
+        public let purchasedCoins: Int
+        public let earnedCoins: Int
+
+        public init(purchasedCoins: Int, earnedCoins: Int) {
+            self.purchasedCoins = purchasedCoins
+            self.earnedCoins = earnedCoins
+        }
+    }
+
+    /// Coin ile açma fiyatı; `nil` = coin yolu kapalı (UnlockSheet coin satırını çizmez).
+    public let unlockPrice: Int?
+    /// Rewarded ad ile açılabilir mi (günlük cap sunucuda).
+    public let adUnlockEligible: Bool
+    public let wallet: WalletSnapshot?
+
+    public init(unlockPrice: Int?, adUnlockEligible: Bool, wallet: WalletSnapshot?) {
+        self.unlockPrice = unlockPrice
+        self.adUnlockEligible = adUnlockEligible
+        self.wallet = wallet
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        unlockPrice = try container.decodeIfPresent(Int.self, forKey: .unlockPrice)
+        // Alan yoksa güvenli varsayılan: reklam seçeneği gösterilmez.
+        adUnlockEligible = try container.decodeIfPresent(Bool.self, forKey: .adUnlockEligible) ?? false
+        wallet = try container.decodeIfPresent(WalletSnapshot.self, forKey: .wallet)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case unlockPrice
+        case adUnlockEligible
+        case wallet
+    }
 }
 
 public enum StorageError: Sendable, Equatable {
@@ -141,6 +186,9 @@ public extension AppError {
                 "This content is no longer available."
             case .regionBlocked:
                 "This content isn't available in your region."
+            case .episodeLocked:
+                // "Hata" değil akıştır: UnlockSheet açılır (05 §10.2), mesaj gösterilmez.
+                nil
             case .episodeLockedStateStale:
                 "This episode's unlock status changed. Please refresh."
             }

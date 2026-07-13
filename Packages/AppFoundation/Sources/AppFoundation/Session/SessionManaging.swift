@@ -14,11 +14,14 @@ public enum SessionState: Sendable, Equatable {
     case guest(userID: String)
     /// Apple/Google/e-posta ile bağlanmış hesap.
     case linked(userID: String, provider: AuthProvider)
+    /// Bağlı hesabın refresh zinciri koptu — oturum düştü; misafire DÖNÜLMEZ,
+    /// kullanıcıdan yeniden giriş istenir (05 §4.2; UI akışı F2, Profil üzerinden).
+    case loggedOut(previousUserID: String, provider: AuthProvider)
 
     /// Opak kullanıcı kimliği; log'larda kullanıcı YALNIZ bununla anılır (PII kuralı).
     public var userID: String? {
         switch self {
-        case .unauthenticated: nil
+        case .unauthenticated, .loggedOut: nil
         case let .guest(userID): userID
         case let .linked(userID, _): userID
         }
@@ -29,8 +32,8 @@ public enum SessionState: Sendable, Equatable {
     }
 }
 
-/// Oturum yönetimi protokolü — F0'da STUB; canlı `SessionManager` (misafir bootstrap,
-/// Keychain'e token yazımı, single-flight refresh ile işbirliği) SS-021'de gelir.
+/// Oturum yönetimi protokolü — canlı uygulama `SessionManager` (misafir bootstrap,
+/// Keychain'e token yazımı, `TokenRefreshCoordinator` ile işbirliği).
 public protocol SessionManaging: Sendable {
     var state: SessionState { get async }
     /// Durum değişim akışı; abone olunduğunda mevcut durumu yayınlayarak başlar.

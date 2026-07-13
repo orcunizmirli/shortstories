@@ -5,7 +5,7 @@ import Foundation
 /// | Durum | Davranış |
 /// |---|---|
 /// | 5xx, timeout, bağlantı kopması | 0.5 → 1 → 2 sn backoff (nominal; maks 3 retry). Yalnız idempotent istekler. |
-/// | 429 | Backoff. (`Retry-After` header desteği SS-020'de gelir — bilinçli F0 sadeleştirmesi.) |
+/// | 429 | `Retry-After` varsa backoff YERİNE ona uyulur (üst sınır 30 sn); yoksa backoff (05 §10.2). |
 /// | 401 | Retry yok — refresh akışı (03 §8.2, SS-021). |
 /// | Diğer 4xx | Retry yok; `AppError` olarak yüzer. |
 /// | Cüzdan/satın alma uçları | `.never` — idempotency-key ile kullanıcı tetikli yeniden deneme. |

@@ -6,46 +6,53 @@ public protocol APIClientProtocol: Sendable {
 }
 
 /// URLSession tabanlı canlı istemci: istek kurulumu (header'lar) → interceptor zinciri →
-/// validate (HTTP durum → `AppError` eşlemesi) → retry döngüsü → decode.
+/// validate (HTTP durum → `AppError` eşlemesi) → 401'de tek-uçuş refresh + BİR tekrar
+/// (03 §8.2) → retry döngüsü → decode.
 ///
-/// F0 kapsam notu (plan §5): auth interceptor / single-flight refresh (SS-021),
-/// SPKI pinning (03 §8.4) ve cache policy uygulaması (SS-020) henüz YOKTUR;
-/// `requiresAuth`/`cachePolicy` alanları sözleşme olarak taşınır.
+/// Kapsam notu: SPKI pinning (03 §8.4) ve cache policy uygulaması (SS-020) henüz YOKTUR;
+/// `cachePolicy` alanı sözleşme olarak taşınır.
 public struct APIClient: APIClientProtocol {
     public let configuration: APIConfiguration
     let urlSession: URLSession
-    /// Sıralı zincir: ör. [AuthInterceptor, LocaleInterceptor, ...] (F0'da boş).
+    /// Sıralı zincir: ör. [AuthInterceptor, LocaleInterceptor, ...].
     let interceptors: [any RequestInterceptor]
+    /// 401 kurtarma kolu (canlı: `TokenRefreshCoordinator`); nil ise 401 doğrudan yüzer.
+    let tokenRefresher: (any AuthTokenRefreshing)?
     let decoder: JSONDecoder
     let encoder: JSONEncoder
 
     public init(
         configuration: APIConfiguration,
         urlSession: URLSession = .shared,
-        interceptors: [any RequestInterceptor] = []
+        interceptors: [any RequestInterceptor] = [],
+        tokenRefresher: (any AuthTokenRefreshing)? = nil
     ) {
         self.configuration = configuration
         self.urlSession = urlSession
         self.interceptors = interceptors
+        self.tokenRefresher = tokenRefresher
 
-        // Wire formatı camelCase'dir; anahtar dönüşümü YAPILMAZ (.useDefaultKeys — 05 kural 7).
-        let decoder = JSONDecoder()
-        decoder.keyDecodingStrategy = .useDefaultKeys
-        decoder.dateDecodingStrategy = .iso8601
-        self.decoder = decoder
-
-        let encoder = JSONEncoder()
-        encoder.keyEncodingStrategy = .useDefaultKeys
-        encoder.dateEncodingStrategy = .iso8601
-        self.encoder = encoder
+        // Tek kaynaklı wire kodlaması (05 §1 kural 7-8): camelCase aynen + fractional
+        // saniye destekli ISO 8601 tarih stratejisi — bkz. JSONCoding.swift.
+        decoder = .shortSeriesDefault()
+        encoder = .shortSeriesDefault()
     }
 
     public func send<E: Endpoint>(_ endpoint: E) async throws -> E.Response {
         var attempt = 0
+        var hasRecoveredAuth = false
         while true {
             do {
                 return try await performOnce(endpoint)
             } catch let error as AppError {
+                // 401 (TOKEN_EXPIRED / kod yok) → tek-uçuş refresh → orijinal istek BİR KEZ
+                // tekrar (03 §8.2). İkinci 401 refresh tetiklemez; refresh hatası olduğu gibi yüzer.
+                let isRecoverable = error == .auth(.sessionExpired) && endpoint.requiresAuth && !hasRecoveredAuth
+                if isRecoverable, let tokenRefresher {
+                    try await tokenRefresher.refreshAccessToken()
+                    hasRecoveredAuth = true
+                    continue
+                }
                 // Yalnız idempotent istekler (GET ve idempotency-key taşıyanlar)
                 // otomatik retry alır (03 §8.3).
                 guard isIdempotent(endpoint),
@@ -53,6 +60,23 @@ public struct APIClient: APIClientProtocol {
                 else { throw error }
                 attempt += 1
                 try await Task.sleep(for: delay) // iptal edilirse retry döngüsü de biter
+            } catch is InvalidTokenSignal {
+                // 401 + TOKEN_INVALID (05 §10.2): refresh DENENMEZ — Keychain temizliği +
+                // misafir yeniden-bootstrap (SessionManager yolu), sonra orijinal istek
+                // BİR KEZ tekrarlanır. Kurtarma yoksa tipli hata olarak yüzer.
+                guard endpoint.requiresAuth, !hasRecoveredAuth, let tokenRefresher else {
+                    throw AppError.auth(.sessionExpired)
+                }
+                try await tokenRefresher.recoverFromInvalidToken()
+                hasRecoveredAuth = true
+            } catch let signal as RetryAfterSignal {
+                // 429 + Retry-After (05 §10.2): retry hakkı varsa backoff YERİNE sunucunun
+                // verdiği süre beklenir (üst sınır `maxRetryAfterDelay`).
+                guard isIdempotent(endpoint),
+                      endpoint.retryPolicy.delay(afterAttempt: attempt, error: signal.underlying) != nil
+                else { throw signal.underlying }
+                attempt += 1
+                try await Task.sleep(for: signal.delay)
             }
         }
     }
@@ -100,9 +124,10 @@ public struct APIClient: APIClientProtocol {
 
     private func performOnce<E: Endpoint>(_ endpoint: E) async throws -> E.Response {
         var request = try makeRequest(endpoint)
+        let context = RequestContext(requiresAuth: endpoint.requiresAuth)
         do {
             for interceptor in interceptors {
-                request = try await interceptor.adapt(request)
+                request = try await interceptor.adapt(request, context: context)
             }
         } catch let error as AppError {
             throw error
@@ -125,7 +150,7 @@ public struct APIClient: APIClientProtocol {
             throw AppError.unexpected(underlying: String(describing: error))
         }
 
-        try validate(response)
+        try validate(response, data: data)
 
         do {
             return try decoder.decode(E.Response.self, from: data)
@@ -134,19 +159,68 @@ public struct APIClient: APIClientProtocol {
         }
     }
 
-    func validate(_ response: URLResponse) throws {
+    // MARK: - HTTP durum + error.code → tipli hata (05 §10.2/10.3 sınır kuralı)
+
+    func validate(_ response: URLResponse, data: Data) throws {
         guard let http = response as? HTTPURLResponse else {
             throw AppError.unexpected(underlying: "HTTP olmayan yanıt: \(type(of: response))")
         }
-        switch http.statusCode {
-        case 200 ..< 300:
+        guard !(200 ..< 300).contains(http.statusCode) else {
             return
-        case 401:
-            // Retry değil; refresh akışı SS-021'de bağlanır (03 §8.2).
-            throw AppError.auth(.sessionExpired)
-        default:
-            throw AppError.network(.server(status: http.statusCode))
         }
+        throw mapFailure(http: http, data: data)
+    }
+
+    /// Kural (05 §10.2): istemci ÖNCE `error.code`a, sonra HTTP koduna bakar; gövde
+    /// yoksa/parse edilemezse HTTP sınıfının varsayılan davranışı uygulanır.
+    private func mapFailure(http: HTTPURLResponse, data: Data) -> any Error {
+        let code = (try? decoder.decode(APIErrorBody.self, from: data))?.error.code
+        switch (http.statusCode, code) {
+        case (401, "TOKEN_INVALID"):
+            // Refresh DENENMEZ; `send` içindeki yeniden-bootstrap yoluna düşer.
+            return InvalidTokenSignal()
+        case (401, _):
+            // TOKEN_EXPIRED ya da kod yok/bilinmiyor → tek-uçuş refresh + BİR tekrar (03 §8.2).
+            return AppError.auth(.sessionExpired)
+        case (403, "EPISODE_LOCKED"):
+            return episodeLockedError(from: data)
+        case (410, "SIGNED_URL_EXPIRED"):
+            // Player katmanı `POST /playback/authorize` ile URL'i sessizce tazeler (05 §8.1).
+            return AppError.playback(.signedURLExpired)
+        case (429, _):
+            if let delay = Self.retryAfterDelay(fromHeaderValue: http.value(forHTTPHeaderField: "Retry-After")) {
+                return RetryAfterSignal(underlying: .network(.server(status: 429)), delay: delay)
+            }
+            return AppError.network(.server(status: 429))
+        default:
+            return AppError.network(.server(status: http.statusCode))
+        }
+    }
+
+    private func episodeLockedError(from data: Data) -> AppError {
+        guard let details = (try? decoder.decode(EpisodeLockedErrorEnvelope.self, from: data))?.error.details
+        else {
+            // `details` şarttır (UnlockSheet TEK istekle açılır — 05 §4.4); yoksa HTTP
+            // sınıfının varsayılan davranışına dönülür.
+            return .network(.server(status: 403))
+        }
+        return .content(.episodeLocked(details))
+    }
+
+    // MARK: - Retry-After (05 §10.2: "Retry-After header'ına uy")
+
+    /// Header'dan okunan bekleme süresinin üst sınırı — sunucu ne derse desin 30 sn'den
+    /// fazla beklenmez.
+    static let maxRetryAfterDelay: Duration = .seconds(30)
+
+    /// Saniye biçimli `Retry-After` değerini ayrıştırır (HTTP-date biçimi desteklenmez —
+    /// ayrıştırılamayan değer `nil` döner ve normal backoff'a düşülür).
+    static func retryAfterDelay(fromHeaderValue value: String?) -> Duration? {
+        guard let value,
+              let seconds = TimeInterval(value.trimmingCharacters(in: .whitespaces)),
+              seconds >= 0
+        else { return nil }
+        return min(.seconds(seconds), maxRetryAfterDelay)
     }
 
     static func appError(from urlError: URLError) -> AppError {
@@ -161,4 +235,27 @@ public struct APIClient: APIClientProtocol {
             .unexpected(underlying: "URLError(\(urlError.code.rawValue))")
         }
     }
+}
+
+/// 403 `EPISODE_LOCKED` gövdesinden yalnız `error.details`i tipli okuyan dar zarf.
+private struct EpisodeLockedErrorEnvelope: Decodable {
+    struct ErrorPayload: Decodable {
+        let details: EpisodeLockDetails?
+    }
+
+    let error: ErrorPayload
+}
+
+// MARK: - send-içi eşleme sinyalleri (katman sınırından GEÇMEZ — 03 §10.1 kuralı bozulmaz)
+
+/// 401 + `TOKEN_INVALID` (05 §10.2): refresh yerine Keychain temizliği + misafir
+/// yeniden-bootstrap gerekir. Kurtarma tükenirse `AppError.auth(.sessionExpired)` olarak
+/// yüzer; feature'lar bu tipi asla görmez.
+struct InvalidTokenSignal: Error {}
+
+/// 429 + `Retry-After` header'ı (05 §10.2): backoff yerine sunucunun verdiği (üst sınırlı)
+/// süre beklenir. Retry hakkı yoksa `underlying` yüzer.
+struct RetryAfterSignal: Error {
+    let underlying: AppError
+    let delay: Duration
 }

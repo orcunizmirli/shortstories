@@ -55,7 +55,7 @@ public struct NoopAnalyticsTracker: AnalyticsTracking {
     public func track(_ name: String, parameters: [String: AnalyticsValue]) {}
 }
 
-/// Sabit durumlu oturum stub'ı; canlı `SessionManager` SS-021'de gelir.
+/// Sabit durumlu oturum stub'ı; canlı uygulama `SessionManager`'dır.
 public final class StubSessionManager: SessionManaging, @unchecked Sendable {
     private let lock = NSLock()
     private var currentState: SessionState
@@ -82,7 +82,7 @@ public final class StubSessionManager: SessionManaging, @unchecked Sendable {
     }
 }
 
-/// In-memory Keychain stub'ı; canlı Keychain uygulaması SS-021'de gelir.
+/// In-memory Keychain stub'ı; canlı uygulama `KeychainSecureStore`'dur.
 public final class InMemorySecureStore: SecureStoring, @unchecked Sendable {
     private let lock = NSLock()
     private var storage: [SecureStoreKey: Data] = [:]

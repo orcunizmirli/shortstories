@@ -48,141 +48,146 @@ private struct PostTestEndpoint: Endpoint {
     }
 }
 
-/// URLProtocolStub statik durum taşıdığı için seri koşar.
+/// URLProtocolStub statik durum taşır: onu kullanan TÜM suite'ler bu kökün altına girer;
+/// `.serialized` alt suite'lere özyinelemeli uygulanır ve çapraz kirlenmeyi önler.
 @Suite(.serialized)
-struct APIClientTests {
-    private let client = APIClient(
-        configuration: APIConfiguration(
-            environment: .development,
-            baseURL: URL(string: "https://api.test.local/v1")!
-        ),
-        urlSession: URLProtocolStub.makeSession()
-    )
+struct URLProtocolStubSerialTests {}
 
-    init() {
-        URLProtocolStub.reset()
-    }
+extension URLProtocolStubSerialTests {
+    struct APIClientTests {
+        private let client = APIClient(
+            configuration: APIConfiguration(
+                environment: .development,
+                baseURL: URL(string: "https://api.test.local/v1")!
+            ),
+            urlSession: URLProtocolStub.makeSession()
+        )
 
-    @Test func basariliYanitiDecodeEder() async throws {
-        URLProtocolStub.setHandler { request in
-            (
-                URLProtocolStub.httpResponse(for: request, status: 200),
-                Data(#"{"value":"ok"}"#.utf8)
-            )
+        init() {
+            URLProtocolStub.reset()
         }
 
-        let response = try await client.send(GetTestEndpoint())
-
-        #expect(response == TestPayload(value: "ok"))
-        #expect(URLProtocolStub.receivedRequests.count == 1)
-        #expect(URLProtocolStub.receivedRequests.first?.url?.absoluteString
-            == "https://api.test.local/v1/test")
-    }
-
-    @Test func gecici500SonrasiRetryIleBasarir() async throws {
-        URLProtocolStub.setHandler { request in
-            // Handler, istek kaydedildikten sonra çağrılır: ilk istekte count == 1.
-            if URLProtocolStub.receivedRequests.count < 2 {
-                return (URLProtocolStub.httpResponse(for: request, status: 500), Data())
+        @Test func basariliYanitiDecodeEder() async throws {
+            URLProtocolStub.setHandler { request in
+                (
+                    URLProtocolStub.httpResponse(for: request, status: 200),
+                    Data(#"{"value":"ok"}"#.utf8)
+                )
             }
-            return (
-                URLProtocolStub.httpResponse(for: request, status: 200),
-                Data(#"{"value":"ok"}"#.utf8)
-            )
+
+            let response = try await client.send(GetTestEndpoint())
+
+            #expect(response == TestPayload(value: "ok"))
+            #expect(URLProtocolStub.receivedRequests.count == 1)
+            #expect(URLProtocolStub.receivedRequests.first?.url?.absoluteString
+                == "https://api.test.local/v1/test")
         }
 
-        let response = try await client.send(GetTestEndpoint())
-
-        #expect(response == TestPayload(value: "ok"))
-        #expect(URLProtocolStub.receivedRequests.count == 2)
-    }
-
-    @Test func kalici500RetryHakkiBitinceFirlatir() async {
-        URLProtocolStub.setHandler { request in
-            (URLProtocolStub.httpResponse(for: request, status: 500), Data())
-        }
-
-        await #expect(throws: AppError.network(.server(status: 500))) {
-            _ = try await client.send(GetTestEndpoint())
-        }
-        // 1 ilk deneme + 2 retry
-        #expect(URLProtocolStub.receivedRequests.count == 3)
-    }
-
-    @Test func idempotentOlmayanPostRetryAlmaz() async {
-        URLProtocolStub.setHandler { request in
-            (URLProtocolStub.httpResponse(for: request, status: 500), Data())
-        }
-
-        await #expect(throws: AppError.network(.server(status: 500))) {
-            _ = try await client.send(PostTestEndpoint(idempotency: nil))
-        }
-        #expect(URLProtocolStub.receivedRequests.count == 1)
-    }
-
-    @Test func idempotencyKeyliPostRetryAlirVeHeaderTasir() async throws {
-        URLProtocolStub.setHandler { request in
-            if URLProtocolStub.receivedRequests.count < 2 {
-                return (URLProtocolStub.httpResponse(for: request, status: 500), Data())
+        @Test func gecici500SonrasiRetryIleBasarir() async throws {
+            URLProtocolStub.setHandler { request in
+                // Handler, istek kaydedildikten sonra çağrılır: ilk istekte count == 1.
+                if URLProtocolStub.receivedRequests.count < 2 {
+                    return (URLProtocolStub.httpResponse(for: request, status: 500), Data())
+                }
+                return (
+                    URLProtocolStub.httpResponse(for: request, status: 200),
+                    Data(#"{"value":"ok"}"#.utf8)
+                )
             }
-            return (
-                URLProtocolStub.httpResponse(for: request, status: 200),
-                Data(#"{"value":"ok"}"#.utf8)
-            )
+
+            let response = try await client.send(GetTestEndpoint())
+
+            #expect(response == TestPayload(value: "ok"))
+            #expect(URLProtocolStub.receivedRequests.count == 2)
         }
 
-        let response = try await client.send(PostTestEndpoint(idempotency: "tx-123"))
+        @Test func kalici500RetryHakkiBitinceFirlatir() async {
+            URLProtocolStub.setHandler { request in
+                (URLProtocolStub.httpResponse(for: request, status: 500), Data())
+            }
 
-        #expect(response == TestPayload(value: "ok"))
-        #expect(URLProtocolStub.receivedRequests.count == 2)
-        #expect(URLProtocolStub.receivedRequests.first?
-            .value(forHTTPHeaderField: "Idempotency-Key") == "tx-123")
-    }
-
-    @Test func dortYuzBirSessionExpiredOlurRetryAlmaz() async {
-        URLProtocolStub.setHandler { request in
-            (URLProtocolStub.httpResponse(for: request, status: 401), Data())
+            await #expect(throws: AppError.network(.server(status: 500))) {
+                _ = try await client.send(GetTestEndpoint())
+            }
+            // 1 ilk deneme + 2 retry
+            #expect(URLProtocolStub.receivedRequests.count == 3)
         }
 
-        await #expect(throws: AppError.auth(.sessionExpired)) {
-            _ = try await client.send(GetTestEndpoint())
-        }
-        #expect(URLProtocolStub.receivedRequests.count == 1)
-    }
+        @Test func idempotentOlmayanPostRetryAlmaz() async {
+            URLProtocolStub.setHandler { request in
+                (URLProtocolStub.httpResponse(for: request, status: 500), Data())
+            }
 
-    @Test func dortYuzDortServerHatasiOlurRetryAlmaz() async {
-        URLProtocolStub.setHandler { request in
-            (URLProtocolStub.httpResponse(for: request, status: 404), Data())
-        }
-
-        await #expect(throws: AppError.network(.server(status: 404))) {
-            _ = try await client.send(GetTestEndpoint())
-        }
-        #expect(URLProtocolStub.receivedRequests.count == 1)
-    }
-
-    @Test func bozukJSONDecodingHatasinaEslenir() async {
-        URLProtocolStub.setHandler { request in
-            (
-                URLProtocolStub.httpResponse(for: request, status: 200),
-                Data("bu-json-degil".utf8)
-            )
+            await #expect(throws: AppError.network(.server(status: 500))) {
+                _ = try await client.send(PostTestEndpoint(idempotency: nil))
+            }
+            #expect(URLProtocolStub.receivedRequests.count == 1)
         }
 
-        await #expect(throws: AppError.network(.decoding)) {
-            _ = try await client.send(GetTestEndpoint())
-        }
-    }
+        @Test func idempotencyKeyliPostRetryAlirVeHeaderTasir() async throws {
+            URLProtocolStub.setHandler { request in
+                if URLProtocolStub.receivedRequests.count < 2 {
+                    return (URLProtocolStub.httpResponse(for: request, status: 500), Data())
+                }
+                return (
+                    URLProtocolStub.httpResponse(for: request, status: 200),
+                    Data(#"{"value":"ok"}"#.utf8)
+                )
+            }
 
-    @Test func baglantiHatasiOfflineOlarakEslenirVeRetryAlir() async {
-        URLProtocolStub.setHandler { _ in
-            throw URLError(.notConnectedToInternet)
+            let response = try await client.send(PostTestEndpoint(idempotency: "tx-123"))
+
+            #expect(response == TestPayload(value: "ok"))
+            #expect(URLProtocolStub.receivedRequests.count == 2)
+            #expect(URLProtocolStub.receivedRequests.first?
+                .value(forHTTPHeaderField: "Idempotency-Key") == "tx-123")
         }
 
-        await #expect(throws: AppError.network(.offline)) {
-            _ = try await client.send(GetTestEndpoint())
+        @Test func dortYuzBirSessionExpiredOlurRetryAlmaz() async {
+            URLProtocolStub.setHandler { request in
+                (URLProtocolStub.httpResponse(for: request, status: 401), Data())
+            }
+
+            await #expect(throws: AppError.auth(.sessionExpired)) {
+                _ = try await client.send(GetTestEndpoint())
+            }
+            #expect(URLProtocolStub.receivedRequests.count == 1)
         }
-        // offline retryable'dır: 1 ilk deneme + 2 retry
-        #expect(URLProtocolStub.receivedRequests.count == 3)
+
+        @Test func dortYuzDortServerHatasiOlurRetryAlmaz() async {
+            URLProtocolStub.setHandler { request in
+                (URLProtocolStub.httpResponse(for: request, status: 404), Data())
+            }
+
+            await #expect(throws: AppError.network(.server(status: 404))) {
+                _ = try await client.send(GetTestEndpoint())
+            }
+            #expect(URLProtocolStub.receivedRequests.count == 1)
+        }
+
+        @Test func bozukJSONDecodingHatasinaEslenir() async {
+            URLProtocolStub.setHandler { request in
+                (
+                    URLProtocolStub.httpResponse(for: request, status: 200),
+                    Data("bu-json-degil".utf8)
+                )
+            }
+
+            await #expect(throws: AppError.network(.decoding)) {
+                _ = try await client.send(GetTestEndpoint())
+            }
+        }
+
+        @Test func baglantiHatasiOfflineOlarakEslenirVeRetryAlir() async {
+            URLProtocolStub.setHandler { _ in
+                throw URLError(.notConnectedToInternet)
+            }
+
+            await #expect(throws: AppError.network(.offline)) {
+                _ = try await client.send(GetTestEndpoint())
+            }
+            // offline retryable'dır: 1 ilk deneme + 2 retry
+            #expect(URLProtocolStub.receivedRequests.count == 3)
+        }
     }
 }

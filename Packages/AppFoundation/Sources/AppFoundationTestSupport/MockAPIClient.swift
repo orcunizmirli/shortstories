@@ -10,15 +10,10 @@ public final class MockAPIClient: APIClientProtocol, @unchecked Sendable {
     private let encoder: JSONEncoder
 
     public init() {
-        let decoder = JSONDecoder()
-        decoder.keyDecodingStrategy = .useDefaultKeys
-        decoder.dateDecodingStrategy = .iso8601
-        self.decoder = decoder
-
-        let encoder = JSONEncoder()
-        encoder.keyEncodingStrategy = .useDefaultKeys
-        encoder.dateEncodingStrategy = .iso8601
-        self.encoder = encoder
+        // Canlı APIClient ile AYNI tek kaynaklı kodlama konfigürasyonu (JSONCoding.swift):
+        // fractional saniyeli ISO 8601 tarihler mock'ta da kabul edilir.
+        decoder = .shortSeriesDefault()
+        encoder = .shortSeriesDefault()
     }
 
     // MARK: - Stub

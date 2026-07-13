@@ -5,7 +5,9 @@ import Foundation
 ///
 /// DİKKAT: Durum statiktir (URLProtocol sınıf üzerinden örneklenir). Swift Testing
 /// testleri paralel koştuğu için bu stub'ı kullanan suite'ler `.serialized`
-/// işaretlenmeli ve her test `reset()` ile başlamalıdır.
+/// işaretlenmeli ve her test `reset()` ile başlamalıdır. `.serialized` yalnız kendi
+/// suite ağacını serileştirir: stub'ı kullanan BİRDEN FAZLA suite varsa hepsi ortak
+/// bir `.serialized` kök suite altına alınmalıdır (bkz. `URLProtocolStubSerialTests`).
 public final class URLProtocolStub: URLProtocol {
     public typealias Handler = @Sendable (URLRequest) throws -> (HTTPURLResponse, Data)
 
