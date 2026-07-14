@@ -27,24 +27,40 @@ final class PlayerLayerView: UIView {
     private var readyObservation: NSKeyValueObservation?
     private var hasSignaledFirstFrame = false
 
+    /// Bağlama jenerasyonu (bulgu 8): her bind/unbind +1. `isReadyForDisplay` KVO→Task
+    /// köprüsündeki sinyal, PLANLANDIĞI jenerasyonu taşır — unbind→rebind sonrası bayat
+    /// Task, yeni episode'un `onFirstFrameReady`'sini ERKEN ateşleyemez (poster erken
+    /// gizlenmez, sahte hızlı TTFF yok). AVPlayerBackend'in `currentLoadGeneration`
+    /// korkuluğunun hücre-layer düzeyindeki birebir karşılığı.
+    private(set) var bindGeneration: UInt64 = 0
+
     private var playerLayer: AVPlayerLayer? {
         layer as? AVPlayerLayer
+    }
+
+    /// Test gözlemi / reconfigure kararı (PlayerKit-internal): layer bir player'a bağlı mı.
+    var isBoundToPlayer: Bool {
+        playerLayer?.player != nil
     }
 
     func bind(player: AVPlayer) {
         guard let playerLayer else { return }
         detachObservation()
+        bindGeneration &+= 1
+        let generation = bindGeneration
         hasSignaledFirstFrame = false
         playerLayer.videoGravity = .resizeAspectFill
         playerLayer.player = player
         // T5: blok tabanlı KVO, token görünüm yaşam döngüsüne bağlı; unbind invalidate eder.
+        // Sinyal, planlandığı bind jenerasyonunu taşır (bulgu 8): KVO callback'i ile
+        // Task'in MainActor'a varması arasında unbind→rebind olursa bayat Task düşürülür.
         readyObservation = playerLayer.observe(
             \.isReadyForDisplay,
             options: [.initial, .new]
         ) { [weak self] observedLayer, _ in
             guard observedLayer.isReadyForDisplay else { return }
             Task { @MainActor in
-                self?.signalFirstFrameIfNeeded()
+                self?.signalFirstFrameIfNeeded(generation: generation)
             }
         }
     }
@@ -53,6 +69,7 @@ final class PlayerLayerView: UIView {
         detachObservation()
         playerLayer?.player = nil // T8: yalnız bağlantı çözülür; player havuzda yaşar
         hasSignaledFirstFrame = false
+        bindGeneration &+= 1 // uçuştaki bayat first-frame Task'ini geçersizle (bulgu 8)
     }
 
     private func detachObservation() {
@@ -60,7 +77,11 @@ final class PlayerLayerView: UIView {
         readyObservation = nil
     }
 
-    private func signalFirstFrameIfNeeded() {
+    /// İlk-kare sinyali (bulgu 8): jenerasyon korkuluğu — planlandığı bind hâlâ geçerli
+    /// değilse (araya unbind/rebind girdiyse) sinyal düşürülür. PlayerKit-internal
+    /// (test bayat sinyali deterministik basar).
+    func signalFirstFrameIfNeeded(generation: UInt64) {
+        guard generation == bindGeneration else { return }
         guard !hasSignaledFirstFrame else { return }
         hasSignaledFirstFrame = true
         onFirstFrameReady?()

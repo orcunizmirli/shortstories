@@ -56,7 +56,10 @@ actor PlayerMetricsCollector {
 
     private let analytics: any AnalyticsTracking
     private var intents: [EpisodeID: PendingIntent] = [:]
-    private var pendingSwipe: PendingSwipe?
+    /// Bekleyen swipe ölçümleri HEDEF bölüm-id anahtarlı (bulgu 10): ardışık swipe'ta
+    /// (A→B, B→C) önceki B→C ile EZİLMEZ; her hedef ilk kareye ulaşınca kendi
+    /// swipe_next'i basılır — yavaş render eden swipe'lar p90'dan sistematik düşmez.
+    private var pendingSwipes: [EpisodeID: PendingSwipe] = [:]
     private var activeStall: ActiveStall?
 
     init(analytics: any AnalyticsTracking) {
@@ -86,18 +89,20 @@ actor PlayerMetricsCollector {
         enforcePendingIntentCap()
     }
 
-    /// Oynatma başarısızlık işareti: bölümün bekleyen TTFF niyeti düşürülür —
-    /// ilk kareye ulaşamayan başlangıcın t0'ı, aynı bölümün sonraki başarılı
-    /// başlangıcında saçma ttff_ms üretemez (metrik hijyeni).
+    /// Oynatma başarısızlık işareti: bölümün bekleyen TTFF niyeti VE hedefi bu bölüm
+    /// olan bekleyen swipe ölçümü düşürülür (bulgu 9) — ilk kareye ulaşamayan
+    /// başlangıcın t0'ı, aynı bölümün sonraki (ör. unlock sonrası) başarılı başlangıcında
+    /// saçma ttff_ms / swipe_latency_ms üretemez (metrik hijyeni).
     func recordPlaybackFailure(for episodeID: EpisodeID) {
         intents[episodeID] = nil
+        pendingSwipes[episodeID] = nil
     }
 
     /// İlk kare işareti: `video_start` basılır (ttff_ms ile); bekleyen swipe ölçümü
     /// bu bölüme aitse `swipe_next`/`swipe_prev` de burada tamamlanır.
     /// Tazelik penceresini aşmış niyet ölçüme katılmaz — event basılmaz, niyet düşer.
     func recordFirstFrame(for episode: Episode, at timestamp: Date) {
-        if let intent = intents.removeValue(forKey: episode.id), isFresh(intent, at: timestamp) {
+        if let intent = intents.removeValue(forKey: episode.id), isFresh(intent.timestamp, at: timestamp) {
             let ttffMs = milliseconds(from: intent.timestamp, to: timestamp)
             var parameters: [String: AnalyticsValue] = [
                 "series_id": .string(episode.seriesId.rawValue),
@@ -113,8 +118,9 @@ actor PlayerMetricsCollector {
             analytics.track("video_start", parameters: parameters)
         }
 
-        if let swipe = pendingSwipe, swipe.toEpisodeID == episode.id {
-            pendingSwipe = nil
+        // Tazelik penceresini aşmış swipe (ör. kilitli hedef unlock sonrası ~15-30 sn'de
+        // ilk kareye ulaşırsa) ölçüme KATILMAZ (bulgu 9): removeValue düşürür, event basılmaz.
+        if let swipe = pendingSwipes.removeValue(forKey: episode.id), isFresh(swipe.settledAt, at: timestamp) {
             let latencyMs = milliseconds(from: swipe.settledAt, to: timestamp)
             var parameters: [String: AnalyticsValue] = [
                 "from_episode_id": .string(swipe.fromEpisodeID.rawValue),
@@ -137,13 +143,15 @@ actor PlayerMetricsCollector {
         watchPercentageAtSwipe: Double? = nil,
         at timestamp: Date
     ) {
-        pendingSwipe = PendingSwipe(
+        pruneExpiredSwipes(asOf: timestamp)
+        pendingSwipes[toEpisodeID] = PendingSwipe(
             fromEpisodeID: fromEpisodeID,
             toEpisodeID: toEpisodeID,
             direction: direction,
             watchPercentageAtSwipe: watchPercentageAtSwipe,
             settledAt: timestamp
         )
+        enforcePendingSwipeCap()
     }
 
     // MARK: - Stall (04 §13.1; event stall BİTİNCE gönderilir)
@@ -186,8 +194,14 @@ actor PlayerMetricsCollector {
         intents = intents.filter { now.timeIntervalSince($0.value.timestamp) <= Self.intentExpirySeconds }
     }
 
-    private func isFresh(_ intent: PendingIntent, at timestamp: Date) -> Bool {
-        timestamp.timeIntervalSince(intent.timestamp) <= Self.intentExpirySeconds
+    /// Tazelik penceresini aşan bekleyen swipe'lar düşer (bulgu 9): hedefi geç/hiç
+    /// first-frame'e ulaşan swipe'ın t0'ı sonraki ölçümü zehirlemez, sözlükte birikmez.
+    private func pruneExpiredSwipes(asOf now: Date) {
+        pendingSwipes = pendingSwipes.filter { now.timeIntervalSince($0.value.settledAt) <= Self.intentExpirySeconds }
+    }
+
+    private func isFresh(_ startedAt: Date, at timestamp: Date) -> Bool {
+        timestamp.timeIntervalSince(startedAt) <= Self.intentExpirySeconds
     }
 
     /// Üst sınır: tavan aşıldığında EN ESKİ niyet düşer (bellek + ölçüm hijyeni).
@@ -195,6 +209,14 @@ actor PlayerMetricsCollector {
         while intents.count > Self.maxPendingIntents {
             guard let oldest = intents.min(by: { $0.value.timestamp < $1.value.timestamp })?.key else { return }
             intents[oldest] = nil
+        }
+    }
+
+    /// Üst sınır (bulgu 9/10): tavan aşıldığında EN ESKİ bekleyen swipe düşer.
+    private func enforcePendingSwipeCap() {
+        while pendingSwipes.count > Self.maxPendingIntents {
+            guard let oldest = pendingSwipes.min(by: { $0.value.settledAt < $1.value.settledAt })?.key else { return }
+            pendingSwipes[oldest] = nil
         }
     }
 }

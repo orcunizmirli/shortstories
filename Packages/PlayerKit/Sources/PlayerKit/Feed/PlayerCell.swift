@@ -34,6 +34,19 @@ final class PlayerCell: UICollectionViewCell {
     private var posterTask: Task<Void, Never>?
     private(set) var boundEpisodeID: EpisodeID?
 
+    /// Poster→video geçiş animasyonunun süresi (04 §8 çapraz-geçiş).
+    private static let revealAnimationDurationSeconds: Double = 0.15
+
+    /// Reveal jenerasyonu (bulgu 3/7): her poster→video geçişi +1; unbind/reconfigure/
+    /// prepareForReuse bunu artırır → uçuştaki animasyonun BAYAT completion'ı yeniden
+    /// kullanılan/yeniden yapılandırılan hücrenin (başka item'ın) posterini gizleyemez.
+    private(set) var revealGeneration: UInt64 = 0
+
+    /// Test gözlemi (PlayerKit-internal): posterin gizli olup olmadığı.
+    var posterIsHidden: Bool {
+        posterView.isHidden
+    }
+
     override init(frame: CGRect) {
         super.init(frame: frame)
         configureHierarchy()
@@ -47,11 +60,22 @@ final class PlayerCell: UICollectionViewCell {
 
     // MARK: - Yapılandırma
 
+    /// Hücre içeriğini uygular. Aktif OYNAYAN hücrenin YERİNDE reconfigure'ünde (aynı
+    /// bölüm hâlâ layer'a bağlı) canlı video opak posterle GÖMÜLMEZ: layer/first-frame
+    /// durumu korunur, yalnız overlay tazelenir (bulgu 1/5). Bölüm farklıysa ya da
+    /// bağlı değilse temiz poster reset'i (yeni bind willDisplay/settle yolundan gelir).
     func configure(with item: FeedItem) {
-        boundEpisodeID = nil
-        posterView.isHidden = false
-        posterView.alpha = 1
-        loadPoster(from: item.episode?.thumbnailURL ?? item.series.coverURL)
+        let incomingEpisodeID = item.episode?.id
+        let isReconfiguringBoundEpisode = incomingEpisodeID != nil
+            && incomingEpisodeID == boundEpisodeID
+            && layerView.isBoundToPlayer
+        if !isReconfiguringBoundEpisode {
+            invalidateReveal()
+            boundEpisodeID = nil
+            posterView.isHidden = false
+            posterView.alpha = 1
+            loadPoster(from: item.episode?.thumbnailURL ?? item.series.coverURL)
+        }
         applyOverlay(for: item)
     }
 
@@ -73,6 +97,8 @@ final class PlayerCell: UICollectionViewCell {
     }
 
     func unbind() {
+        // Uçuştaki reveal iptal (bulgu 3/7): bayat completion bu hücreye dokunamaz.
+        invalidateReveal()
         layerView.onFirstFrameReady = nil
         layerView.unbind()
         boundEpisodeID = nil
@@ -82,11 +108,11 @@ final class PlayerCell: UICollectionViewCell {
         super.prepareForReuse()
         posterTask?.cancel()
         posterTask = nil
+        // T8: yalnız layer bağlantısı çözülür (havuz slot'una DOKUNULMAZ) + reveal iptal.
+        unbind()
         posterView.image = nil
         posterView.isHidden = false
         posterView.alpha = 1
-        // T8: yalnız layer bağlantısı çözülür; havuz slot'una DOKUNULMAZ.
-        unbind()
     }
 
     // MARK: - Kurulum
@@ -158,12 +184,32 @@ final class PlayerCell: UICollectionViewCell {
         }
     }
 
-    private func revealVideoSurface() {
-        UIView.animate(withDuration: 0.15) {
+    /// İlk kare geldi: poster videoya çapraz-geçer. Geçiş, doğduğu reveal jenerasyonunu
+    /// taşır — completion YALNIZ animasyon doğal bittiyse VE jenerasyon hâlâ güncelse
+    /// posteri gizler (bulgu 3/7). PlayerKit-internal (test bu yolu deterministik sürer).
+    func revealVideoSurface() {
+        revealGeneration &+= 1
+        let generation = revealGeneration
+        posterView.isHidden = false
+        UIView.animate(withDuration: Self.revealAnimationDurationSeconds) {
             self.posterView.alpha = 0
-        } completion: { _ in
-            self.posterView.isHidden = true
+        } completion: { [weak self] finished in
+            self?.finishRevealIfCurrent(generation: generation, finished: finished)
         }
+    }
+
+    /// Reveal completion korkuluğu (bulgu 3/7): bayat/iptal edilmiş geçişin completion'ı
+    /// başka item'ın posterini gizleyemez — `finished` + güncel jenerasyon şart.
+    func finishRevealIfCurrent(generation: UInt64, finished: Bool) {
+        guard finished, generation == revealGeneration else { return }
+        posterView.isHidden = true
+    }
+
+    /// Uçuştaki reveal'i geçersizler: jenerasyon +1 (bekleyen completion düşer) ve
+    /// poster katmanındaki explicit animasyon kaldırılır.
+    private func invalidateReveal() {
+        revealGeneration &+= 1
+        posterView.layer.removeAllAnimations()
     }
 
     // MARK: - Overlay (SwiftUI — UIHostingConfiguration, 04 §8)

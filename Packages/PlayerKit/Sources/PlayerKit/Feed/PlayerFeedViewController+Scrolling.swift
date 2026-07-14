@@ -4,13 +4,19 @@ import UIKit
 /// `UIScrollView` delegate olaylarını VC durumuna çevirir. Public yüzeye eklenmez
 /// (04 §2.4 asgari yüzey).
 extension PlayerFeedViewController {
-    /// Hücre görünür oldu: bekleyen lease varsa bağla (settle hücreden önce geldiyse).
+    /// Hücre görünür oldu (bulgu 4/6): aktif lease'i BÖLÜM-ID ile bağlar — settle
+    /// hücreden önce geldiyse VEYA aktif hücre ekran dışına çıkıp geri döndüyse. Ham
+    /// indeksle bağlanmaz: snapshot kayması (dedup/insert) araya girse de handle yalnız
+    /// gerçekten aktif bölümü taşıyan karta iliştirilir; yanlış karta oynatma sızmaz.
     func willDisplayCell(_ cell: UICollectionViewCell, at indexPath: IndexPath) {
-        guard let pending = pendingBind, pending.index == indexPath.item,
-              let playerCell = cell as? PlayerCell
-        else { return }
-        pendingBind = nil
-        playerCell.bind(handle: pending.handle)
+        guard let playerCell = cell as? PlayerCell, let binding = activeBinding else { return }
+        let cellEpisodeID = items.indices.contains(indexPath.item) ? items[indexPath.item].episode?.id : nil
+        guard FeedCellBindPolicy.shouldBindActiveHandle(
+            cellEpisodeID: cellEpisodeID,
+            cellBoundEpisodeID: playerCell.boundEpisodeID,
+            activeEpisodeID: binding.episodeID
+        ) else { return }
+        playerCell.bind(handle: binding.handle)
     }
 
     /// Hücre ekran dışına çıktı (04 §14 T5, denetim (c)): layer.player=nil +

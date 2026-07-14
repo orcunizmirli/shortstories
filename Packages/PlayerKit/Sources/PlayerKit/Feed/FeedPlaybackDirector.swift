@@ -65,6 +65,10 @@ actor FeedPlaybackDirector {
     // MARK: - Feed durumu
 
     func updateItems(_ newItems: [FeedItem]) {
+        // activeIndex bölüm-id'sinden yeniden türetilir (bulgu 2): kayma bayat indeks bırakmaz; yoksa korunur.
+        if let id = activeHandle?.episodeID, let idx = newItems.firstIndex(where: { $0.episode?.id == id }) {
+            activeIndex = idx
+        }
         items = newItems
     }
 
@@ -311,8 +315,7 @@ private extension FeedPlaybackDirector {
         return min(max(position / Double(episode.durationSec), 0), 1)
     }
 
-    /// Pencere kayması (04 §3.2, §6.4 kural 4): aktif ± komşular korunur, pencere dışı
-    /// slot'lar boşaltılır, prefetch hedefleri yön farkındalığıyla yenilenir.
+    /// Pencere kayması (04 §3.2, §6.4 kural 4): aktif ± komşular korunur, dışı boşaltılır, prefetch yenilenir.
     func refreshWindow(direction: ScrollDirection, now: Date) async {
         guard let activeIndex else { return }
         let poolSize = await poolSizeProvider()
@@ -333,8 +336,7 @@ private extension FeedPlaybackDirector {
         )
     }
 
-    /// FeedItem → Episode hizalaması: bölüm taşımayan kartlar (seriesPromo) kilitli
-    /// sayılan yer tutucuyla temsil edilir — ısındırılamaz, indeks kayması olmaz.
+    /// FeedItem → Episode hizalaması: bölümsüz kartlar (seriesPromo) kilitli yer tutucuyla temsil (ısındırılamaz).
     func alignedEpisodes() -> [Episode] {
         items.map { item in
             item.episode ?? Episode(
@@ -359,9 +361,8 @@ private extension FeedPlaybackDirector {
         activeHandle = nil
     }
 
-    /// Aktif bölümün sonu (04 §8.6): motorun playedToEnd akışı dinlenir; karar SAF
-    /// politikadan çıkar. İzleme görevi her aktivasyonda yenilenir — bayat item'ın
-    /// bitişi yanlış auto-next tetikleyemez (04 §14 T4'ün feed karşılığı).
+    /// Aktif bölümün sonu (04 §8.6): playedToEnd dinlenir, karar SAF politikadan çıkar.
+    /// İzleme görevi her aktivasyonda yenilenir — bayat bitiş yanlış auto-next tetiklemez (T4).
     func watchPlayedToEnd(of handle: PlaybackHandle) {
         playedToEndWatchTask?.cancel()
         let engine = handle.engine
@@ -386,8 +387,7 @@ private extension FeedPlaybackDirector {
         autoAdvanceContinuation.yield(decision)
     }
 
-    /// Operasyon serileştirme: yeni iş kuyruktaki son işin bitişini bekler — havuz çağrı
-    /// blokları (activate → recycle → prefetch) atomik sırayla koşar.
+    /// Operasyon serileştirme: yeni iş kuyruğun son işini bekler — havuz blokları atomik sırayla koşar.
     func serialized<T: Sendable>(_ operation: @escaping @Sendable () async -> T) async -> T {
         let previous = tail
         let task = Task { () -> T in

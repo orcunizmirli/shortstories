@@ -26,8 +26,19 @@ public final class PlayerFeedViewController: UIViewController {
     private let scrollProxy = FeedScrollProxy()
     /// Programatik kaydırma (auto-advance) yerleşince uygulanacak settle.
     var pendingProgrammaticSettle: (index: Int, startType: PlaybackStartType)?
-    /// Settle sonucu geldiğinde hücre henüz görünür değilse bağlama willDisplay'e kalır.
-    var pendingBind: (index: Int, handle: PlaybackHandle)?
+    /// Aktif oynayan lease'in hücre bağlaması (bulgu 4/6): hücre henüz görünür değilken
+    /// (settle hücreden ÖNCE geldiğinde) VEYA ekran dışına çıkıp GERİ DÖNDÜĞÜNDE
+    /// willDisplay bunu bağlar. Ham indeks değil BÖLÜM-ID ile doğrulanır: snapshot
+    /// kayması yanlış karta bağlamaz, aktif kart dönüşünde siyah kare+ses oluşmaz.
+    var activeBinding: ActiveBinding?
+
+    /// Aktif hücre bağlaması (bulgu 4/6): willDisplay bölüm-id ile doğrular.
+    struct ActiveBinding {
+        let index: Int
+        let episodeID: EpisodeID
+        let handle: PlaybackHandle
+    }
+
     /// Son settle'da kilitli kalan indeks (04 §9.2 / 02 §4.3.6): unlock sonrası aynı
     /// kartta oynatmayı yeniden başlatmak için `apply(state:)` bunu tetikler.
     private var lockedIndex: Int?
@@ -243,12 +254,14 @@ public final class PlayerFeedViewController: UIViewController {
             if lockedIndex == index {
                 lockedIndex = nil
             }
+            // Aktif bağlama bölüm-id ile tutulur: hücre dönerse willDisplay yeniden bağlar.
+            activeBinding = ActiveBinding(index: index, episodeID: episode.id, handle: handle)
             bindCellIfVisible(handle: handle, at: index)
             delegate?.playerFeed(self, didChangeActiveIndex: index, episode: episode)
         case let .locked(episode):
             // Kart kilit durumunu zaten gösterir (02 §4.3.5); UnlockSheet intent'i Coordinator'a.
             lockedIndex = index
-            pendingBind = nil
+            activeBinding = nil
             delegate?.playerFeed(self, didChangeActiveIndex: index, episode: episode)
             if let series = itemAt(index)?.series {
                 delegate?.playerFeed(self, didReachLockedEpisode: episode, in: series)
@@ -256,25 +269,24 @@ public final class PlayerFeedViewController: UIViewController {
         case .settledWithoutEpisode:
             // Bölüm taşımayan kart (seriesPromo / dizi-sonu ara kartı): aktif indeks
             // değişti, bölüm nil (04 §2.4 PlayerFeedDelegate sözleşmesi).
-            pendingBind = nil
+            activeBinding = nil
             lockedIndex = nil
             delegate?.playerFeed(self, didChangeActiveIndex: index, episode: nil)
         case .failed:
             // SS-051 dilimi: sınıflandırılmış hata UI'ı (toast + tekrar dene). Hücre posterde kalır.
-            pendingBind = nil
+            activeBinding = nil
         case .none:
             break
         }
     }
 
     private func bindCellIfVisible(handle: PlaybackHandle, at index: Int) {
-        pendingBind = nil
         let indexPath = IndexPath(item: index, section: 0)
-        guard let cell = collectionView?.cellForItem(at: indexPath) as? PlayerCell else {
-            pendingBind = (index, handle) // hücre henüz görünür değil: willDisplay bağlar
-            return
+        // Hücre görünürse hemen bağla; değilse willDisplay activeBinding üzerinden
+        // (bölüm-id ile) bağlar — ayrı bir pendingBind slot'u tutulmaz (bulgu 4/6).
+        if let cell = collectionView?.cellForItem(at: indexPath) as? PlayerCell {
+            cell.bind(handle: handle)
         }
-        cell.bind(handle: handle)
     }
 
     private func itemAt(_ index: Int) -> FeedItem? {

@@ -178,4 +178,58 @@ struct PlayerMetricsCollectorTests {
 
         #expect(!analytics.eventNames.contains("swipe_next"))
     }
+
+    // MARK: - Swipe hijyeni (bulgu 9/10)
+
+    @Test func gecFirstFrameSaçmaSwipeLatencyUretmez() async {
+        // Bulgu 9: kilitli hedefe swipe → unlock ~15-30 sn sürer; hedef ancak o zaman
+        // first-frame yapar. Tazelik penceresini aşan swipe ölçüme KATILMAZ (çöp
+        // swipe_latency p90'ı zehirlemez).
+        let analytics = MockAnalytics()
+        let collector = PlayerMetricsCollector(analytics: analytics)
+        let target = Fixture.episode(id: "e2")
+
+        await collector.recordSwipeSettled(from: EpisodeID("e1"), to: target.id, direction: .forward, at: t0)
+        await collector.recordPlaybackIntent(for: target, startType: .swipe, at: t0)
+        // Tazelik penceresini (60 sn) aşan geç first-frame:
+        await collector.recordFirstFrame(for: target, at: t0.addingTimeInterval(90))
+
+        #expect(!analytics.eventNames.contains("swipe_next"))
+    }
+
+    @Test func basarisizHedefinSwipesiTemizlenir() async {
+        // Bulgu 9: kilitli hedefe settle → recordPlaybackFailure; bekleyen swipe DÜŞER.
+        // Hedef daha sonra (unlock sonrası) first-frame yapsa da bayat swipe_latency yok.
+        let analytics = MockAnalytics()
+        let collector = PlayerMetricsCollector(analytics: analytics)
+        let target = Fixture.episode(id: "e2")
+
+        await collector.recordSwipeSettled(from: EpisodeID("e1"), to: target.id, direction: .forward, at: t0)
+        await collector.recordPlaybackFailure(for: target.id) // settle .locked
+        await collector.recordFirstFrame(for: target, at: t0.addingTimeInterval(0.2))
+
+        #expect(!analytics.eventNames.contains("swipe_next"))
+    }
+
+    @Test func ardisikSwipeOncekiSwipeNextiDusurmez() async {
+        // Bulgu 10: A→B settle sonra B first-frame'e ulaşmadan B→C settle gelirse
+        // önceki swipe EZİLMEMELİ — her hedef kendi swipe_next'ini basar (yavaş render
+        // eden swipe'lar p90'dan sistematik düşmez).
+        let analytics = MockAnalytics()
+        let collector = PlayerMetricsCollector(analytics: analytics)
+        let episodeB = Fixture.episode(id: "eB")
+        let episodeC = Fixture.episode(id: "eC")
+
+        await collector.recordSwipeSettled(from: EpisodeID("eA"), to: episodeB.id, direction: .forward, at: t0)
+        await collector.recordSwipeSettled(from: episodeB.id, to: episodeC.id, direction: .forward, at: t0.addingTimeInterval(1))
+        // B (yavaş) sonunda first-frame yapar:
+        await collector.recordFirstFrame(for: episodeB, at: t0.addingTimeInterval(3))
+        // C de first-frame yapar:
+        await collector.recordFirstFrame(for: episodeC, at: t0.addingTimeInterval(3.2))
+
+        let swipeEvents = analytics.events.filter { $0.name == "swipe_next" }
+        #expect(swipeEvents.count == 2)
+        #expect(swipeEvents.contains { $0.parameters["to_episode_id"] == .string("eB") })
+        #expect(swipeEvents.contains { $0.parameters["to_episode_id"] == .string("eC") })
+    }
 }
