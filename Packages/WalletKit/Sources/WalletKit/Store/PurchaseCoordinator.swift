@@ -47,7 +47,7 @@ public actor PurchaseCoordinator {
             let result = try await purchases.purchase(productID: productID, appAccountToken: appAccountToken())
             switch result {
             case let .success(transaction):
-                return await process(transaction).flowResult
+                return await process(transaction).flowResult(transactionID: String(transaction.id))
             case .userCancelled:
                 return .cancelled
             case .pending:
@@ -194,10 +194,12 @@ enum ProcessOutcome: Sendable, Equatable {
     case rejected
     case inFlight
 
-    var flowResult: PurchaseFlowResult {
+    /// `transactionID` yalnız başarı dallarında (`.completed`) taşınır; App Store işlem kimliği
+    /// (08 §3.4 `transaction_id`). Diğer dallar kimlik taşımaz.
+    func flowResult(transactionID: String) -> PurchaseFlowResult {
         switch self {
         case .credited, .alreadyProcessed:
-            .completed
+            .completed(transactionID: transactionID)
         case .pendingRetry:
             .verificationPending
         case .invalidReceipt:

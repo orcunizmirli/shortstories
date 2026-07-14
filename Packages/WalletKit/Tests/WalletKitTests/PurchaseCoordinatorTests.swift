@@ -47,7 +47,7 @@ struct PurchaseCoordinatorTests {
 
         let result = await sut.coordinator.purchase(productID: "com.shortseries.coins.tier3")
 
-        #expect(result == .completed)
+        #expect(result == .completed(transactionID: "1001"))
         #expect(sut.purchases.finished.contains(1001))
         let balance = await sut.store.currentBalance()
         #expect(balance.purchasedCoins == 1200)
@@ -85,7 +85,7 @@ struct PurchaseCoordinatorTests {
 
         let result = await sut.coordinator.purchase(productID: "com.shortseries.vip.weekly")
 
-        #expect(result == .completed)
+        #expect(result == .completed(transactionID: "2002"))
         let status = await sut.store.subscriptionStatus()
         #expect(status.isVIP)
         #expect(sut.purchases.finished.contains(2002))

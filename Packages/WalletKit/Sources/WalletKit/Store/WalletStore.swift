@@ -174,18 +174,14 @@ public actor WalletStore: EntitlementChecking {
         wasUnlocked: Bool
     ) -> UnlockResult {
         switch outcome {
-        case let .unlocked(record, wallet, _):
+        case let .unlocked(record, wallet, transactions):
             // (b) Server-otoritatif snapshot bakiyeyi SET eder (lokal çıkarma YOK); kilit kalıcı.
             applyWallet(wallet)
             markUnlocked(record.episodeID)
-            analytics.track(
-                "unlock_success",
-                parameters: [
-                    "episode_id": .string(record.episodeID.rawValue),
-                    "coins_spent": .int(record.coinsSpent),
-                    "method": .string(record.method.rawValue)
-                ]
-            )
+            // Kanonik ödeme funnel success adımı (08 §3.4/§5.2 `unlock_coin`): cüzdan düşümü
+            // backend'de onaylandığında (idempotent işlem tamam) atılır. Funnel event'i YALNIZ
+            // burada (backend onay noktası) atılır; UI kendi funnel event'ini atmaz (çift-atım yok).
+            trackUnlockCoin(record: record, wallet: wallet, transactions: transactions)
             return .success(record)
         case let .insufficientCoins(shortfall, wallet):
             // (c) İyimser kilidi geri al; server snapshot verdiyse bakiyeyi otoritatif tazele.
@@ -256,6 +252,32 @@ public actor WalletStore: EntitlementChecking {
         hasServerSubscription = true
         subscription = incoming
         broadcastEntitlement()
+    }
+
+    /// `unlock_coin` (08 §3.4 satır 201 zorunlu şeması): kanonik parametrelerle. `earned_spent`/
+    /// `purchased_spent` sunucunun döndüğü kese-bazlı ledger satırlarından (05 §2.6: karışık düşüm
+    /// kese başına bir satır) türetilir; `balance_after` server snapshot'ından. `unlock_price` kaydın
+    /// harcanan coin'idir. İdempotent re-unlock'ta ledger satırı gelmezse harcamalar 0 raporlanır.
+    private func trackUnlockCoin(record: UnlockRecord, wallet: WalletSnapshot, transactions: [CoinTransaction]) {
+        analytics.track(
+            "unlock_coin",
+            parameters: [
+                "series_id": .string(record.seriesID.rawValue),
+                "episode_id": .string(record.episodeID.rawValue),
+                "unlock_price": .int(record.coinsSpent),
+                "earned_spent": .int(spentInBucket(.earned, transactions)),
+                "purchased_spent": .int(spentInBucket(.purchased, transactions)),
+                "balance_after": .int(wallet.balance.totalCoins)
+            ]
+        )
+    }
+
+    /// Bir kesede bu unlock için harcanan (pozitif) coin: episodeUnlock tipli, negatif (harcama)
+    /// ledger satırlarının mutlak toplamı.
+    private func spentInBucket(_ bucket: CoinTransaction.Bucket, _ transactions: [CoinTransaction]) -> Int {
+        transactions
+            .filter { $0.type == .episodeUnlock && $0.bucket == bucket && $0.amount < 0 }
+            .reduce(0) { $0 - $1.amount }
     }
 
     private func markUnlocked(_ episodeID: EpisodeID) {

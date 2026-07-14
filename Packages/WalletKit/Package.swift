@@ -7,14 +7,19 @@ let package = Package(
     platforms: [.iOS(.v17)],
     products: [.library(name: "WalletKit", targets: ["WalletKit"])],
     dependencies: [
-        // Yalnız AppFoundation: analitik `AnalyticsTracking` portundan (AppFoundation), StoreKit
-        // tipleri paket içinde hapsolur. DesignSystem UI dilimiyle (UnlockSheet/CoinMagazasi)
-        // birlikte gelir; çekirdek cüzdan/IAP mantığı ona bağlı değildir (R2/R4).
-        .package(path: "../AppFoundation")
+        // Çekirdek cüzdan/IAP mantığı yalnız AppFoundation'a bağlıdır (R2/R4); StoreKit tipleri
+        // paket içinde hapsolur. DesignSystem + AnalyticsKit UI dilimiyle (UnlockSheet/
+        // CoinMagazasi/VIPAbonelik) birlikte gelir: DS token/bileşenleri ve tipli analitik
+        // yüzeyi yalnız `UI/` altındaki ekranlarca kullanılır.
+        .package(path: "../AppFoundation"),
+        .package(path: "../DesignSystem"),
+        .package(path: "../AnalyticsKit")
     ],
     targets: [
         .target(name: "WalletKit", dependencies: [
-            .product(name: "AppFoundation", package: "AppFoundation")
+            .product(name: "AppFoundation", package: "AppFoundation"),
+            .product(name: "DesignSystem", package: "DesignSystem"),
+            .product(name: "AnalyticsKit", package: "AnalyticsKit")
         ]),
         .testTarget(name: "WalletKitTests", dependencies: [
             "WalletKit",

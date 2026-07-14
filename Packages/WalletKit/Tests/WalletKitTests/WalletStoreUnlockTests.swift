@@ -1,5 +1,6 @@
 import AppFoundation
 import AppFoundationTestSupport
+import Foundation
 import Testing
 @testable import WalletKit
 
@@ -15,6 +16,48 @@ struct WalletStoreUnlockTests {
             await store.apply(walletSnapshot: seed)
         }
         return store
+    }
+
+    @Test func basariliUnlockKanonikUnlockCoinAnalitigiAtar() async {
+        // 08 §3.4/§5.2: backend onay noktasında kanonik `unlock_coin` (non-canonical `unlock_success`
+        // DEĞİL) — series_id/episode_id/unlock_price/earned_spent/purchased_spent/balance_after.
+        let remote = FakeWalletRemote()
+        let analytics = MockAnalytics()
+        let transactions = [
+            CoinTransaction(
+                id: "txn_e", type: .episodeUnlock, amount: -20, bucket: .earned,
+                balanceAfter: 80, refId: "ep_9", note: nil, createdAt: Date(timeIntervalSince1970: 1)
+            ),
+            CoinTransaction(
+                id: "txn_p", type: .episodeUnlock, amount: -40, bucket: .purchased,
+                balanceAfter: 40, refId: "ep_9", note: nil, createdAt: Date(timeIntervalSince1970: 2)
+            )
+        ]
+        remote.unlockResults = [.success(.unlocked(
+            record: UnlockRecord(
+                id: "ulk_9",
+                episodeID: EpisodeID("ep_9"),
+                seriesID: SeriesID("srs_7"),
+                method: .coins,
+                coinsSpent: 60,
+                unlockedAt: Date(timeIntervalSince1970: 3)
+            ),
+            wallet: .fixture(purchased: 40, version: 2),
+            transactions: transactions
+        ))]
+        let store = WalletStore(remote: remote, analytics: analytics, log: MockLogger())
+        await store.apply(walletSnapshot: .fixture(purchased: 100, version: 1))
+
+        _ = await store.unlock(episodeID: EpisodeID("ep_9"), expectedPrice: 60)
+
+        let event = analytics.events.first { $0.name == "unlock_coin" }
+        #expect(event?.parameters["series_id"] == .string("srs_7"))
+        #expect(event?.parameters["episode_id"] == .string("ep_9"))
+        #expect(event?.parameters["unlock_price"] == .int(60))
+        #expect(event?.parameters["earned_spent"] == .int(20))
+        #expect(event?.parameters["purchased_spent"] == .int(40))
+        #expect(event?.parameters["balance_after"] == .int(40))
+        #expect(!analytics.eventNames.contains("unlock_success"))
     }
 
     @Test func basariliUnlockServerSnapshotUygular() async {

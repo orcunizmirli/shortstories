@@ -36,8 +36,10 @@ public enum VerifyOutcome: Sendable, Equatable {
 
 /// Satın alma orkestrasyonunun (PurchaseCoordinator) kullanıcı-görünür sonucu (SS-090/091).
 public enum PurchaseFlowResult: Sendable, Equatable {
-    /// Satın alma + backend doğrulama + finish tamamlandı.
-    case completed
+    /// Satın alma + backend doğrulama + finish tamamlandı. `transactionID` App Store işlem
+    /// kimliğidir (08 §3.4 `coin_purchase_success`/`subscription_success` zorunlu `transaction_id`):
+    /// gelir atıfı/iade-chargeback mutabakatı ve replay dedupe için istemci↔server join anahtarı.
+    case completed(transactionID: String)
     /// Backend doğrulaması gecikti (ağ/5xx): "coin'ler birazdan yüklenecek" durumu;
     /// transaction unfinished bırakıldı ve otomatik yeniden denenecek (06 §4.3).
     case verificationPending
