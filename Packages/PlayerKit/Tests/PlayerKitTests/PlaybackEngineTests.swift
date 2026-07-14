@@ -1,0 +1,175 @@
+import AppFoundation
+import Foundation
+import Testing
+@testable import PlayerKit
+
+/// PlaybackEngine davranış testleri: sahte backend ile durum akışı, playImmediately
+/// semantiği (04 §4.2) ve resume pozisyonu (04 §12.2). AVFoundation'a dokunmaz.
+struct PlaybackEngineTests {
+    private let url = URL(string: "https://cdn.test/e1/master.m3u8")!
+    private let episodeID = EpisodeID("e1")
+
+    private func makeEngine(
+        freshURLProvider: (@Sendable (EpisodeID) async throws -> URL)? = nil
+    ) -> (PlaybackEngine, FakeVideoPlaying) {
+        let backend = FakeVideoPlaying()
+        let engine = PlaybackEngine(backend: backend, freshURLProvider: freshURLProvider)
+        return (engine, backend)
+    }
+
+    @Test func prepareLoadingDurumunaGecerVeBackendeYukler() async {
+        let (engine, backend) = makeEngine()
+
+        await engine.prepare(episodeID: episodeID, url: url, bufferPolicy: .active)
+
+        #expect(await engine.currentState() == .loading)
+        #expect(backend.calls.contains(.load(url, .active)))
+    }
+
+    @Test func ilkKareGelinceReadyeGecer() async {
+        let (engine, backend) = makeEngine()
+        await engine.prepare(episodeID: episodeID, url: url, bufferPolicy: .active)
+
+        backend.emit(.firstFrameReady)
+
+        #expect(await awaitState(.readyAtFirstFrame, on: engine))
+    }
+
+    @Test func readyIkenPlayPlayImmediatelyCagirir() async {
+        let (engine, backend) = makeEngine()
+        await engine.prepare(episodeID: episodeID, url: url, bufferPolicy: .active)
+        backend.emit(.firstFrameReady)
+        _ = await awaitState(.readyAtFirstFrame, on: engine)
+
+        await engine.play()
+
+        #expect(await awaitState(.playing, on: engine))
+        #expect(backend.calls.contains(.playImmediately(1.0)))
+    }
+
+    @Test func loadingIkenPlayNiyetiKuyruklanirIlkKaredeOynar() async {
+        // Swipe anında henüz yüklenmemiş bölüm: play niyeti düşmez, ilk karede uygulanır.
+        let (engine, backend) = makeEngine()
+        await engine.prepare(episodeID: episodeID, url: url, bufferPolicy: .active)
+
+        await engine.play()
+        #expect(await engine.currentState() == .loading)
+        #expect(!backend.calls.contains(.playImmediately(1.0)))
+
+        backend.emit(.firstFrameReady)
+
+        #expect(await awaitState(.playing, on: engine))
+        #expect(backend.calls.contains(.playImmediately(1.0)))
+    }
+
+    @Test func pausePlayingdenPausedaGecirir() async {
+        let (engine, backend) = makeEngine()
+        await engine.prepare(episodeID: episodeID, url: url, bufferPolicy: .active)
+        backend.emit(.firstFrameReady)
+        _ = await awaitState(.readyAtFirstFrame, on: engine)
+        await engine.play()
+        _ = await awaitState(.playing, on: engine)
+
+        await engine.pause()
+
+        #expect(await engine.currentState() == .paused)
+        #expect(backend.calls.contains(.pause))
+    }
+
+    @Test func stallBaslayipBitinceDurumlarIzlenir() async {
+        let (engine, backend) = makeEngine()
+        await engine.prepare(episodeID: episodeID, url: url, bufferPolicy: .active)
+        backend.emit(.firstFrameReady)
+        _ = await awaitState(.readyAtFirstFrame, on: engine)
+        await engine.play()
+        _ = await awaitState(.playing, on: engine)
+
+        backend.emit(.stallBegan)
+        #expect(await awaitState(.stalled, on: engine))
+
+        backend.emit(.stallEnded)
+        #expect(await awaitState(.playing, on: engine))
+    }
+
+    @Test func resumePozisyonuIlkKaredenSonraSeekEdilir() async {
+        // Devam Et (04 §12.2): item hazırlanırken seek, kullanıcı sıçrama görmez.
+        let (engine, backend) = makeEngine()
+        await engine.prepare(episodeID: episodeID, url: url, bufferPolicy: .active, resumePosition: 33)
+        await engine.play()
+
+        backend.emit(.firstFrameReady)
+        _ = await awaitState(.playing, on: engine)
+
+        let calls = backend.calls
+        let seekIndex = calls.firstIndex(of: .seek(33))
+        let playIndex = calls.firstIndex(of: .playImmediately(1.0))
+        #expect(seekIndex != nil)
+        #expect(playIndex != nil)
+        if let seekIndex, let playIndex {
+            #expect(seekIndex < playIndex) // önce konum, sonra oynatma
+        }
+    }
+
+    @Test func setRateOynarkenBackendeUygulanir() async {
+        let (engine, backend) = makeEngine()
+        await engine.prepare(episodeID: episodeID, url: url, bufferPolicy: .active)
+        backend.emit(.firstFrameReady)
+        _ = await awaitState(.readyAtFirstFrame, on: engine)
+        await engine.play()
+        _ = await awaitState(.playing, on: engine)
+
+        await engine.setRate(2.0)
+
+        #expect(backend.calls.contains(.setRate(2.0)))
+    }
+
+    @Test func resetItemBirakirIdleaDoner() async {
+        let (engine, backend) = makeEngine()
+        await engine.prepare(episodeID: episodeID, url: url, bufferPolicy: .active)
+        backend.emit(.firstFrameReady)
+        _ = await awaitState(.readyAtFirstFrame, on: engine)
+
+        await engine.reset()
+
+        #expect(await engine.currentState() == .idle)
+        #expect(backend.calls.contains(.clearItem))
+    }
+
+    @Test func bolumSonundaPausedaGecer() async {
+        // actionAtItemEnd = .pause (04 §3.3): auto-next feed katmanının işidir.
+        let (engine, backend) = makeEngine()
+        await engine.prepare(episodeID: episodeID, url: url, bufferPolicy: .active)
+        backend.emit(.firstFrameReady)
+        _ = await awaitState(.readyAtFirstFrame, on: engine)
+        await engine.play()
+        _ = await awaitState(.playing, on: engine)
+
+        backend.emit(.playedToEnd)
+
+        #expect(await awaitState(.paused, on: engine))
+    }
+
+    @Test func kurtarilamazHataFailedaDusurur() async {
+        let (engine, backend) = makeEngine()
+        await engine.prepare(episodeID: episodeID, url: url, bufferPolicy: .active)
+
+        backend.emit(.didFail(.playback(.drmDenied)))
+
+        #expect(await awaitState(.failed(.playback(.drmDenied)), on: engine))
+    }
+
+    @Test func statusUpdatesSonDurumuReplayEder() async {
+        let (engine, backend) = makeEngine()
+        await engine.prepare(episodeID: episodeID, url: url, bufferPolicy: .active)
+        backend.emit(.firstFrameReady)
+        _ = await awaitState(.readyAtFirstFrame, on: engine)
+
+        var first: PlayerEngineState?
+        for await state in await engine.statusUpdates() {
+            first = state
+            break
+        }
+
+        #expect(first == .readyAtFirstFrame)
+    }
+}

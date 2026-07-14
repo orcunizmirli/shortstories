@@ -211,7 +211,7 @@ flowchart BT
 | R5 | Feature'lar arası veri ihtiyacı (ör. `UnlockSheet`'in bölüm başlığına ihtiyacı) çağıran tarafın parametre geçmesiyle çözülür (`UnlockRequest` value tipi), modül bağımlılığıyla DEĞİL. R5 yalnız **tek seferlik value geçirme** içindir; sürekli akış veya protokol tabanlı ihtiyaç R8'e tabidir. |
 | R6 | Üçüncü parti SDK'lar tek modülde hapsedilir: Firebase Analytics/Crashlytics → `AnalyticsKit` (Crashlytics logging köprüsü `AppFoundation` protokolü üzerinden), reklam SDK'sı (aktif: AdMob) → `RewardsKit`/`AdBridge`. Hiçbir feature üçüncü parti SDK'yı doğrudan import etmez. **Kabul kriteri:** reklam sağlayıcı değişimi `RewardsKit` + app target Info.plist (`SKAdNetworkItems`) dışına taşamaz. |
 | R7 | Her modülün `Tests/` hedefi vardır; test hedefleri mock'lar için `AppFoundationTestSupport` paylaşılan test kütüphanesini kullanabilir. |
-| R8 | Feature'lar arası tüketilen **protokol ve value tipleri** (`EntitlementChecking`, `UnlockRequest`/`UnlockOutcome`, cüzdan bakiye stream arayüzü, canlı sayaç/olay portları) `AppFoundation/SharedDomain`'de tanımlanır. Somut uygulama üretici feature'da yaşar (ör. `EntitlementChecking`'in canlısı `WalletKit`'tedir); kompozisyon `ShortSeriesApp`'te DI ile kurulur. Böylece tüketici feature, üreticiyi import etmeden (R2 korunur) canlı veriye bağlanır. |
+| R8 | Feature'lar arası tüketilen **protokol ve value tipleri** (`EntitlementChecking`, `UnlockRequest`/`UnlockOutcome`, cüzdan bakiye stream arayüzü, canlı sayaç/olay portları) `AppFoundation/SharedDomain`'de tanımlanır (kod dizini: `AppFoundation/Sources/AppFoundation/SharedTypes/` — SharedDomain kavramının evi; `EntitlementChecking` burada yaşar). Somut uygulama üretici feature'da yaşar (ör. `EntitlementChecking`'in canlısı `WalletKit`'tedir); kompozisyon `ShortSeriesApp`'te DI ile kurulur. Böylece tüketici feature, üreticiyi import etmeden (R2 korunur) canlı veriye bağlanır. |
 
 CI'da bu kurallar bir bağımlılık lint script'iyle (Package.swift parse + izin matrisi) doğrulanır; ihlal build'i kırar.
 
@@ -377,9 +377,11 @@ public actor PlayerPool {
 
     // AVFoundation tipleri PlayerKit-internal'dır (04 §2.4 modül sınırı; KANON §2):
     // AVPlayer döndüren erişim internal'dır — public API imzasında AVFoundation tipi bulunamaz.
+    // Havuz operasyonları da internal'dır (04 §2.4): feed VC aynı modülde yaşar;
+    // public yüzey yalnız kompozisyon kökünün gördüğü init'tir.
     func player(for episode: Episode) async -> AVPlayer { ... }   // internal
-    public func prepareNext(_ episode: Episode) async { ... }  // prefetch ~500 KB / ilk 2 sn
-    public func recycle(keeping window: ClosedRange<Int>) async { ... }
+    func prepareNext(_ episode: Episode) async { ... }            // internal — prefetch ~500 KB / ilk 2 sn
+    func recycle(keeping window: ClosedRange<Int>) async { ... }  // internal
 }
 
 // WalletKit — WalletStore.swift

@@ -89,8 +89,13 @@ public struct PlayerFeedView: UIViewControllerRepresentable {
 | `PlayerFeedViewController` | Yalnız köprünün gerektirdiği asgari yüzey: `init(viewModel:playerPool:prefetch:)` + `apply(state:)` |
 | `PlayerFeedViewModel` (+ `FeedState` value tipi) | Feed durumu; `ContentKit` modellerini sarar |
 | `PlayerFeedDelegate` | Ray aksiyonları ve `lockedEpisodeReached` dahil tüm navigasyon niyetlerinin Coordinator'a aktığı protokol (§2.2, §8.4, §9) |
-| `PlayerPool` | Yalnız kompozisyon kökünün gördüğü `public init`; `acquire`/`Lease`/`advanceWindow`/`drain` internal'dır (§3.3) |
+| `PlayerPool` | Yalnız kompozisyon kökünün gördüğü `public init`; operasyonlar (`activate`/`prepareNext`/`recycle`/`acquire`/`Lease`/`advanceWindow`/`drain`) internal'dır — feed VC aynı modülde yaşar (§3.3) |
 | `PrefetchController` | Yalnız `public init`; pencere yönetimi internal'dır (§5.4) |
+| `PlaybackControlling` + `PlaybackHandle` | Aktif oynatmanın kontrol sözleşmesi ve havuz aktivasyonunun döndürdüğü value-tipi tutamaç; imzalarda yalnız value tipleri + `AsyncStream` (kural 1) |
+| `PlayerEngineState` | Motorun dışa görünen durum enum'u; `PlaybackControlling.statusUpdates()` akışının value tipi |
+| `NetworkCondition` + `NetworkConditionProviding` | Ağ koşulu anlık görüntüsü ve portu (§5.3); canlısı NWPathMonitor sarmalayıcısıdır (SS-026) |
+| `PlaybackPreferencesProviding` | Oynatma tercihleri portu (veri tasarrufu — §5.3); canlısı Ayarlar/ProfileKit tarafından beslenir |
+| `EntitlementChecking` | PlayerKit'te tanımlı DEĞİLDİR — R8 portunun evi `AppFoundation`'dır (03 §4 R8, `SharedTypes/`); PlayerKit yalnız tüketir (§9.1) |
 
 `EpisodeCacheStore`, `PlayerAssetFactory`, `AudioSessionCoordinator`, `PlaybackProgressTracker`, `PlayerMetricsCollector` internal'dır; dış dünyadan yalnız protokol bağımlılıkları enjekte edilir (ör. `AssetCacheIndexing`, §7.2).
 
