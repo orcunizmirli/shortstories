@@ -38,6 +38,12 @@ actor PlaybackEngine {
     /// durum olarak `paused` görünür (actionAtItemEnd = .pause).
     private var playedToEndContinuations: [UUID: AsyncStream<Void>.Continuation] = [:]
 
+    /// Mevcut yükleme sonuna geldi mi (latch). `prepare`/`reset`te sıfırlanır.
+    /// Gözlemci görevi `settle` döndükten SONRA tembel abone olduğundan, playedToEnd
+    /// gözlemci abone olmadan yayılırsa olay kaybolurdu (yüksek yükte yarış). Latch
+    /// sayesinde geç abone olan `playedToEndEvents()` çağrısı olayı yine bir kez alır.
+    private var endedForCurrentLoad = false
+
     init(
         backend: any VideoPlaying,
         freshURLProvider: (@Sendable (EpisodeID) async throws -> URL)? = nil
@@ -76,6 +82,7 @@ actor PlaybackEngine {
         pendingPlay = false
         pendingResumePosition = resumePosition
         recoveryAttempts = 0
+        endedForCurrentLoad = false
         apply(.loadRequested)
         await backend.load(url: url, bufferPolicy: bufferPolicy, generation: loadGeneration)
     }
@@ -87,6 +94,7 @@ actor PlaybackEngine {
         pendingResumePosition = nil
         episodeID = nil
         currentURL = nil
+        endedForCurrentLoad = false
         await backend.clearItem()
         apply(.resetRequested)
     }
@@ -166,7 +174,13 @@ actor PlaybackEngine {
     /// yalnız `paused` göründüğünden ayrı bir kanaldır.
     func playedToEndEvents() -> AsyncStream<Void> {
         let id = UUID()
+        // Actor izolasyonu: latch kontrolü + kayıt, yayınla atomiktir (araya .playedToEnd
+        // giremez), bu yüzden çift teslim olmaz.
+        let alreadyEnded = endedForCurrentLoad
         return AsyncStream { continuation in
+            if alreadyEnded {
+                continuation.yield()
+            }
             playedToEndContinuations[id] = continuation
             continuation.onTermination = { [weak self] _ in
                 guard let self else { return }
@@ -221,6 +235,7 @@ actor PlaybackEngine {
         case .playedToEnd:
             // actionAtItemEnd = .pause: auto-next feed katmanının kararıdır (04 §8.6).
             apply(.pauseRequested)
+            endedForCurrentLoad = true
             for continuation in playedToEndContinuations.values {
                 continuation.yield()
             }

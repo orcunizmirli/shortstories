@@ -163,6 +163,63 @@ struct PlaybackEngineTests {
         #expect(await awaitState(.paused, on: engine))
     }
 
+    @Test func gecAboneOlanGozlemciBitisOlayiniLatchIleAlir() async {
+        // Kök neden regresyonu: watchPlayedToEnd gözlemcisi settle döndükten SONRA
+        // tembel abone olur; playedToEnd gözlemci abone OLMADAN yayılırsa (yüksek yükte
+        // CI yarışı) olay kaybolurdu. Latch, geç aboneye bir kez teslim eder.
+        let (engine, backend) = makeEngine()
+        await engine.prepare(episodeID: episodeID, url: url, bufferPolicy: .active)
+        backend.emit(.firstFrameReady)
+        _ = await awaitState(.readyAtFirstFrame, on: engine)
+        await engine.play()
+        _ = await awaitState(.playing, on: engine)
+
+        // ÖNCE bitiş yayılır, SONRA abone olunur (yarışın kaybeden tarafı).
+        backend.emit(.playedToEnd)
+        _ = await awaitState(.paused, on: engine)
+
+        let received = await eventually {
+            var iterator = await engine.playedToEndEvents().makeAsyncIterator()
+            return await iterator.next() != nil
+        }
+        #expect(received)
+    }
+
+    @Test func yeniHazirlamaBitisLatchiniSifirlar() async {
+        // Bayat bitiş yanlış auto-next tetiklemez (T4): prepare latch'i sıfırlar.
+        let (engine, backend) = makeEngine()
+        await engine.prepare(episodeID: episodeID, url: url, bufferPolicy: .active)
+        backend.emit(.firstFrameReady)
+        _ = await awaitState(.readyAtFirstFrame, on: engine)
+        backend.emit(.playedToEnd)
+        _ = await awaitState(.paused, on: engine)
+
+        await engine.prepare(episodeID: EpisodeID("e2"), url: url, bufferPolicy: .active)
+
+        // Yeni yüklemede latch temiz: hemen bir bitiş olayı DÜŞMEZ.
+        let spuriousEnd = await withTimeoutReturningTrueIfEventArrives(engine: engine, seconds: 0.2)
+        #expect(spuriousEnd == false)
+    }
+
+    private func withTimeoutReturningTrueIfEventArrives(
+        engine: PlaybackEngine,
+        seconds: Double
+    ) async -> Bool {
+        await withTaskGroup(of: Bool.self) { group in
+            group.addTask {
+                var iterator = await engine.playedToEndEvents().makeAsyncIterator()
+                return await iterator.next() != nil
+            }
+            group.addTask {
+                try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+                return false
+            }
+            let first = await group.next() ?? false
+            group.cancelAll()
+            return first
+        }
+    }
+
     @Test func kurtarilamazHataFailedaDusurur() async {
         let (engine, backend) = makeEngine()
         await engine.prepare(episodeID: episodeID, url: url, bufferPolicy: .active)
