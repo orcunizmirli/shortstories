@@ -46,6 +46,9 @@ final class AVPlayerBackend: VideoPlaying, @unchecked Sendable {
             let asset = AVURLAsset(url: url)
             let item = AVPlayerItem(asset: asset)
             item.preferredForwardBufferDuration = bufferPolicy.preferredForwardBufferSeconds
+            // Ton koruması dayanıklı varsayılan (04 §8.1, 01 PLR-03): warm item'lar dahil
+            // her yükleme timeDomain başlar; 2x/hız menüsünde "sincap sesi" olmaz.
+            item.audioTimePitchAlgorithm = .timeDomain
             // Tavan yeni item'da da korunur (04 §6.3): kurtarma yeniden yüklemesi
             // dahil her yükleme aynı preferredPeakBitRate ile başlar.
             item.preferredPeakBitRate = peakBitRateCap ?? 0
@@ -66,19 +69,35 @@ final class AVPlayerBackend: VideoPlaying, @unchecked Sendable {
         }
     }
 
-    func seek(toSeconds seconds: Double) async {
+    func seek(toSeconds seconds: Double, tolerant: Bool) async {
         let time = CMTime(seconds: seconds, preferredTimescale: 600)
+        // Çift-tap (tolerant) hızlı segment-sınırı seek'i ister (04 §8.1); scrubber
+        // bırakışı (tolerant == false) keskin `.zero` toleransta kalır (T9).
+        let tolerance: CMTime = tolerant ? CMTime(seconds: 1, preferredTimescale: 600) : .zero
         await MainActor.run {
             guard let player else { return }
-            // T9: ardışık seek'lerde öncekiler iptal edilir; seek asenkron ve toleranssızdır.
+            // T9: ardışık seek'lerde öncekiler iptal edilir; seek asenkrondur.
             player.currentItem?.cancelPendingSeeks()
-            player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero) { _ in }
+            player.seek(to: time, toleranceBefore: tolerance, toleranceAfter: tolerance) { _ in }
         }
     }
 
     func setRate(_ rate: Double) async {
         await MainActor.run {
             player?.rate = Float(rate)
+        }
+    }
+
+    func setMuted(_ muted: Bool) async {
+        await MainActor.run {
+            player?.isMuted = muted
+        }
+    }
+
+    func setPitchPreservation(_ enabled: Bool) async {
+        await MainActor.run {
+            // 2x/hız menüsünde ton koruması (04 §8.1, 01 PLR-03).
+            player?.currentItem?.audioTimePitchAlgorithm = enabled ? .timeDomain : .varispeed
         }
     }
 
@@ -222,6 +241,12 @@ final class AVPlayerBackend: VideoPlaying, @unchecked Sendable {
         notificationTokens.removeAll()
     }
 
+    /// Feed hücresinin görüntü yüzeyi bağlaması (04 §3.3 kural 4): AVPlayerLayer,
+    /// lease üzerinden bu kaynaktan bağlanır; AVFoundation modül içinde kalır.
+    @MainActor var surfacePlayer: AVPlayer? {
+        player
+    }
+
     /// AVFoundation hatasını katman sınırı tipine çevirir (03 §10.1): 403/410 imzalı
     /// URL vakaları `signedURLExpired`; diğer medya hataları `assetUnavailable`.
     private static func mapItemError(_ error: Error?) -> AppError {
@@ -243,3 +268,7 @@ final class AVPlayerBackend: VideoPlaying, @unchecked Sendable {
         return .playback(.assetUnavailable)
     }
 }
+
+// MARK: - Görüntü yüzeyi kaynağı (feed hücresi)
+
+extension AVPlayerBackend: AVPlayerSurfaceSource {}

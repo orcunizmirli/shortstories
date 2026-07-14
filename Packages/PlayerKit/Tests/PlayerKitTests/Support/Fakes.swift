@@ -70,8 +70,13 @@ final class FakeVideoPlaying: VideoPlaying, @unchecked Sendable {
         case load(URL, BufferPolicy)
         case playImmediately(Double)
         case pause
+        /// Keskin (`.zero` toleranslı) seek: resume / scrubber bırakışı yolu.
         case seek(TimeInterval)
+        /// Toleranslı seek: çift-tap ±10 sn hızlı segment-sınırı seek'i (04 §8.1).
+        case seekTolerant(TimeInterval)
         case setRate(Double)
+        case setMuted(Bool)
+        case setPitchPreservation(Bool)
         case applyBufferPolicy(BufferPolicy)
         case setPeakBitRateCap(Double?)
         case clearItem
@@ -129,12 +134,20 @@ final class FakeVideoPlaying: VideoPlaying, @unchecked Sendable {
         record(.pause)
     }
 
-    func seek(toSeconds seconds: TimeInterval) async {
-        record(.seek(seconds))
+    func seek(toSeconds seconds: TimeInterval, tolerant: Bool) async {
+        record(tolerant ? .seekTolerant(seconds) : .seek(seconds))
     }
 
     func setRate(_ rate: Double) async {
         record(.setRate(rate))
+    }
+
+    func setMuted(_ muted: Bool) async {
+        record(.setMuted(muted))
+    }
+
+    func setPitchPreservation(_ enabled: Bool) async {
+        record(.setPitchPreservation(enabled))
     }
 
     func applyBufferPolicy(_ policy: BufferPolicy) async {

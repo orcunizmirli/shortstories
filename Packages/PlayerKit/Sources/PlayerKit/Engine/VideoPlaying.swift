@@ -46,8 +46,18 @@ protocol VideoPlaying: AnyObject, Sendable {
     /// `playImmediately(atRate:)` karşılığı: buffer dolmasını beklemeden ilk kare (04 §4.2).
     func playImmediately(atRate rate: Double) async
     func pause() async
-    func seek(toSeconds seconds: Double) async
+    /// Toleranslı/keskin seek ayrımı (04 §8.1 jest tablosu): `tolerant == true`
+    /// çift-tap ±10 sn için hızlı segment-sınırı seek'idir; `tolerant == false`
+    /// (`toleranceBefore/After = .zero`) YALNIZ scrubber bırakışına aittir.
+    func seek(toSeconds seconds: Double, tolerant: Bool) async
     func setRate(_ rate: Double) async
+    /// Aktif player'ı susturur/açar (02 §4.3.7 kabul kriteri): kilitli bölüme
+    /// kaydırmada önceki player mute+pause garanti — pause'un tamamlanma yarışında
+    /// ses sızıntısı penceresi kapanır.
+    func setMuted(_ muted: Bool) async
+    /// 2x uzun-basma / hız menüsü sırasında ses tonunu korur (04 §8.1, 01 PLR-03):
+    /// `enabled == true` → `AVAudioTimePitchAlgorithm.timeDomain`; `false` → varispeed.
+    func setPitchPreservation(_ enabled: Bool) async
     /// Item üzerinde buffer ayarını YERİNDE günceller; yeni item yaratmaz (04 §4.1).
     func applyBufferPolicy(_ policy: BufferPolicy) async
     /// Bitrate tavanı (04 §6.3, `preferredPeakBitRate` karşılığı): nil = tavansız
@@ -56,4 +66,12 @@ protocol VideoPlaying: AnyObject, Sendable {
     func currentPositionSeconds() async -> Double
     /// `replaceCurrentItem(with: nil)` karşılığı: item gider, player kalır (04 §3.3).
     func clearItem() async
+}
+
+extension VideoPlaying {
+    /// Keskin seek kısayolu (`.zero` tolerans): resume/scrubber bırakışı yolu.
+    /// Çift-tap toleranslı seek `seek(toSeconds:tolerant:)`'i doğrudan çağırır.
+    func seek(toSeconds seconds: Double) async {
+        await seek(toSeconds: seconds, tolerant: false)
+    }
 }

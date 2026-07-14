@@ -8,7 +8,10 @@ import Foundation
 /// Actor'dür: play/pause/seek ve runtime olayları farklı bağlamlardan gelir; tüm
 /// mutasyonlar serileşir (03 §7 concurrency kanonu).
 actor PlaybackEngine {
-    private let backend: any VideoPlaying
+    /// PlayerKit-internal görünürlük: feed hücresi görüntü yüzeyini (AVPlayerLayer)
+    /// backend'in surface kaynağından bağlar (04 §3.3 kural 4); AVFoundation public
+    /// API'ye sızmaz — erişim modül içinde kalır.
+    let backend: any VideoPlaying
     /// Taze imzalı URL kancası (SS-051 çekirdeği): kurtarma anında çağrılır.
     private let freshURLProvider: (@Sendable (EpisodeID) async throws -> URL)?
 
@@ -30,6 +33,10 @@ actor PlaybackEngine {
     /// Jenerasyon korkuluğu: her prepare/reset +1. Backend olayları yüklemenin
     /// jenerasyonunu taşır; eşleşmeyen olay sessizce düşer.
     private var generation: UInt64 = 0
+    /// Bölüm sonu olay aboneleri (04 §8.6): auto-next kararı feed katmanınındır;
+    /// motor yalnız playedToEnd'i duyurur. State akışından ayrıdır — playedToEnd
+    /// durum olarak `paused` görünür (actionAtItemEnd = .pause).
+    private var playedToEndContinuations: [UUID: AsyncStream<Void>.Continuation] = [:]
 
     init(
         backend: any VideoPlaying,
@@ -42,6 +49,9 @@ actor PlaybackEngine {
     deinit {
         eventPumpTask?.cancel()
         broadcast.finish()
+        for continuation in playedToEndContinuations.values {
+            continuation.finish()
+        }
     }
 
     // MARK: - Yaşam döngüsü
@@ -107,6 +117,22 @@ actor PlaybackEngine {
         await backend.seek(toSeconds: seconds)
     }
 
+    /// Toleranslı seek (04 §8.1 çift-tap): keskin `.zero` yalnız `seek(toSeconds:)`
+    /// (scrubber bırakışı/resume). Feed jest katmanı ±10 sn için bunu çağırır.
+    func seekTolerant(toSeconds seconds: Double) async {
+        await backend.seek(toSeconds: seconds, tolerant: true)
+    }
+
+    /// Kilitli bölüme geçişte önceki player'ın mute'u (02 §4.3.7).
+    func setMuted(_ muted: Bool) async {
+        await backend.setMuted(muted)
+    }
+
+    /// 2x/hız menüsünde ton koruması (04 §8.1, 01 PLR-03).
+    func setPitchPreservation(_ enabled: Bool) async {
+        await backend.setPitchPreservation(enabled)
+    }
+
     func setRate(_ rate: Double) async {
         playbackRate = rate
         if machine.state == .playing {
@@ -133,6 +159,29 @@ actor PlaybackEngine {
 
     func statusUpdates() -> AsyncStream<PlayerEngineState> {
         broadcast.stream()
+    }
+
+    /// Bölüm sonu olay akışı (04 §8.6): her playedToEnd için bir eleman. Feed
+    /// katmanı auto-advance kararını buradan tetikler; durum akışında bu an
+    /// yalnız `paused` göründüğünden ayrı bir kanaldır.
+    func playedToEndEvents() -> AsyncStream<Void> {
+        let id = UUID()
+        return AsyncStream { continuation in
+            playedToEndContinuations[id] = continuation
+            continuation.onTermination = { [weak self] _ in
+                guard let self else { return }
+                Task { await self.removePlayedToEndContinuation(id) }
+            }
+        }
+    }
+
+    /// Anlık oynatma konumu (feed jest katmanı ±10 sn hedef kırpması için — 04 §8.1).
+    func currentPositionSeconds() async -> Double {
+        await backend.currentPositionSeconds()
+    }
+
+    private func removePlayedToEndContinuation(_ id: UUID) {
+        playedToEndContinuations[id] = nil
     }
 
     // MARK: - Runtime olayları
@@ -172,6 +221,9 @@ actor PlaybackEngine {
         case .playedToEnd:
             // actionAtItemEnd = .pause: auto-next feed katmanının kararıdır (04 §8.6).
             apply(.pauseRequested)
+            for continuation in playedToEndContinuations.values {
+                continuation.yield()
+            }
         case let .didFail(error):
             await handleFailure(error)
         }

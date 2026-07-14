@@ -18,6 +18,9 @@ public actor PrefetchController {
     private let network: any NetworkConditionProviding
     private let preferences: any PlaybackPreferencesProviding
     private let poolSizeProvider: @Sendable () async -> Int
+    /// Bayt/süre ölçüm kancası (SS-047 devri): tamamlanan ısındırma, bütçe
+    /// yaklaşığıyla kaydedilir; gerçek ağ sayacı SS-041'dedir.
+    private let measurer: any PrefetchMeasuring
 
     /// İzlenen ısındırma görevi: tamamlanma işleyicisi anahtar VARLIĞINA değil görev
     /// KİMLİĞİNE (token) bakar — iptal edilip yenilenen eski görevin geç tamamlanması
@@ -43,19 +46,22 @@ public actor PrefetchController {
         self.network = network
         self.preferences = preferences
         poolSizeProvider = { await pool.slotCount }
+        measurer = PrefetchMeasurementLog()
     }
 
-    /// Test dikişi: sahte warmer + sabit havuz boyutu.
+    /// Test dikişi: sahte warmer + sabit havuz boyutu (+ isteğe bağlı ölçüm kaydedicisi).
     init(
         warmer: any EpisodeWarming,
         network: any NetworkConditionProviding,
         preferences: any PlaybackPreferencesProviding,
-        poolSize: Int
+        poolSize: Int,
+        measurer: (any PrefetchMeasuring)? = nil
     ) {
         self.warmer = warmer
         self.network = network
         self.preferences = preferences
         poolSizeProvider = { poolSize }
+        self.measurer = measurer ?? PrefetchMeasurementLog()
     }
 
     /// Aktif indeks değişti (swipe yerleşti / feed kuruldu): politika planı çıkarılır,
@@ -88,10 +94,21 @@ public actor PrefetchController {
             let episode = episodes[feedIndex]
             guard tasks[episode.id] == nil, !completedWarmups.contains(episode.id) else { continue } // idempotent
             let token = UUID()
-            let task = Task(priority: .utility) { [warmer] in
+            let budget = plan.budget
+            let task = Task(priority: .utility) { [warmer, measurer] in
                 await warmer.warm(episode, atFeedIndex: feedIndex)
+                let wasCancelled = Task.isCancelled
                 // Task {} actor bağlamını devralır; taskCompleted izole (senkron) çağrıdır.
-                self.taskCompleted(episode.id, token: token, wasCancelled: Task.isCancelled)
+                self.taskCompleted(episode.id, token: token, wasCancelled: wasCancelled)
+                if !wasCancelled {
+                    // Yaklaşık ölçüm = bütçe tanımı (~500 KB / ilk 2 sn — 04 §5.1);
+                    // gerçek ağ sayacı SS-041'de bu kancaya bağlanır.
+                    await measurer.recordWarmupCompleted(
+                        episodeID: episode.id,
+                        approximateBytes: budget.maxBytes,
+                        approximateSeconds: budget.maxSeconds
+                    )
+                }
             }
             tasks[episode.id] = TrackedWarmup(token: token, task: task)
         }

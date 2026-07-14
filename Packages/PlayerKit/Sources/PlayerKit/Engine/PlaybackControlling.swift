@@ -48,6 +48,12 @@ public struct PlaybackHandle: PlaybackControlling {
         await engine.seek(toSeconds: seconds)
     }
 
+    /// Toleranslı seek (04 §8.1 çift-tap) — PlayerKit-internal; public sözleşme
+    /// `seek(toSeconds:)` keskin (`.zero`) kalır. Public yüzey değişmez (04 §2.4).
+    func seekTolerant(toSeconds seconds: Double) async {
+        await engine.seekTolerant(toSeconds: seconds)
+    }
+
     public func setRate(_ rate: Double) async {
         await engine.setRate(rate)
     }

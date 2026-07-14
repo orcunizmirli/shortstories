@@ -59,19 +59,25 @@ ShortSeriesApp (SwiftUI, Ana Sayfa sekmesi)
 
 ```swift
 public struct PlayerFeedView: UIViewControllerRepresentable {
-    let viewModel: PlayerFeedViewModel   // @Observable, ContentKit feed'ini sarar
-    let playerPool: PlayerPool           // kompozisyon kökünde (ShortSeriesApp) kurulur,
-    let prefetch: PrefetchController     // init-injection ile gelir — Dependencies'e KONMAZ (§2.4)
+    let viewModel: PlayerFeedViewModel      // @Observable, ContentKit feed'ini sarar
+    let playerPool: PlayerPool              // kompozisyon kökünde (ShortSeriesApp) kurulur,
+    let prefetch: PrefetchController        // init-injection ile gelir — Dependencies'e KONMAZ (§2.4)
+    let analytics: any AnalyticsTracking    // AppFoundation portu (03 §5.1): TTFF/stall/swipe metrikleri (§13)
+    weak var delegate: (any PlayerFeedDelegate)?   // Coordinator (App katmanı sahiplenir)
 
     public func makeUIViewController(context: Context) -> PlayerFeedViewController {
-        PlayerFeedViewController(
+        let vc = PlayerFeedViewController(
             viewModel: viewModel,
             playerPool: playerPool,
-            prefetch: prefetch
+            prefetch: prefetch,
+            analytics: analytics
         )
+        vc.delegate = delegate
+        return vc
     }
 
     public func updateUIViewController(_ vc: PlayerFeedViewController, context: Context) {
+        vc.delegate = delegate
         vc.apply(state: viewModel.feedState)   // diff'li uygulama; reloadData YASAK (§14)
     }
 }
@@ -86,7 +92,7 @@ public struct PlayerFeedView: UIViewControllerRepresentable {
 | Public tip | Rol |
 |---|---|
 | `PlayerFeedView` | SwiftUI köprüsü — feed'in tek giriş noktası (§2.3) |
-| `PlayerFeedViewController` | Yalnız köprünün gerektirdiği asgari yüzey: `init(viewModel:playerPool:prefetch:)` + `apply(state:)` |
+| `PlayerFeedViewController` | Yalnız köprünün gerektirdiği asgari yüzey: `init(viewModel:playerPool:prefetch:analytics:)` + `apply(state:)` + `delegate` (`PlayerFeedDelegate` bağlama noktası; `analytics`, AppFoundation'ın type-erased portudur — §13 metrikleri buradan akar) |
 | `PlayerFeedViewModel` (+ `FeedState` value tipi) | Feed durumu; `ContentKit` modellerini sarar |
 | `PlayerFeedDelegate` | Ray aksiyonları ve `lockedEpisodeReached` dahil tüm navigasyon niyetlerinin Coordinator'a aktığı protokol (§2.2, §8.4, §9) |
 | `PlayerPool` | Yalnız kompozisyon kökünün gördüğü `public init`; operasyonlar (`activate`/`prepareNext`/`recycle`/`acquire`/`Lease`/`advanceWindow`/`drain`) internal'dır — feed VC aynı modülde yaşar (§3.3) |

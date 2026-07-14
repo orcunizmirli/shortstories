@@ -110,6 +110,20 @@ struct PlaybackEngineTests {
         }
     }
 
+    @Test func toleransliVeKeskinSeekAyriYollardir() async {
+        // 04 §8.1 / 01 PLR-02: çift tap TOLERANT seek; resume/scrubber bırakışı keskin (.zero).
+        let (engine, backend) = makeEngine()
+        await engine.prepare(episodeID: episodeID, url: url, bufferPolicy: .active)
+
+        await engine.seek(toSeconds: 10) // keskin
+        await engine.seekTolerant(toSeconds: 20) // toleranslı
+
+        #expect(backend.calls.contains(.seek(10)))
+        #expect(backend.calls.contains(.seekTolerant(20)))
+        #expect(!backend.calls.contains(.seekTolerant(10)))
+        #expect(!backend.calls.contains(.seek(20)))
+    }
+
     @Test func setRateOynarkenBackendeUygulanir() async {
         let (engine, backend) = makeEngine()
         await engine.prepare(episodeID: episodeID, url: url, bufferPolicy: .active)
