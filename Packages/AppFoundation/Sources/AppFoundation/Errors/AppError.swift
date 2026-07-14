@@ -44,7 +44,18 @@ public enum StoreKitStatus: String, Sendable, Equatable {
 }
 
 public enum WalletError: Sendable, Equatable {
-    case insufficientCoins
+    /// 402 INSUFFICIENT_COINS (05 §4.5): `details.shortfall` = eksik kalan coin. Sunucu gövdesi
+    /// zenginse dolu; kod-yoksa/ham-yolda `nil` (çağıran snapshot'tan türetir).
+    case insufficientCoins(shortfall: Int?)
+    /// 409 PRICE_CHANGED (05 §4.5): `details.currentPrice` = güncel açma fiyatı. UnlockSheet
+    /// fiyatı bununla güncellenir; otomatik harcama yapılmaz.
+    case priceChanged(currentPrice: Int?)
+    /// 409 RECEIPT_ALREADY_PROCESSED (05 §10.2): `details.original` = orijinal transaction kimliği
+    /// (idempotent tekrar). Akış başarı sayar; transaction finish edilir.
+    case receiptAlreadyProcessed(originalTransactionID: String?)
+    /// 422 RECEIPT_INVALID (05 §4.6): sahte/doğrulanamayan receipt — transaction finish EDİLMEZ,
+    /// destek akışına yönlendirilir.
+    case receiptInvalid
     case purchaseFailed(StoreKitStatus)
     case receiptValidationFailed
     case transactionConflict
@@ -166,6 +177,14 @@ public extension AppError {
             case .insufficientCoins:
                 // "Hata" değil akıştır: CoinMagazasi'na yönlendirir (03 §10.2)
                 "You don't have enough coins."
+            case .priceChanged:
+                // Akış: UnlockSheet fiyatı sessizce güncellenir, generic uyarı gösterilmez.
+                nil
+            case .receiptAlreadyProcessed:
+                // Başarı sayılır (idempotent tekrar): kullanıcıya hata gösterilmez.
+                nil
+            case .receiptInvalid:
+                "We couldn't verify this purchase. Please contact support."
             case let .purchaseFailed(status):
                 switch status {
                 case .userCancelled:

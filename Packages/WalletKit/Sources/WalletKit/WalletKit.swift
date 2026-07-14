@@ -1,7 +1,3 @@
-import AnalyticsKit
-import AppFoundation
-import DesignSystem
-
 /// WalletKit — coin cüzdanı (WalletStore actor), StoreKit 2, entitlement;
 /// UnlockSheet/CoinMagazasi/VIPAbonelik ekranları (KANON §4).
 /// F1 kapsamı: SS-090…SS-099 (docs/09 §E9); fraud sinyalleri SS-100 F2.

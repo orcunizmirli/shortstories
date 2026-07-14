@@ -180,7 +180,14 @@ public struct APIClient: APIClientProtocol {
     /// Kural (05 §10.2): istemci ÖNCE `error.code`a, sonra HTTP koduna bakar; gövde
     /// yoksa/parse edilemezse HTTP sınıfının varsayılan davranışı uygulanır.
     private func mapFailure(http: HTTPURLResponse, data: Data) -> any Error {
-        let code = (try? decoder.decode(APIErrorBody.self, from: data))?.error.code
+        // Gövde bir kez decode edilir; `error.code` eşlemeyi seçer, `error.details` koda özgü
+        // tipli alanları (shortfall/currentPrice/original) besler (05 §10.3 sınır kuralı).
+        let body = try? decoder.decode(APIErrorBody.self, from: data)
+        let code = body?.error.code
+        // Cüzdan/IAP koda özgü tipli eşleme ayrı tutulur (`details` zenginleştirmesi + karmaşıklık).
+        if let walletError = Self.walletError(status: http.statusCode, code: code, details: body?.error.details) {
+            return walletError
+        }
         switch (http.statusCode, code) {
         case (401, "TOKEN_INVALID"):
             // Refresh DENENMEZ; `send` içindeki yeniden-bootstrap yoluna düşer.
@@ -200,6 +207,24 @@ public struct APIClient: APIClientProtocol {
             return AppError.network(.server(status: 429))
         default:
             return AppError.network(.server(status: http.statusCode))
+        }
+    }
+
+    /// Cüzdan/IAP koda özgü tipli `details` çıkarımı (05 §4.5/4.6/10.2). Eşleşme yoksa `nil` —
+    /// çağıran genel HTTP-sınıfı davranışına döner. `details` tipli alanları besler; kod-yoksa/
+    /// ham-gövdede değerler `nil` kalır ve çağıran (WalletRemoteClient) fallback'e düşer.
+    private static func walletError(status: Int, code: String?, details: JSONValue?) -> AppError? {
+        switch (status, code) {
+        case (402, "INSUFFICIENT_COINS"):
+            .wallet(.insufficientCoins(shortfall: details?["shortfall"]?.intValue))
+        case (409, "PRICE_CHANGED"):
+            .wallet(.priceChanged(currentPrice: details?["currentPrice"]?.intValue))
+        case (409, "RECEIPT_ALREADY_PROCESSED"):
+            .wallet(.receiptAlreadyProcessed(originalTransactionID: details?["original"]?.stringValue))
+        case (422, "RECEIPT_INVALID"):
+            .wallet(.receiptInvalid)
+        default:
+            nil
         }
     }
 

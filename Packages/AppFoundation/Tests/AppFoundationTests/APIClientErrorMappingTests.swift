@@ -123,6 +123,88 @@ extension URLProtocolStubSerialTests {
             }
         }
 
+        // MARK: - Cüzdan/IAP kod zenginleştirmesi (05 §4.5/4.6/10.2: details tipli çıkarım)
+
+        @Test func insufficientCoinsShortfallDetailindenCikar() async {
+            // 402 INSUFFICIENT_COINS gövdesinden shortfall çıkarılır → tipli WalletError.
+            let fixture = Data("""
+            {"error":{"code":"INSUFFICIENT_COINS","message":"Yetersiz coin.",\
+            "details":{"shortfall":30}},"requestId":"req_01J0"}
+            """.utf8)
+            URLProtocolStub.setHandler { request in
+                (URLProtocolStub.httpResponse(for: request, status: 402), fixture)
+            }
+
+            await #expect(throws: AppError.wallet(.insufficientCoins(shortfall: 30))) {
+                _ = try await client.send(NoRetryEndpoint())
+            }
+        }
+
+        @Test func priceChangedCurrentPriceDetailindenCikar() async {
+            // 409 PRICE_CHANGED gövdesinden currentPrice çıkarılır → tipli WalletError.
+            let fixture = Data("""
+            {"error":{"code":"PRICE_CHANGED","message":"Fiyat değişti.",\
+            "details":{"currentPrice":75}},"requestId":"req_01J1"}
+            """.utf8)
+            URLProtocolStub.setHandler { request in
+                (URLProtocolStub.httpResponse(for: request, status: 409), fixture)
+            }
+
+            await #expect(throws: AppError.wallet(.priceChanged(currentPrice: 75))) {
+                _ = try await client.send(NoRetryEndpoint())
+            }
+        }
+
+        @Test func receiptAlreadyProcessedOriginalDetailindenCikar() async {
+            // 409 RECEIPT_ALREADY_PROCESSED gövdesinden original çıkarılır → tipli WalletError.
+            let fixture = Data("""
+            {"error":{"code":"RECEIPT_ALREADY_PROCESSED","message":"Zaten işlendi.",\
+            "details":{"original":"txn_original_9001"}},"requestId":"req_01J2"}
+            """.utf8)
+            URLProtocolStub.setHandler { request in
+                (URLProtocolStub.httpResponse(for: request, status: 409), fixture)
+            }
+
+            await #expect(throws: AppError.wallet(.receiptAlreadyProcessed(originalTransactionID: "txn_original_9001"))) {
+                _ = try await client.send(NoRetryEndpoint())
+            }
+        }
+
+        @Test func receiptInvalidDortYuzYirmiIkiTipliEslenir() async {
+            let fixture = Data(#"{"error":{"code":"RECEIPT_INVALID","message":"Geçersiz."}}"#.utf8)
+            URLProtocolStub.setHandler { request in
+                (URLProtocolStub.httpResponse(for: request, status: 422), fixture)
+            }
+
+            await #expect(throws: AppError.wallet(.receiptInvalid)) {
+                _ = try await client.send(NoRetryEndpoint())
+            }
+        }
+
+        @Test func detailsizInsufficientCoinsNilShortfallIleEslenir() async {
+            // Gövde `details` taşımıyorsa shortfall nil kalır (kod yine tanınır).
+            let fixture = Data(#"{"error":{"code":"INSUFFICIENT_COINS","message":"Yetersiz."}}"#.utf8)
+            URLProtocolStub.setHandler { request in
+                (URLProtocolStub.httpResponse(for: request, status: 402), fixture)
+            }
+
+            await #expect(throws: AppError.wallet(.insufficientCoins(shortfall: nil))) {
+                _ = try await client.send(NoRetryEndpoint())
+            }
+        }
+
+        @Test func taninmayanKodluDortYuzIkiGenelServerHatasiKalir() async {
+            // Kod tanınmıyorsa HTTP sınıfının varsayılanı korunur (geriye-uyum).
+            let fixture = Data(#"{"error":{"code":"SOME_OTHER","message":"?"}}"#.utf8)
+            URLProtocolStub.setHandler { request in
+                (URLProtocolStub.httpResponse(for: request, status: 402), fixture)
+            }
+
+            await #expect(throws: AppError.network(.server(status: 402))) {
+                _ = try await client.send(NoRetryEndpoint())
+            }
+        }
+
         // MARK: - 410 SIGNED_URL_EXPIRED (05 §10.2 satırı)
 
         @Test func signedURLExpiredPlaybackHatasinaEslenir() async {

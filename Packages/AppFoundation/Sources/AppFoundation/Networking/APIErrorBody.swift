@@ -30,6 +30,33 @@ public enum JSONValue: Sendable, Equatable {
     case object([String: JSONValue])
 }
 
+public extension JSONValue {
+    /// Nesne alanı erişimi — `details["shortfall"]` gibi koda özgü `details` yükünü tip
+    /// kaybetmeden okur (05 §10.3 sınır kuralı: tipli çıkarım yalnız API katmanında).
+    subscript(key: String) -> JSONValue? {
+        guard case let .object(fields) = self else { return nil }
+        return fields[key]
+    }
+
+    /// Sayısal (ya da tamsayı-string) değeri `Int`'e indirger; uyumsuzsa `nil`.
+    var intValue: Int? {
+        switch self {
+        case let .number(value):
+            Int(exactly: value.rounded())
+        case let .string(value):
+            Int(value)
+        default:
+            nil
+        }
+    }
+
+    /// String değer; string değilse `nil`.
+    var stringValue: String? {
+        guard case let .string(value) = self else { return nil }
+        return value
+    }
+}
+
 extension JSONValue: Decodable {
     public init(from decoder: any Decoder) throws {
         let container = try decoder.singleValueContainer()

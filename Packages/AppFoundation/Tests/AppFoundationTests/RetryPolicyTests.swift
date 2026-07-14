@@ -38,7 +38,7 @@ struct RetryPolicyTests {
         #expect(policy.delay(afterAttempt: 0, error: .network(.server(status: 404))) == nil)
         #expect(policy.delay(afterAttempt: 0, error: .network(.decoding)) == nil)
         #expect(policy.delay(afterAttempt: 0, error: .auth(.sessionExpired)) == nil)
-        #expect(policy.delay(afterAttempt: 0, error: .wallet(.insufficientCoins)) == nil)
+        #expect(policy.delay(afterAttempt: 0, error: .wallet(.insufficientCoins(shortfall: nil))) == nil)
     }
 
     @Test func negatifAttemptNilDoner() {

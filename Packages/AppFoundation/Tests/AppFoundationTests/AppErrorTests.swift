@@ -22,7 +22,7 @@ struct AppErrorTests {
     @Test func authVeWalletRetryableDegil() {
         #expect(!AppError.auth(.sessionExpired).isRetryable)
         #expect(!AppError.auth(.guestBootstrapFailed).isRetryable)
-        #expect(!AppError.wallet(.insufficientCoins).isRetryable)
+        #expect(!AppError.wallet(.insufficientCoins(shortfall: nil)).isRetryable)
         #expect(!AppError.wallet(.purchaseFailed(.pending)).isRetryable)
         #expect(!AppError.content(.notFound).isRetryable)
         #expect(!AppError.storage(.diskFull).isRetryable)
@@ -42,7 +42,7 @@ struct AppErrorTests {
         #expect(AppError.network(.offline).userFacingMessage != nil)
         #expect(AppError.network(.timeout).userFacingMessage != nil)
         #expect(AppError.auth(.sessionExpired).userFacingMessage != nil)
-        #expect(AppError.wallet(.insufficientCoins).userFacingMessage != nil)
+        #expect(AppError.wallet(.insufficientCoins(shortfall: 12)).userFacingMessage != nil)
         #expect(AppError.wallet(.receiptValidationFailed).userFacingMessage != nil)
         #expect(AppError.content(.regionBlocked).userFacingMessage != nil)
         #expect(AppError.storage(.diskFull).userFacingMessage != nil)
