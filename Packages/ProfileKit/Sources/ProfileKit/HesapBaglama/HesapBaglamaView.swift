@@ -1,0 +1,175 @@
+import DesignSystem
+import SwiftUI
+
+/// Hesap bağlama ekranı (SS-132) — ince SwiftUI katmanı: tüm karar `HesapBaglamaModel` durum
+/// makinesinde. Misafir → Sign in with Apple. Dark-first, DS token; ham renk yok. Apple butonu
+/// modeli tetikler (ham `ASAuthorization` View'a SIZMAZ — akış port arkasında). Çakışma (409)
+/// birleştirme diyaloğu; iptal sessiz, hata "Tekrar Dene".
+public struct HesapBaglamaView: View {
+    @State private var model: HesapBaglamaModel
+
+    public init(model: HesapBaglamaModel) {
+        _model = State(wrappedValue: model)
+    }
+
+    public var body: some View {
+        VStack(spacing: DSSpacing.xl) {
+            valueProp
+            Spacer(minLength: DSSpacing.l)
+            statusArea
+            actions
+        }
+        .padding(DSSpacing.l)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(DSColors.background)
+        .confirmationDialog(
+            "Bu Apple kimliği başka bir hesaba bağlı",
+            isPresented: conflictDialogBinding,
+            titleVisibility: .visible
+        ) {
+            Button("Mevcut Hesabıma Geç") { model.resolveConflictBySwitching() }
+            Button("Vazgeç", role: .cancel) { model.cancelConflict() }
+        } message: {
+            Text(conflictMessage)
+        }
+    }
+
+    // MARK: - Değer önerisi (ilerlemeyi kaybetme mesajı — 02 §4.13)
+
+    private var valueProp: some View {
+        VStack(spacing: DSSpacing.m) {
+            Image(systemName: "person.crop.circle.badge.checkmark")
+                .font(DSTypography.display)
+                .foregroundStyle(DSColors.accent)
+                .accessibilityHidden(true)
+            Text("Hesabını Bağla")
+                .font(DSTypography.headingL)
+                .foregroundStyle(DSColors.textPrimary)
+            Text("Coin bakiyen, kilidini açtığın bölümler ve VIP'in güvende kalsın. Yeni cihazda kaldığın yerden devam et.")
+                .font(DSTypography.body)
+                .foregroundStyle(DSColors.textSecondary)
+                .multilineTextAlignment(.center)
+        }
+        .padding(.top, DSSpacing.xxl)
+    }
+
+    // MARK: - Durum alanı (başarı / iptal / hata)
+
+    @ViewBuilder
+    private var statusArea: some View {
+        switch model.state {
+        case .linked:
+            statusBanner(
+                icon: "checkmark.seal.fill",
+                tint: DSColors.success,
+                text: "Hesabın bağlandı."
+            )
+        case .cancelled:
+            statusBanner(
+                icon: "info.circle.fill",
+                tint: DSColors.textSecondary,
+                text: "Bağlama iptal edildi. İstediğinde tekrar deneyebilirsin."
+            )
+        case let .failed(error):
+            statusBanner(
+                icon: "exclamationmark.triangle.fill",
+                tint: DSColors.danger,
+                text: errorMessage(error)
+            )
+        case .idle, .linking, .conflict, .switching:
+            EmptyView()
+        }
+    }
+
+    private func statusBanner(icon: String, tint: Color, text: LocalizedStringKey) -> some View {
+        HStack(spacing: DSSpacing.m) {
+            Image(systemName: icon)
+                .foregroundStyle(tint)
+                .accessibilityHidden(true)
+            Text(text)
+                .font(DSTypography.caption)
+                .foregroundStyle(DSColors.textSecondary)
+            Spacer(minLength: 0)
+        }
+        .padding(DSSpacing.l)
+        .background(DSColors.surface, in: RoundedRectangle(cornerRadius: DSRadius.card))
+    }
+
+    private func errorMessage(_ error: HesapBaglamaError) -> LocalizedStringKey {
+        switch error {
+        case .appleUnavailable: "Apple ile giriş tamamlanamadı. Lütfen tekrar dene."
+        case .linkFailed: "Hesabın bağlanamadı. Bağlantını kontrol edip tekrar dene."
+        }
+    }
+
+    // MARK: - Aksiyonlar
+
+    private var actions: some View {
+        VStack(spacing: DSSpacing.m) {
+            appleButton
+            Button("Şimdi Değil") { model.dismiss() }
+                .font(DSTypography.body)
+                .foregroundStyle(DSColors.textSecondary)
+                .buttonStyle(.plain)
+        }
+    }
+
+    /// Sign in with Apple butonu — Apple-imzalı DS bileşeni (HIG beyaz stil; ham renk DS'te).
+    /// Modeli tetikler; ham `ASAuthorization` buraya SIZMAZ. İşlemde (`model.isBusy`) spinner +
+    /// devre dışı; ayrıca yeniden-başlatılamaz durumlarda (`canStartLinking`) devre dışı.
+    private var appleButton: some View {
+        DSAppleSignInButton("Apple ile Devam Et", isLoading: model.isBusy) {
+            // Yalnız yeniden-başlatılabilir durumlardan tetiklenir (model kapısıyla birebir): uçuşta,
+            // çakışma kararı beklerken ve başarı sonrası NO-OP (çift didLink / çakışma kaybı yok).
+            guard canStartLinking else { return }
+            if isTerminal {
+                model.reset() // .cancelled/.failed → temizle, sonra yeni akış
+            }
+            model.startAppleLinking()
+        }
+        .disabled(!canStartLinking)
+    }
+
+    // MARK: - Türetimler
+
+    /// Model `canRestart` kapısının View aynası: yeni bağlama yalnız idle/benign-iptal/hata'dan
+    /// başlar; uçuşta, çakışma kararı beklerken ve başarı sonrası buton devre dışı.
+    private var canStartLinking: Bool {
+        switch model.state {
+        case .idle, .cancelled, .failed: true
+        case .linking, .switching, .conflict, .linked: false
+        }
+    }
+
+    private var isTerminal: Bool {
+        switch model.state {
+        case .cancelled, .failed: true
+        case .idle, .linking, .conflict, .switching, .linked: false
+        }
+    }
+
+    private var conflictMessage: String {
+        guard case let .conflict(conflict) = model.state else { return "" }
+        let base = "Bu hesabın kimliği \(conflict.existingAccountMasked). "
+        return conflict.willDiscardGuestData
+            ? base + "Mevcut hesabına geçersen bu cihazdaki misafir ilerlemen kaybolur."
+            : base + "Mevcut hesabına geçebilir veya vazgeçebilirsin."
+    }
+
+    private var conflictDialogBinding: Binding<Bool> {
+        Binding(
+            get: {
+                if case .conflict = model.state {
+                    true
+                } else {
+                    false
+                }
+            },
+            set: { presented in
+                if !presented {
+                    model.cancelConflict()
+                }
+            }
+        )
+    }
+}
