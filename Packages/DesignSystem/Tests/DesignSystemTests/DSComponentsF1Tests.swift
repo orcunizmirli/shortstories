@@ -319,6 +319,60 @@ struct DSAvatarTests {
     }
 }
 
+// MARK: - Renk yardımcısı (color-space bağımsız RGBA karşılaştırma)
+
+@MainActor
+private func rgba(_ color: Color, _ style: UIUserInterfaceStyle) -> [CGFloat] {
+    var r: CGFloat = 0
+    var g: CGFloat = 0
+    var b: CGFloat = 0
+    var a: CGFloat = 0
+    UIColor(color)
+        .resolvedColor(with: UITraitCollection(userInterfaceStyle: style))
+        .getRed(&r, green: &g, blue: &b, alpha: &a)
+    return [r, g, b, a]
+}
+
+// MARK: - DSButton (yıkıcı stil — review #14)
+
+@Suite("DSButton")
+@MainActor
+struct DSButtonTests {
+    @Test func destructiveStyleUsesDangerBackgroundAndWhiteForeground() {
+        // Yıkıcı CTA'nın ham renkleri (danger zemin + beyaz metin) DS bileşeninde yaşar; feature
+        // view'ı yalnız `.destructive` semantiğini seçer (03 §4.1).
+        let button = DSButton("Sil", style: .destructive) {}
+        #expect(rgba(button.background, .dark) == rgba(DSColors.danger, .dark))
+        #expect(rgba(button.foreground, .dark) == [1, 1, 1, 1]) // beyaz
+        _ = button.body
+    }
+
+    @Test func tumStillerKuruluyor() {
+        for style in [DSButton.Style.primary, .secondary, .coinCTA, .destructive] {
+            _ = DSButton("Etiket", style: style) {}.body
+        }
+    }
+}
+
+// MARK: - DSAppleSignInButton (Apple-imzalı buton — review #14)
+
+@Suite("DSAppleSignInButton")
+@MainActor
+struct DSAppleSignInButtonTests {
+    @Test func appleHIGWhiteBackgroundBlackForeground() {
+        let button = DSAppleSignInButton("Apple ile Devam Et") {}
+        // Apple-imzalı görünüm theme-invariant beyaz zemin + siyah ön plan (ham renk yalnız DS'te).
+        #expect(rgba(button.background, .dark) == [1, 1, 1, 1]) // beyaz
+        #expect(rgba(button.background, .light) == [1, 1, 1, 1])
+        #expect(rgba(button.foreground, .dark) == [0, 0, 0, 1]) // siyah
+    }
+
+    @Test func kuruluyorVeYuklenmeDurumu() {
+        _ = DSAppleSignInButton("Apple ile Devam Et") {}.body
+        _ = DSAppleSignInButton("Apple ile Devam Et", isLoading: true) {}.body
+    }
+}
+
 // MARK: - Token sanity genişletmesi
 
 @Suite("Token sanity — E2 genişletme")

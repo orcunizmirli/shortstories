@@ -8,6 +8,8 @@ public struct DSButton: View {
         case secondary
         /// coinGold zemin — kanon paywall/coin CTA'sı.
         case coinCTA
+        /// Yıkıcı eylem (hesap silme vb.) — `danger` zemin üstünde beyaz metin (SS-133).
+        case destructive
     }
 
     public enum Size: Sendable {
@@ -61,19 +63,23 @@ public struct DSButton: View {
         .disabled(isLoading)
     }
 
-    private var background: Color {
+    /// Bileşen-içi zemin türetimi (03 §4.1 katman 3) — `internal` yalnız izole test için.
+    var background: Color {
         switch style {
         case .primary: DSColors.accent
         case .secondary: DSColors.surfaceElevated
         case .coinCTA: DSColors.coinGold
+        case .destructive: DSColors.danger
         }
     }
 
-    private var foreground: Color {
+    /// Bileşen-içi ön plan (zemin üstü metin) türetimi — ham renk YALNIZ burada yaşar.
+    var foreground: Color {
         switch style {
         case .primary: .white
         case .secondary: DSColors.textPrimary
         case .coinCTA: .black // gold zemin üstünde kontrast için koyu
+        case .destructive: .white // danger (kırmızı) zemin üstünde beyaz
         }
     }
 }
