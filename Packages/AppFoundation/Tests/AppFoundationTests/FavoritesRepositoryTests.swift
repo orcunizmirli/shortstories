@@ -1,0 +1,86 @@
+import Foundation
+import Testing
+@testable import AppFoundation
+
+struct FavoritesRepositoryTests {
+    private func makeRepo() throws -> any FavoritesRepository {
+        try PersistenceStore(inMemory: true).makeFavoritesRepository()
+    }
+
+    @Test func addThenIsFavorite() async throws {
+        let repo = try makeRepo()
+        try await repo.addFavorite(SeriesID("s-1"), at: Date(timeIntervalSince1970: 1000))
+        #expect(try await repo.isFavorite(SeriesID("s-1")))
+        #expect(try await repo.isFavorite(SeriesID("s-2")) == false)
+    }
+
+    @Test func favoritesSortedByRecency() async throws {
+        let repo = try makeRepo()
+        try await repo.addFavorite(SeriesID("s-old"), at: Date(timeIntervalSince1970: 1000))
+        try await repo.addFavorite(SeriesID("s-new"), at: Date(timeIntervalSince1970: 3000))
+        try await repo.addFavorite(SeriesID("s-mid"), at: Date(timeIntervalSince1970: 2000))
+
+        let list = try await repo.favorites()
+        #expect(list.map(\.seriesID) == [SeriesID("s-new"), SeriesID("s-mid"), SeriesID("s-old")])
+    }
+
+    @Test func addQueuesPendingAdd() async throws {
+        let repo = try makeRepo()
+        try await repo.addFavorite(SeriesID("s-1"), at: Date(timeIntervalSince1970: 1000))
+        let pending = try await repo.pendingSync()
+        #expect(pending == [PendingFavoriteSync(seriesID: SeriesID("s-1"), state: .pendingAdd)])
+    }
+
+    @Test func removingUnsyncedPendingAddDeletesImmediately() async throws {
+        let repo = try makeRepo()
+        try await repo.addFavorite(SeriesID("s-1"), at: Date(timeIntervalSince1970: 1000))
+        try await repo.removeFavorite(SeriesID("s-1"))
+
+        #expect(try await repo.isFavorite(SeriesID("s-1")) == false)
+        // Hiç senkronlanmamış kayıt doğrudan silindiği için kuyruk boş.
+        #expect(try await repo.pendingSync().isEmpty)
+    }
+
+    @Test func removingSyncedFavoriteQueuesPendingRemove() async throws {
+        let repo = try makeRepo()
+        try await repo.addFavorite(SeriesID("s-1"), at: Date(timeIntervalSince1970: 1000))
+        try await repo.confirmAdd(SeriesID("s-1")) // synced
+
+        try await repo.removeFavorite(SeriesID("s-1"))
+        // pendingRemove olan kayıt artık favori sayılmaz.
+        #expect(try await repo.isFavorite(SeriesID("s-1")) == false)
+        #expect(try await repo.favorites().isEmpty)
+        #expect(try await repo.pendingSync() == [PendingFavoriteSync(seriesID: SeriesID("s-1"), state: .pendingRemove)])
+    }
+
+    @Test func reAddingPendingRemoveGoesBackToPendingAdd() async throws {
+        let repo = try makeRepo()
+        try await repo.addFavorite(SeriesID("s-1"), at: Date(timeIntervalSince1970: 1000))
+        try await repo.confirmAdd(SeriesID("s-1"))
+        try await repo.removeFavorite(SeriesID("s-1")) // pendingRemove
+        try await repo.addFavorite(SeriesID("s-1"), at: Date(timeIntervalSince1970: 4000)) // geri ekle
+
+        #expect(try await repo.isFavorite(SeriesID("s-1")))
+        #expect(try await repo.pendingSync() == [PendingFavoriteSync(seriesID: SeriesID("s-1"), state: .pendingAdd)])
+    }
+
+    @Test func confirmAddClearsPending() async throws {
+        let repo = try makeRepo()
+        try await repo.addFavorite(SeriesID("s-1"), at: Date(timeIntervalSince1970: 1000))
+        try await repo.confirmAdd(SeriesID("s-1"))
+        #expect(try await repo.pendingSync().isEmpty)
+        #expect(try await repo.isFavorite(SeriesID("s-1")))
+    }
+
+    @Test func confirmRemovalDeletesRecord() async throws {
+        let repo = try makeRepo()
+        try await repo.addFavorite(SeriesID("s-1"), at: Date(timeIntervalSince1970: 1000))
+        try await repo.confirmAdd(SeriesID("s-1"))
+        try await repo.removeFavorite(SeriesID("s-1")) // pendingRemove
+        try await repo.confirmRemoval(SeriesID("s-1"))
+
+        #expect(try await repo.isFavorite(SeriesID("s-1")) == false)
+        #expect(try await repo.pendingSync().isEmpty)
+        #expect(try await repo.favorites().isEmpty)
+    }
+}
