@@ -21,6 +21,9 @@ targets:
       # CatalogHost yalnız DesignSystemCatalog target'ına aittir; iki @main çakışmasını önler.
       - path: App
         excludes: ["CatalogHost/**"]
+      # SS-141 rich push SAF çekirdeği — NSE target'ıyla PAYLAŞILAN dosya. App target'a da derlenir ki
+      # AppTests `@testable import ShortSeriesApp` ile izole test edebilsin (NSE runtime testi olmadan).
+      - path: SharedPush
     dependencies:
       - { package: AppFoundation }
       - { package: DesignSystem }
@@ -32,6 +35,9 @@ targets:
       - { package: WalletKit }
       - { package: RewardsKit }
       - { package: ProfileKit }
+      # SS-141 rich push: NSE app'e gömülür (Embed App Extensions). `embed: true` kopyalama fazını,
+      # target bağımlılığı da build sırasını sağlar → `ShortSeriesApp` build'i NSE'yi de derler.
+      - { target: NotificationServiceExtension, embed: true }
     # SS-142 platform kaydı: custom scheme (CFBundleURLTypes) + universal link (associated-domains).
     # Bu iki giriş noktası olmadan gelen link platformda tetiklenmez (onOpenURL çağrılmaz / AASA
     # eşleşmez). GENERATE_INFOPLIST_FILE array anahtarları (URL types) taşıyamadığından üretilen
@@ -68,6 +74,36 @@ targets:
         TARGETED_DEVICE_FAMILY: "1"            # iPhone-only (kanon §2)
         SWIFT_VERSION: "6.0"
         GENERATE_INFOPLIST_FILE: NO            # açık Info.plist (yukarıdaki info:) — array anahtarları için
+        CODE_SIGN_STYLE: Automatic
+  NotificationServiceExtension:                 # SS-141 rich push — Notification Service Extension (NSE)
+    type: app-extension
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      # NSE'ye özgü UN köprüsü + görsel indirme.
+      - path: NotificationServiceExtension
+      # SS-141 SAF çekirdeği: App target'ıyla PAYLAŞILAN kaynak (aynı kategori kimlikleri + parse mantığı
+      # hem NSE runtime'ında hem AppTests'te). NSE'nin kendi @main/UIKit'i YOK — yalnız bu paylaşılan dosya.
+      - path: SharedPush
+    dependencies:
+      - { package: AppFoundation }              # PushPayload/PushCampaignType (extension-safe, saf Foundation)
+    info:
+      path: NotificationServiceExtension/Info.plist
+      properties:
+        # Sürüm anahtarları ana app (0.1.0 / 1) ile EŞLEŞMELİ — eşleşmezse embedded binary doğrulama uyarısı.
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.usernotifications.service
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).NotificationService
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.shortseries.app.NotificationService
+        MARKETING_VERSION: 0.1.0
+        CURRENT_PROJECT_VERSION: 1
+        TARGETED_DEVICE_FAMILY: "1"            # iPhone-only (kanon §2)
+        SWIFT_VERSION: "6.0"
+        GENERATE_INFOPLIST_FILE: NO            # açık Info.plist (yukarıdaki info:) — NSExtension nested dict için
         CODE_SIGN_STYLE: Automatic
   ShortSeriesAppTests:                          # App/DI adaptörlerinin SAF dönüşüm birim testleri
     type: bundle.unit-test

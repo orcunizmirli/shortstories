@@ -31,7 +31,31 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         // dokunularak yapıldıysa sistem yine `userNotificationCenter(_:didReceive:)`i (delegate atandıktan
         // sonra) çağırır → oradan `PushService` → soğuk açılışta `LaunchCoordinator` PendingRoute (02 §5.6).
         UNUserNotificationCenter.current().delegate = self
+        // SS-141 rich push: kategori + aksiyon butonlarını kaydet. Kimlikler NSE'nin
+        // `content.categoryIdentifier`e yazdığıyla AYNIDIR (`RichPushCategory`) → butonlar eşleşir.
+        // İzinden bağımsızdır (kayıt, bildirim gösterildiğinde aksiyonların çözülebilmesi içindir).
+        UNUserNotificationCenter.current().setNotificationCategories(Self.richPushCategories())
         return true
+    }
+
+    /// Saf `RichPushCategory.all` tanımlarını UN tiplerine köprüler (UN tipleri saf çekirdeğe sızmasın diye
+    /// çeviri BURADA yapılır). Aksiyonu olan tek buton foreground'dur (dokununca uygulama açılır → deep link).
+    private static func richPushCategories() -> Set<UNNotificationCategory> {
+        Set(RichPushCategory.all.map { descriptor in
+            let actions = descriptor.actions.map { action in
+                UNNotificationAction(
+                    identifier: action.identifier,
+                    title: action.title,
+                    options: action.opensApp ? [.foreground] : []
+                )
+            }
+            return UNNotificationCategory(
+                identifier: descriptor.identifier,
+                actions: actions,
+                intentIdentifiers: [],
+                options: []
+            )
+        })
     }
 
     // MARK: - APNs kayıt sonucu

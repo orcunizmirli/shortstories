@@ -2,6 +2,7 @@
 included:
   - App
   - Packages
+  - NotificationServiceExtension
 excluded:
   - .build
   - DerivedData
