@@ -6,7 +6,76 @@ import Testing
 /// yalnız yeni-bölüm + devam-et; F2/bilinmeyen tip → nil (sessiz yok say). `type` yoksa rota şeklinden
 /// coarse türetim (02 §5.6 tipsiz örnek).
 struct PushPayloadTests {
-    // MARK: - Açık `type` (kanonik sözleşme)
+    // MARK: - Kanonik camelCase wire sözleşmesi (07 §6.1 / 05 §1.7 "Wire formatı camelCase")
+
+    /// SS-141 ORTA bulgu: kanonik backend payload'ı 07 §6.1 camelCase anahtarlar (`deeplink`,
+    /// `campaignType`, `campaignId`) taşır. Parse bunu çözemezse push tap routing + NSE kategori
+    /// atanmaz. 07 §6.1 örneğinin BİREBİR aynısı.
+    @Test func canonicalCamelCaseNewEpisodeParses() throws {
+        let payload = try #require(PushPayload(userInfo: [
+            "campaignId": "newep_2026w28_a",
+            "campaignType": "new_episode",
+            "deeplink": "shortseries://series/srs_123/episode/12?t=0",
+            "imageURL": "https://cdn.example.com/cover_srs_123.jpg"
+        ]))
+        #expect(payload.type == .newEpisode)
+        #expect(payload.campaignID == "newep_2026w28_a")
+        #expect(payload.route == URL(string: "shortseries://series/srs_123/episode/12?t=0"))
+    }
+
+    @Test func canonicalCamelCaseContinueParses() throws {
+        let payload = try #require(PushPayload(userInfo: [
+            "campaignId": "resume_x",
+            "campaignType": "continue",
+            "deeplink": "shortseries://play/srs_123?t=42"
+        ]))
+        #expect(payload.type == .continueWatching)
+        #expect(payload.campaignID == "resume_x")
+    }
+
+    @Test func camelCaseSeriesIdParses() throws {
+        let payload = try #require(PushPayload(userInfo: [
+            "campaignType": "new_episode",
+            "deeplink": "shortseries://series/srs_123/episode/13",
+            "seriesId": "srs_123"
+        ]))
+        #expect(payload.seriesID == "srs_123")
+    }
+
+    @Test func camelCaseUnknownTypeIgnored() {
+        // F2/bilinmeyen tip camelCase gelse de sessizce reddedilir (F1 gate korunur).
+        #expect(PushPayload(userInfo: [
+            "campaignType": "coin_reward",
+            "deeplink": "shortseries://store/coins"
+        ]) == nil)
+    }
+
+    @Test func camelCaseTypelessDeeplinkDerivesType() throws {
+        // `campaignType` yok, yalnız `deeplink` → rota şeklinden coarse türetim.
+        let payload = try #require(PushPayload(userInfo: [
+            "deeplink": "shortseries://series/srs_123/episode/13",
+            "campaignId": "new_ep"
+        ]))
+        #expect(payload.type == .newEpisode)
+        #expect(payload.campaignID == "new_ep")
+    }
+
+    @Test func canonicalKeysWinOverLegacyWhenBothPresent() throws {
+        // Sözleşme kanonik camelCase'tir; ikisi de gelirse otoriter anahtar kazanır (deterministik).
+        let payload = try #require(PushPayload(userInfo: [
+            "campaignType": "new_episode",
+            "type": "continue",
+            "deeplink": "shortseries://series/srs_123/episode/13",
+            "route": "shortseries://play/srs_999?t=5",
+            "campaignId": "canonical_id",
+            "campaign_id": "legacy_id"
+        ]))
+        #expect(payload.type == .newEpisode)
+        #expect(payload.route == URL(string: "shortseries://series/srs_123/episode/13"))
+        #expect(payload.campaignID == "canonical_id")
+    }
+
+    // MARK: - Açık `type` (legacy snake_case sözleşmesi — regresyon koruması)
 
     @Test func explicitNewEpisodeParses() throws {
         let payload = try #require(PushPayload(userInfo: [

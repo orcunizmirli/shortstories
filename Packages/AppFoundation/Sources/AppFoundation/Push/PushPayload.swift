@@ -15,15 +15,18 @@ public enum PushCampaignType: String, Sendable, Equatable, CaseIterable {
 /// Parse SAF ve deterministiktir (gerçek APNs olmadan test edilir, deliverable 4).
 ///
 /// F1 GATE (task kapsamı): yalnız yeni-bölüm + devam-et; diğer/eksik tip → `nil` (sessiz yok say,
-/// 02 §5.6 hata dalı). Payload sözleşmesi (SS-141): `route` (deep link, zorunlu), `type` (kampanya
-/// tipi discriminator), `campaign_id` (atıf), `series_id` (opsiyonel analitik). 02 §5.6 örneği `type`
-/// taşımayabilir → tip o durumda rota şeklinden coarse türetilir (aşağıda).
+/// 02 §5.6 hata dalı). Kanonik payload sözleşmesi (07 §6.1 + 05 §1.7 "Wire formatı camelCase"):
+/// `deeplink` (deep link, zorunlu), `campaignType` (kampanya tipi discriminator), `campaignId` (atıf),
+/// `seriesId` (opsiyonel analitik). Parse SAVUNMACIDIR: harici/güvenilmeyen backend girdisi olduğu
+/// için legacy snake_case anahtarlar (`route`/`type`/`campaign_id`/`series_id`) da köprülenir (SS-141
+/// görsel anahtarı `imageURL`/`image_url`/`image` ile aynı desen). `campaignType` taşımayan payload →
+/// tip rota şeklinden coarse türetilir (aşağıda).
 public struct PushPayload: Sendable, Equatable {
     /// Kampanya tipi (analitik `push_type`).
     public let type: PushCampaignType
-    /// Kampanya kimliği (analitik `campaign_id`; 02 §5.6 payload `campaign_id`). Opsiyonel.
+    /// Kampanya kimliği (kanonik payload `campaignId`; analitik `campaign_id`). Opsiyonel.
     public let campaignID: String?
-    /// Deep link hedefi (02 §5.6 payload `route`; `shortseries://...` veya universal link).
+    /// Deep link hedefi (kanonik payload `deeplink`; `shortseries://...` veya universal link).
     public let route: URL
     /// Analitik `series_id` (opsiyonel; payload'da yoksa App çözülmüş rota'dan türetir).
     public let seriesID: String?
@@ -35,19 +38,43 @@ public struct PushPayload: Sendable, Equatable {
         self.seriesID = seriesID
     }
 
-    /// APNs `userInfo` sözlüğünden çözer. `route` ZORUNLU; `type` açıksa onu kullanır (F2/bilinmeyen →
-    /// `nil`), yoksa rota şeklinden türetir (02 §5.6 tipsiz örnek). Çözülemezse `nil`.
+    /// Deep link rota anahtar adayları — kanonik `deeplink` (07 §6.1) birincil; `route` legacy fallback.
+    private static let routeKeys = ["deeplink", "route"]
+    /// Kampanya tipi anahtar adayları — kanonik `campaignType` birincil; `type` legacy fallback.
+    private static let typeKeys = ["campaignType", "type"]
+    /// Kampanya kimliği anahtar adayları — kanonik `campaignId` birincil; `campaign_id` legacy fallback.
+    private static let campaignIDKeys = ["campaignId", "campaign_id"]
+    /// Analitik series kimliği anahtar adayları — kanonik `seriesId` birincil; `series_id` legacy fallback.
+    private static let seriesIDKeys = ["seriesId", "series_id"]
+
+    /// APNs `userInfo` sözlüğünden çözer. Rota (`deeplink`/`route`) ZORUNLU; tip (`campaignType`/`type`)
+    /// açıksa onu kullanır (F2/bilinmeyen → `nil`), yoksa rota şeklinden türetir (07 §6.2 tipsiz örnek).
+    /// Kanonik camelCase birincil, legacy snake_case fallback (savunmacı köprüleme). Çözülemezse `nil`.
     public init?(userInfo: [AnyHashable: Any]) {
-        guard let routeString = Self.string(userInfo["route"]),
+        guard let routeString = Self.string(forKeys: Self.routeKeys, in: userInfo),
               let route = URL(string: routeString),
-              let type = Self.resolveType(explicit: Self.string(userInfo["type"]), route: route)
+              let type = Self.resolveType(
+                  explicit: Self.string(forKeys: Self.typeKeys, in: userInfo),
+                  route: route
+              )
         else { return nil }
         self.init(
             type: type,
-            campaignID: Self.string(userInfo["campaign_id"]),
+            campaignID: Self.string(forKeys: Self.campaignIDKeys, in: userInfo),
             route: route,
-            seriesID: Self.string(userInfo["series_id"])
+            seriesID: Self.string(forKeys: Self.seriesIDKeys, in: userInfo)
         )
+    }
+
+    /// Anahtar adaylarını SIRAYLA dener; ilk boş-olmayan `String` değerini döndürür (kanonik önce),
+    /// hiçbiri yoksa `nil`. Sözleşme drift'ine karşı savunmacı köprü (SS-141 `imageKeys` deseni).
+    private static func string(forKeys keys: [String], in userInfo: [AnyHashable: Any]) -> String? {
+        for key in keys {
+            if let value = string(userInfo[key]) {
+                return value
+            }
+        }
+        return nil
     }
 
     /// Boş olmayan `String` değerini çıkarır; diğer tip/boş/eksik → `nil`.

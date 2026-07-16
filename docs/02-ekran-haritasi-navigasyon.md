@@ -817,7 +817,7 @@ Aşağıdaki akışlar sprint kabul testlerinin temelidir. Her adımda köşeli 
 
 ### 5.6 Akış 6 — Push'tan deep link ile bölüme gelme
 
-1. APNs rich push gelir: "Dizi X'in yeni bölümü yayında! 🎬" + kapak görseli; payload: `{"route": "shortseries://series/srs_123/episode/13", "campaign_id": "new_ep"}`.
+1. APNs rich push gelir: "Dizi X'in yeni bölümü yayında! 🎬" + kapak görseli; payload (kanonik camelCase wire, `07-retention-gamification.md` §6.1 + `05-veri-modeli-api.md` §1.7): `{"deeplink": "shortseries://series/srs_123/episode/13", "campaignId": "new_ep"}`.
 2. Kullanıcı push'a dokunur. [`push_open {campaign_id, push_type: new_episode}`]
 3. **Cold start ise:** Splash çalışır, rota `PendingRoute` olarak saklanır; root hazır olunca işlenir. **Warm ise:** rota anında işlenir.
 4. Route çözümü: Ana Sayfa sekmesi seçilir → `PlayerFeed` bağlamsal olarak `srs_123 / bölüm 13`e konumlanır. Bölüm metadata'sı feed cache'inde yoksa tekil `episode` fetch edilir (spinner'lı geçiş kartı, hedef < 1.5 sn).
