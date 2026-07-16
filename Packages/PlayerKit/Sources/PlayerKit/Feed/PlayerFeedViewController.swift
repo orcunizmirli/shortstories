@@ -22,6 +22,14 @@ public final class PlayerFeedViewController: UIViewController {
     private var tapInterpreter = FeedTapInterpreter()
     private var autoAdvanceTask: Task<Void, Never>?
     private var needsInitialActivation = true
+    /// Bekleyen feed-entry/seed (SS-062/065): ilk aktivasyonda director'a verilir, bir kez
+    /// tüketilir. nil ise feed varsayılan For You akışını index 0'dan açar. `internal`:
+    /// companion `+Seed` dosyası okur/yazar (VC ile aynı MainActor).
+    var pendingSeed: FeedEntry?
+    /// Seed ile çözülen ilk indeks (SS-062/065): seed'lenen kart İLK gösterilir. Layout
+    /// hazır olunca (viewDidLayoutSubviews) BİR KEZ programatik/animasyonsuz uygulanır —
+    /// bounds sıfırken `scrollToItem` çalışmaz; hangisi son gelirse (settle/layout) tetikler.
+    var pendingInitialScrollIndex: Int?
     /// Public scroll-delegate metotlarını VC yüzeyinden ayıran internal proxy (04 §2.4).
     private let scrollProxy = FeedScrollProxy()
     /// Programatik kaydırma (auto-advance) yerleşince uygulanacak settle.
@@ -55,9 +63,11 @@ public final class PlayerFeedViewController: UIViewController {
         viewModel: PlayerFeedViewModel,
         playerPool: PlayerPool,
         prefetch: PrefetchController,
-        analytics: any AnalyticsTracking
+        analytics: any AnalyticsTracking,
+        entry: FeedEntry? = nil
     ) {
         self.viewModel = viewModel
+        pendingSeed = entry
         director = FeedPlaybackDirector(
             pool: playerPool,
             prefetch: prefetch,
@@ -106,6 +116,8 @@ public final class PlayerFeedViewController: UIViewController {
         else { return }
         layout.itemSize = collectionView.bounds.size
         layout.invalidateLayout()
+        // Seed'lenen kart ilk gösterilir (SS-062/065): layout hazır olunca konumlan.
+        applyPendingInitialScrollIfPossible()
     }
 
     override public func viewWillDisappear(_ animated: Bool) {
@@ -138,8 +150,9 @@ public final class PlayerFeedViewController: UIViewController {
             await director.updateItems(newItems)
             guard let self else { return }
             if shouldActivateFirst {
-                // İlk açılış: doğrudan video ile başlar (02 §4.3); devam kaydı varsa resume.
-                await performSettle(at: 0, startType: .tap)
+                // İlk açılış: doğrudan video ile başlar (02 §4.3); seed varsa seed'lenen
+                // içerik/konumdan, yoksa index 0'dan devam kaydıyla resume (SS-062/065).
+                await performInitialActivation()
             } else if let reactivateIndex {
                 // 04 §9.2 / 02 §4.3.6: kilit açıldı, kart yerinde oynatmaya başlar.
                 let outcome = await self.director.reactivateAfterUnlock(at: reactivateIndex, now: Date())
@@ -183,9 +196,11 @@ public final class PlayerFeedViewController: UIViewController {
             // İlk aktivasyon yarışı (denetim): updateItems'ın settle'dan ÖNCE koştuğunu
             // garanti eder — settle boş items görüp .none dönemez (02 §5.1 ilk video < 3 sn).
             await director.updateItems(snapshotItems)
-            await self?.performSettle(at: 0, startType: .tap)
+            await self?.performInitialActivation()
         }
     }
+
+    // İlk aktivasyon / seed ilk gösterimi (SS-062/065): PlayerFeedViewController+Seed.swift.
 
     // MARK: - Collection view kurulumu
 
@@ -248,7 +263,7 @@ public final class PlayerFeedViewController: UIViewController {
         handleSettleOutcome(outcome, at: index)
     }
 
-    private func handleSettleOutcome(_ outcome: FeedPlaybackDirector.SettleOutcome, at index: Int) {
+    func handleSettleOutcome(_ outcome: FeedPlaybackDirector.SettleOutcome, at index: Int) {
         switch outcome {
         case let .activated(handle, episode):
             if lockedIndex == index {

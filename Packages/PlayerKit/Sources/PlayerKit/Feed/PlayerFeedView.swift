@@ -11,20 +11,26 @@ public struct PlayerFeedView: UIViewControllerRepresentable {
     private let playerPool: PlayerPool
     private let prefetch: PrefetchController
     private let analytics: any AnalyticsTracking
+    private let entry: FeedEntry?
     private weak var delegate: (any PlayerFeedDelegate)?
 
+    /// `entry`: feed-entry/seed (SS-062/065) — feed'i belirli bir dizi/bölüm ve konumdan
+    /// başlatır ("kaldığın yerden devam"). nil (varsayılan) ise For You akışı baştan açılır;
+    /// mevcut çağrılar bu varsayılanla değişmeden çalışır (geriye-uyumlu genişletme, 04 §2.4).
     public init(
         viewModel: PlayerFeedViewModel,
         playerPool: PlayerPool,
         prefetch: PrefetchController,
         analytics: any AnalyticsTracking,
-        delegate: (any PlayerFeedDelegate)? = nil
+        delegate: (any PlayerFeedDelegate)? = nil,
+        entry: FeedEntry? = nil
     ) {
         self.viewModel = viewModel
         self.playerPool = playerPool
         self.prefetch = prefetch
         self.analytics = analytics
         self.delegate = delegate
+        self.entry = entry
     }
 
     public func makeUIViewController(context _: Context) -> PlayerFeedViewController {
@@ -32,7 +38,8 @@ public struct PlayerFeedView: UIViewControllerRepresentable {
             viewModel: viewModel,
             playerPool: playerPool,
             prefetch: prefetch,
-            analytics: analytics
+            analytics: analytics,
+            entry: entry
         )
         controller.delegate = delegate
         return controller

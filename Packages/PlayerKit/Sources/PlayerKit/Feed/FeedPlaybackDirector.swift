@@ -21,21 +21,34 @@ actor FeedPlaybackDirector {
         case none
     }
 
+    /// İlk yerleşim sonucu (SS-062/065 seed): seed ile çözülen (ya da varsayılan 0)
+    /// indeks + settle çıktısı. VC hangi kartın oynatıldığını (delegate/binding/ilk
+    /// gösterim) bilmek için indeksi kullanır — çözüm direktörde olduğundan geri döner.
+    struct InitialSettle: Sendable {
+        let index: Int
+        let outcome: SettleOutcome
+    }
+
     private let pool: any FeedPlaybackPooling
     private let prefetch: any FeedPrefetching
     private let metrics: PlayerMetricsCollector
     private let poolSizeProvider: @Sendable () async -> Int
 
-    private var items: [FeedItem] = []
-    private var activeIndex: Int?
-    private var activeHandle: PlaybackHandle?
+    // Actor-izole durum. Jest kontrolünün kullandıkları `internal`'dır çünkü aynı actor'ün
+    // companion dosyası (`+Controls`) okur/yazar — izolasyon korunur, yalnız görünürlük genişler.
+    var items: [FeedItem] = []
+    var activeIndex: Int?
+    var activeHandle: PlaybackHandle?
     /// İdempotent kilit tetiği (04 §9 kabul kriteri: çift sheet açılmaz).
     private var notifiedLockedIndex: Int?
     /// Hız menüsü tercihi (04 §8.2); uzun basma 2x bunun üzerine geçici biner.
-    private var preferredRate: Double = 1.0
+    var preferredRate: Double = 1.0
     private var isAutoAdvanceEnabled = true
     /// Bölüm sonuna KIRPILAN kullanıcı seek'i auto-next tetiklemez (04 §8.1).
-    private var suppressNextAutoAdvance = false
+    var suppressNextAutoAdvance = false
+    /// Bekleyen feed-entry/seed (SS-062/065): ilk yerleşimde BİR KEZ tüketilir; sonrası
+    /// mevcut For You/auto-advance akışı. nil ise varsayılan davranış (index 0) korunur.
+    private var pendingSeed: FeedEntry?
     /// Serileştirme kuyruğu: her operasyon bir öncekinin bitişini bekler.
     private var tail: Task<Void, Never>?
     private var playedToEndWatchTask: Task<Void, Never>?
@@ -76,6 +89,12 @@ actor FeedPlaybackDirector {
         isAutoAdvanceEnabled = enabled
     }
 
+    /// Feed-entry/seed'i kaydeder (SS-062/065): ilk yerleşim (`settleInitial`) bunu
+    /// tüketir. Seed edilmeden çağrılmazsa feed varsayılan olarak index 0'dan açılır.
+    func seed(_ entry: FeedEntry) {
+        pendingSeed = entry
+    }
+
     var currentActiveIndex: Int? {
         activeIndex
     }
@@ -84,6 +103,14 @@ actor FeedPlaybackDirector {
 
     func settle(at index: Int, startType: PlaybackStartType, now: Date) async -> SettleOutcome {
         await serialized { await self.performSettle(at: index, startType: startType, now: now) }
+    }
+
+    /// İlk aktivasyon (SS-062/065): seed varsa seed'lenen içeriği İLK gösterir ve verilen
+    /// konumdan oynatır (seed bir kez tüketilir); yoksa index 0'dan başlar — mevcut For You
+    /// davranışı DEĞİŞMEZ. Sonrası mevcut auto-advance akışına devam eder (04 §8.6). Çözülen
+    /// indeks çıktının yanında döner (VC ilk gösterim/binding için kullanır). Serileşir.
+    func settleInitial(startType: PlaybackStartType, now: Date) async -> InitialSettle {
+        await serialized { await self.performInitialSettle(startType: startType, now: now) }
     }
 
     /// İlk kare görünür oldu (AVPlayerLayer.isReadyForDisplay — 04 §13). Bayat
@@ -97,65 +124,7 @@ actor FeedPlaybackDirector {
         await metrics.recordFirstFrame(for: episode, at: now)
     }
 
-    // MARK: - Jest → oynatma kontrolü
-
-    /// Tek tap (04 §8.1): anında play/pause.
-    func togglePlayPause() async {
-        guard let handle = activeHandle else { return }
-        switch await handle.currentState() {
-        case .playing, .stalled:
-            await handle.pause()
-        case .paused, .readyAtFirstFrame:
-            await handle.play()
-        case .idle, .loading, .failed:
-            break
-        }
-    }
-
-    /// Çift tap (04 §8): tek tap'in anında uygulanmış etkisi geri alınır, ±10 sn
-    /// seek uygulanır (250 ms bekleme YAPILMAZ stratejisinin ikinci yarısı).
-    func revertToggleAndSeek(offsetSeconds: Double) async {
-        await togglePlayPause()
-        await seekByOffset(offsetSeconds)
-    }
-
-    /// ±10 sn seek; hedef bölüm sınırlarına kırpılır. Sona kırpılan seek'te
-    /// auto-next bastırılır (04 §8.1 — kullanıcı bekletilir).
-    func seekByOffset(_ offsetSeconds: Double) async {
-        guard let handle = activeHandle,
-              let index = activeIndex,
-              items.indices.contains(index),
-              let episode = items[index].episode
-        else { return }
-        let duration = Double(episode.durationSec)
-        let current = await handle.engine.currentPositionSeconds()
-        let target = FeedSeekPolicy.targetSeconds(
-            current: current,
-            offsetSeconds: offsetSeconds,
-            durationSeconds: duration
-        )
-        if offsetSeconds > 0, target >= duration {
-            suppressNextAutoAdvance = true
-        }
-        // Çift-tap ±10 sn: hızlı TOLERANT seek (04 §8.1 / 01 PLR-02); keskin `.zero` yalnız scrubber.
-        await handle.seekTolerant(toSeconds: target)
-    }
-
-    /// Uzun basma (04 §8.1): basılıyken 2x, bırakınca tercih hızına dönüş. Hıza
-    /// geçmeden ÖNCE ton koruması uygulanır (01 PLR-03: `.timeDomain`).
-    func setHoldSpeed(_ active: Bool) async {
-        guard let handle = activeHandle else { return }
-        let rate = active ? FeedHoldSpeedPolicy.holdRate : preferredRate
-        await handle.engine.setPitchPreservation(rate != 1.0)
-        await handle.setRate(rate)
-    }
-
-    /// Hız menüsü tercihi (04 §8.2; kalıcılaştırma SS-131). Ton koruması uygulanır (01 PLR-03).
-    func setPreferredRate(_ rate: Double) async {
-        preferredRate = rate
-        await activeHandle?.engine.setPitchPreservation(rate != 1.0)
-        await activeHandle?.setRate(rate)
-    }
+    // Jest → oynatma kontrolü (04 §8.1/§8.2): FeedPlaybackDirector+Controls.swift.
 
     // MARK: - Swipe niyeti (t0 = scrollViewWillEndDragging — 04 §13.1)
 
@@ -199,6 +168,25 @@ private extension FeedPlaybackDirector {
         return await performSettle(at: index, startType: .tap, now: now)
     }
 
+    /// İlk yerleşim (SS-062/065): seed'i çözer (bir kez tüketir) ve seed edilen indeks +
+    /// konumdan settle eder; seed yok/eşleşmiyorsa index 0'dan (mevcut davranış). Seed konumu
+    /// `resumePositionOverride` olarak akar — nil ise öğenin kendi `FeedResumePolicy` kaydı geçerli.
+    func performInitialSettle(startType: PlaybackStartType, now: Date) async -> InitialSettle {
+        let seed = pendingSeed
+        pendingSeed = nil
+        guard let seed, let resolution = FeedSeedPolicy.resolve(entry: seed, in: items) else {
+            let outcome = await performSettle(at: 0, startType: startType, now: now)
+            return InitialSettle(index: 0, outcome: outcome)
+        }
+        let outcome = await performSettle(
+            at: resolution.index,
+            startType: startType,
+            now: now,
+            resumePositionOverride: resolution.startPositionSeconds
+        )
+        return InitialSettle(index: resolution.index, outcome: outcome)
+    }
+
     func performPauseActive() async {
         await activeHandle?.pause()
     }
@@ -212,7 +200,14 @@ private extension FeedPlaybackDirector {
         await pool.drain(keepPlayers: true)
     }
 
-    func performSettle(at index: Int, startType: PlaybackStartType, now: Date) async -> SettleOutcome {
+    /// `resumePositionOverride`: seed'lenen başlangıç konumu (SS-065). nil ise öğenin kendi
+    /// `FeedResumePolicy` kaydı geçerli — mevcut tüm çağıranlar bu varsayılanla değişmez kalır.
+    func performSettle(
+        at index: Int,
+        startType: PlaybackStartType,
+        now: Date,
+        resumePositionOverride: Double? = nil
+    ) async -> SettleOutcome {
         guard items.indices.contains(index) else { return .none }
         if index == activeIndex, activeHandle != nil || notifiedLockedIndex == index {
             return .none // idempotent: aynı kartta tekrar settle / çift kilit tetiği yok
@@ -231,7 +226,7 @@ private extension FeedPlaybackDirector {
             index: index,
             direction: (activeIndex ?? (index - 1)) <= index ? .forward : .backward,
             startType: startType,
-            resumePosition: FeedResumePolicy.resumePosition(for: items[index]),
+            resumePosition: resumePositionOverride ?? FeedResumePolicy.resumePosition(for: items[index]),
             now: now
         )
         let direction = context.direction
