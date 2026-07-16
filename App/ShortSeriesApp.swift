@@ -7,6 +7,8 @@ import SwiftUI
 @main
 struct ShortSeriesApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+    /// Foreground'a dönüş → APNs token/izin senkronu (SS-140 token rotasyonu + izin takibi).
+    @Environment(\.scenePhase) private var scenePhase
 
     private let dependencies: any Dependencies
     @State private var coordinator: AppCoordinator
@@ -31,6 +33,17 @@ struct ShortSeriesApp: App {
                 .environment(\.dependencies, dependencies)
                 .preferredColorScheme(.dark) // kanon §2: dark-locked
                 .onOpenURL { coordinator.open($0) } // SS-142: sıcak açılış deep link
+                .task {
+                    // SS-140: AppDelegate'i kompozisyon köküne bağla (tamponlanan APNs token / soğuk
+                    // açılış push'u boşalır) ve açılış token/izin senkronunu yap.
+                    appDelegate.pushService = coordinator.pushService
+                    await coordinator.pushService.refreshRegistration()
+                }
+                .onChange(of: scenePhase) { _, phase in
+                    if phase == .active {
+                        Task { await coordinator.pushService.refreshRegistration() }
+                    }
+                }
         }
     }
 

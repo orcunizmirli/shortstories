@@ -15,6 +15,9 @@ final class AppCoordinator {
     let launch: LaunchCoordinator
     let tabCoordinator: TabCoordinator
 
+    /// SS-140/143 push orkestratörü — `AppDelegate` bunu bağlar (token kaydı + push→deep-link).
+    let pushService: PushService
+
     /// Feature-özel canlı servis + port kompozisyonu (03 §5): BİR KEZ kompozisyon kökünde kurulur.
     let composition: AppComposition
     private let dependencies: any Dependencies
@@ -27,12 +30,19 @@ final class AppCoordinator {
 
         // Canlı işbirlikçileri closure ile bağla (LaunchCoordinator kompozisyona bağımlı DEĞİL; test
         // edilebilirlik için). Closure'lar `self`'i DEĞİL yalnız gereken servisleri yakalar → döngü yok.
-        launch = LaunchCoordinator(
+        let launch = LaunchCoordinator(
             preferences: dependencies.preferences,
             preload: { await Self.coldStartPreload(dependencies: dependencies, composition: composition) },
             makeOnboarding: { onFinish in composition.makeOnboardingModel(onFinish: onFinish) },
             dispatchToTabs: { route, source in tabCoordinator.handle(route, source: source) }
         )
+        self.launch = launch
+
+        // SS-140/143: çözülmüş push rotalarını launch katmanına delege et — soğuk açılışta `PendingRoute`,
+        // Tab'lar hazırsa anında (03 §3.2 kural 6, 02 §5.6 adım 3). `self` yakalanmaz → döngü yok.
+        pushService = composition.makePushService(dispatch: { route, source in
+            launch.dispatch(route, source: source)
+        })
     }
 
     // MARK: - SS-060 çekirdek ön-yükleme (Splash arka planı)

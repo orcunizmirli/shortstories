@@ -88,6 +88,9 @@ enum AnalyticsEventRegistry {
         // Profil / ayarlar / hesap (08 §3.6)
         "profile_row_tapped",
         "settings_changed",
+        // Push atıf (08 §3.6): `push_open` istemci-tarafı (AppFoundation/App emit eder); `push_received`
+        // İSTEMCİDEN GÖNDERİLMEZ — teslimat backend'de APNs yanıtından loglanır (08 §3.6 Not).
+        "push_open",
         "push_disabled",
         "link_account_started",
         "link_account_success",

@@ -54,6 +54,10 @@ final class AppComposition {
     /// Ağ koşulu monitörü (SS-026) — player veri-tasarrufu/bitrate kararları.
     let networkCondition: NWNetworkConditionProvider
 
+    /// APNs cihaz token'ı kayıt servisi (SS-140) — `POST /devices` (idempotent). Onboarding izni +
+    /// her açılış (izin varsa) token'ı buraya akıtır; `PushService` sarar.
+    let deviceTokenRegistrar: any DeviceTokenRegistering
+
     // MARK: - Cüzdan satın-alma grafiği (SS-090/091) — WalletKit sheet'leri buradan beslenir
 
     /// Coin paket kataloğu + StoreKit ürün yükleme portu (CoinMagazasi/VIPAbonelik `StorefrontLoading`).
@@ -95,6 +99,15 @@ final class AppComposition {
         )
         taskProgress = LiveTaskProgressStore()
         networkCondition = NWNetworkConditionProvider()
+
+        // SS-140: cihaz kimliği + kayıt snapshot'ı `SessionManager` ile AYNI Keychain'de (`.deviceID`);
+        // token PII değeri UserDefaults'a yazılmaz. Ortam DEBUG/TestFlight'ta sandbox, App Store'da production.
+        deviceTokenRegistrar = LiveDeviceTokenRegistrar(
+            apiClient: apiClient,
+            secureStore: dependencies.secureStore,
+            environment: Self.apnsEnvironment,
+            logger: dependencies.logger
+        )
 
         // Cüzdan satın-alma grafiği: tek StoreKit ürün servisi StorefrontLoader ve satın alma
         // servisi arasında paylaşılır (ürün cache'i tekilleşir).
@@ -310,8 +323,36 @@ final class AppComposition {
             tracking: LiveAppTrackingRequester(),
             analytics: dependencies.analytics,
             attEnabled: dependencies.featureFlags.value(for: OnboardingFlags.attPromptEnabled),
+            // SS-140: bildirim izni VERİLİNCE APNs kaydını tetikle (canlı UIApplication sarması).
+            remoteNotifications: LiveRemoteNotificationRegistering(),
             onFinish: onFinish
         )
+    }
+
+    /// SS-140/143 push orkestratörü (`AppDelegate` bunu bağlar). `dispatch` çözülmüş push rotasını
+    /// launch katmanına akıtır (soğuk açılış PendingRoute mantığı orada). `optIn` = ProfileKit ana
+    /// bildirim anahtarı (`POST /devices notificationOptIn`).
+    func makePushService(
+        dispatch: @escaping @MainActor (DeepLinkRoute, DeepLinkSource) -> Void
+    ) -> PushService {
+        let preferences = dependencies.preferences
+        return PushService(
+            registrar: deviceTokenRegistrar,
+            analytics: dependencies.analytics,
+            remoteRegistration: LiveRemoteNotificationRegistering(),
+            authorization: LiveNotificationAuthorizationReader(),
+            optInProvider: { NotificationPreferences.read(from: preferences).primaryEnabled },
+            dispatch: dispatch
+        )
+    }
+
+    /// APNs teslim ortamı (05 §4.9 `environment`): DEBUG/TestFlight sandbox, App Store production token.
+    static var apnsEnvironment: APNsEnvironment {
+        #if DEBUG
+            .sandbox
+        #else
+            .production
+        #endif
     }
 
     /// Uygulama sürümü (Profil alt bölgesi) — Info.plist'ten.

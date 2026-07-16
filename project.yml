@@ -49,12 +49,17 @@ targets:
             CFBundleURLName: com.shortseries.app
             CFBundleURLSchemes:
               - shortseries
+        UIBackgroundModes:                        # SS-140: sessiz/arka plan push teslimi (content-available)
+          - remote-notification
     entitlements:
       path: App/ShortSeriesApp.entitlements
       properties:
         # Universal link: https://shortseries.app/... path'leri uygulamaya çözülür (02 §8.1.1 AASA).
         com.apple.developer.associated-domains:
           - applinks:shortseries.app
+        # SS-140 APNs kaydı: registerForRemoteNotifications() bu entitlement olmadan token üretmez.
+        # Debug/simulator 'development'; App Store dağıtımı 'production' (release entitlements ayrımı SS-006).
+        aps-environment: development
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.shortseries.app

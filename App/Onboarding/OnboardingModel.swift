@@ -74,6 +74,10 @@ final class OnboardingModel {
     private let language: any OnboardingLanguageWriting
     private let preferences: any PreferencesStoring
     private let notifications: any NotificationAuthorizationRequesting
+    /// APNs uzak-bildirim kaydı tetikleyicisi (SS-140): bildirim izni VERİLİNCE `registerForRemote
+    /// Notifications()` çağrılır → token akışı başlar. İzin verilmezse çağrılmaz (izin yoksa kayıt yok).
+    /// Opsiyonel: onboarding testleri (izin akışı) bunu enjekte etmeden koşabilir.
+    private let remoteNotifications: (any RemoteNotificationRegistering)?
     private let tracking: any AppTrackingRequesting
     private let analytics: any AnalyticsTracking
     /// ATT istemi bayrağı (08 §9.1) — kapalıysa ATT adımı hiç gösterilmez, event üretilmez.
@@ -94,6 +98,7 @@ final class OnboardingModel {
         tracking: any AppTrackingRequesting,
         analytics: any AnalyticsTracking,
         attEnabled: Bool,
+        remoteNotifications: (any RemoteNotificationRegistering)? = nil,
         now: @escaping () -> Date = { Date() },
         onFinish: (@MainActor (Completion) -> Void)? = nil
     ) {
@@ -103,6 +108,7 @@ final class OnboardingModel {
         self.language = language
         self.preferences = preferences
         self.notifications = notifications
+        self.remoteNotifications = remoteNotifications
         self.tracking = tracking
         self.analytics = analytics
         self.attEnabled = attEnabled
@@ -206,6 +212,11 @@ final class OnboardingModel {
         analytics.track("onboarding_push_prompt", parameters: [
             "action": .string(result == .granted ? "grant" : "deny")
         ])
+        // SS-140: izin VERİLDİYSE APNs kaydını tetikle (token akışı → POST /devices); reddedilirse
+        // kayıt YOK. Kayıt asenkron sürer; sonuç `AppDelegate.didRegister...` → `DeviceTokenRegistering`.
+        if result == .granted {
+            remoteNotifications?.registerForRemoteNotifications()
+        }
         proceedAfterNotifications()
     }
 
