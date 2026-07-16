@@ -47,14 +47,21 @@ final class ContinueWatchingEntryModel {
         }
         let info = await catalog.seriesInfo(ids: [record.seriesID])
         let title = info[record.seriesID]?.title ?? "Kaldığın dizi"
-        let fraction = record.durationSec > 0 ? min(1, max(0, record.positionSec / record.durationSec)) : 0
-        item = Entry(
+        item = Self.entry(from: record, title: title)
+        loaded = true
+    }
+
+    /// SS-065 "devam et" yüzeyi görünürlük + değer kararı (SAF, yan etkisiz — test hedefi). Kayıt
+    /// tamamlanmışsa nil döner (yüzey çizilmez; `ContinueWatchingService` zaten tamamlananları
+    /// filtreler, bu ikinci güvenliktir). İlerleme oranı [0,1]'e kırpılır (sıfır süre → 0).
+    nonisolated static func entry(from record: WatchProgressRecord, title: String) -> Entry? {
+        guard !record.completed else { return nil }
+        return Entry(
             seriesID: record.seriesID,
             episodeID: record.episodeID,
             title: title,
             positionSec: record.positionSec,
-            progressFraction: fraction
+            progressFraction: record.progressFraction
         )
-        loaded = true
     }
 }

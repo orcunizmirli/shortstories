@@ -31,21 +31,54 @@ final class HomeCoordinator {
     /// SS-065 "kaldığın yerden devam et" giriş yüzeyi durumu.
     let continueEntry: ContinueWatchingEntryModel
 
-    /// SS-062 (App feed yükleme) bağlanana kadar bağlamsal oynatma isteğini tutar; feed sayfalama
-    /// dilimi bu intent'i tüketip doğru bölümü aktive edecektir.
+    /// Bekleyen bağlamsal oynatma isteği: RootTabView (Ana Sayfa görünür olunca / yeni intent gelince)
+    /// `seedFeedWithPendingPlaybackIfNeeded()` ile TÜKETİR → `PlaybackFeedResolver` bunu feed-entry
+    /// seed'ine çevirir. `@ObservationTracked` olduğundan `.onChange` sıcak sekmede yeni intent'i yakalar.
     private(set) var pendingPlayback: PlaybackIntent?
 
-    /// Cross-feature "bu diziyi oynat" niyeti (Listem/DiziDetay/Profil → PlayerFeed).
-    struct PlaybackIntent: Equatable {
+    /// Mount edilen `PlayerFeedView`'ı süren feed-entry (nil → For You baştan). Seed çözülünce set edilir.
+    private(set) var feedEntry: FeedEntry?
+    /// Feed remount jetonu (SwiftUI `.id`): seed çözülünce artırılır → `PlayerFeedView` yeni `entry` ile
+    /// yeniden kurulur (PlayerKit seed'i yalnız init'te/ilk aktivasyonda tüketir; canlı VC'ye enjekte
+    /// edilemez). Havuz kompozisyon kökünde (koordinatörde) yaşadığından remount player'ları KORUR
+    /// (VC.deinit → director.teardown(keepPlayers:true)).
+    private(set) var feedMountToken = 0
+    /// Sıra-dışı biten katalog fetch'i güncel seed'i ezmesin diye üretim sayacı (last-intent-wins).
+    private var seedGeneration = 0
+    /// SS-061: Ana Sayfa sekmesi aktif mi (pause/resume sinyali). `TabCoordinator` sekme değişiminde yazar.
+    private(set) var isHomeActive = true
+
+    /// Cross-feature "bu diziyi oynat" niyeti (deep-link/DiziDetay/Listem/Ana Sayfa → PlayerFeed).
+    /// `episodeID` önceden çözülmüş hedeftir (Ana Sayfa/Listem "devam et" kayıtları taşır) ve
+    /// `episodeNumber`'a göre önceliklidir; `episodeNumber` deep-link/DiziDetay'ın taşıdığı 1-tabanlı
+    /// numaradır (App katalogdan bölüm-ID'ye çözer). İkisi de nil → dizinin ilk oynatılabilir bölümü.
+    struct PlaybackIntent: Equatable, Sendable {
         let seriesID: SeriesID
         let episodeNumber: Int?
+        let episodeID: EpisodeID?
         let startPositionSec: Double
+
+        init(
+            seriesID: SeriesID,
+            episodeNumber: Int? = nil,
+            episodeID: EpisodeID? = nil,
+            startPositionSec: Double = 0
+        ) {
+            self.seriesID = seriesID
+            self.episodeNumber = episodeNumber
+            self.episodeID = episodeID
+            self.startPositionSec = startPositionSec
+        }
     }
+
+    /// SS-062 intent→feed-entry çözümleyicisi (katalog fetch; SAF eşleme `PlaybackIntentMapper`'da).
+    private let feedResolver: PlaybackFeedResolver
 
     init(composition: AppComposition, walletFlow: WalletFlowCoordinator) {
         self.composition = composition
         self.walletFlow = walletFlow
         feedViewModel = composition.makePlayerFeedViewModel()
+        feedResolver = PlaybackFeedResolver(catalog: composition.catalog)
         let pool = composition.makePlayerPool(size: 3)
         playerPool = pool
         prefetch = composition.makePrefetchController(pool: pool)
@@ -59,14 +92,17 @@ final class HomeCoordinator {
         }
     }
 
-    /// SwiftUI köprüsü — Ana Sayfa tab view'ı bunu gömer (delegate = self).
+    /// SwiftUI köprüsü — Ana Sayfa tab view'ı bunu gömer (delegate = self). `entry`: çözülmüş
+    /// bağlamsal seed (nil → For You baştan). RootTabView `.id(feedMountToken)` ile yeni seed'de
+    /// remount eder ki PlayerKit init-time seed'i taze `entry`'yi görsün.
     func makePlayerFeedView() -> PlayerFeedView {
         PlayerFeedView(
             viewModel: feedViewModel,
             playerPool: playerPool,
             prefetch: prefetch,
             analytics: composition.dependencies.analytics,
-            delegate: self
+            delegate: self,
+            entry: feedEntry
         )
     }
 
@@ -84,17 +120,20 @@ final class HomeCoordinator {
 
     // MARK: - Sekme etkinliği (SS-061 pause/resume sinyali)
 
-    /// TabCoordinator sekme değişiminde çağırır. Pause, `PlayerFeedViewController.viewWillDisappear`
-    /// tarafından otomatik yapılır (SwiftUI sekme değişiminde view hiyerarşiden çıkar → §10.4/11).
-    /// Ana Sayfa'ya DÖNÜŞTE resume için PlayerKit'te public bir kontrol girişi gerekir (feature
-    /// sealed public yüzey: init + apply(state:) + delegate); bu köprü hazır, resume feature'ın
-    /// sonraki diliminde (viewWillAppear) bağlanacak — App yalnız sinyali üretir (02 §2.3).
+    /// TabCoordinator sekme değişiminde çağırır (SS-061 pause/resume sinyali). Pause,
+    /// `PlayerFeedViewController.viewWillDisappear` tarafından otomatik yapılır (SwiftUI sekme
+    /// değişiminde view hiyerarşiden çıkar → §10.4/11) ve KAREYİ korur.
     func setActive(_ isActive: Bool) {
-        // Ana Sayfa'ya DÖNÜŞTE resume: PlayerKit `viewWillDisappear` pause eder ama simetrik resume
-        // için VC'de `viewWillAppear` → director.resume kancası gerekir; bu public kontrol girişi
-        // PlayerKit'te (feature) henüz yok → App yalnız sinyali üretir.
-        // TODO(SS-061/PlayerKit): feature public resume girişi eklenince `isActive` bu kancaya bağlanır.
-        _ = isActive
+        isHomeActive = isActive
+        // Pause SİMETRİK ve kayıpsızdır: ayrılışta `viewWillDisappear` pause + kareyi korur; dönüşte
+        // kullanıcı tek tap ile tam kaldığı kareden devam eder.
+        //
+        // Otomatik resume (dönüşte kendiliğinden oynatma) App-only KAPSAM DIŞIDIR: PlayerKit'in kapalı
+        // public yüzeyi bir resume kontrolü (aktif `handle.play()`) sunmaz; yeni feed-entry API'si yalnız
+        // SEED sağlar (belirli içerik/konumdan İLK aktivasyon). Feed-entry ile re-seed teknik olarak
+        // mümkün ama korunan kareyi kaybedip sıfırdan (yinelenen `video_start` + yeniden buffer) başlatır
+        // → kare-koruyan pause'a göre NET REGRESYON. Bu yüzden App yalnız aktif/pasif sinyalini üretir;
+        // kare-doğru auto-resume, feature resume kontrolü eklenince bu sinyale bağlanır (SS-061 sonraki dilim).
     }
 
     // MARK: - Bağlamsal oynatma (SS-062 App feed dilimi tüketir)
@@ -115,24 +154,40 @@ final class HomeCoordinator {
         return pendingPlayback
     }
 
-    /// PlayerFeed göründüğünde / yeni intent geldiğinde çağrılır (RootTabView). Bekleyen bağlamsal
-    /// oynatma isteğini TÜKETİR — deep-link `.play`/`.episode`, "Devam Et" banner'ı ve Listem "oynat"
-    /// hep buradan feed'e akar. Böylece `consumePendingPlayback()` ölü kod değildir (intent saklanıp
-    /// hiç okunmadan kalmaz).
+    /// PlayerFeed göründüğünde / yeni intent geldiğinde çağrılır (RootTabView `.task`/`.onChange`).
+    /// Bekleyen bağlamsal oynatma isteğini TÜKETİR (deep-link `.play`/`.episode`, DiziDetay/Listem
+    /// "oynat", Ana Sayfa "devam et") ve `PlaybackFeedResolver` ile feed-entry seed'ine çevirir:
+    /// katalogdan hedef bölüm çözülür, dizinin bölümleri `feedState`e akar ve `feedEntry` + remount
+    /// jetonu set edilir → `PlayerFeedView(entry:)` doğru içerik/konumdan başlar. Pending yoksa no-op.
     func seedFeedWithPendingPlaybackIfNeeded() {
         guard let intent = consumePendingPlayback() else { return }
-        // TODO(SS-062): intent → FeedItem(ler) kur (katalog/episode fetch) + `feedViewModel.feedState`e
-        // seed et; `PlayerFeedView.updateUIViewController` diff'li `apply(state:)` ile doğru bölümü/
-        // pozisyonu aktive eder. Feed yükleme dilimi (SS-062) bağlanınca tamamlanır.
-        _ = intent
+        seedGeneration &+= 1
+        let generation = seedGeneration
+        let resolver = feedResolver
+        Task { [weak self] in
+            let seed = await resolver.resolve(intent)
+            // Sıra-dışı biten fetch güncel seed'i ezmesin (last-intent-wins); çözülemezse feed'e
+            // dokunma (For You/mevcut içerik korunur — sessiz düşüş, ağ hatası feed'in kendi durumunda).
+            guard let self, let seed, seedGeneration == generation else { return }
+            applySeed(seed)
+        }
     }
 
-    /// SS-065: "devam et" yüzeyinden oynatma — kaldığı bölüm/pozisyondan.
+    /// Çözülmüş seed'i uygular: feed öğeleri + entry set edilir, remount jetonu artırılır
+    /// (RootTabView `.id` → `PlayerFeedView` yeni `entry` ile yeniden kurulur, seed ilk aktivasyonda tüketilir).
+    private func applySeed(_ seed: PlaybackFeedSeed) {
+        feedViewModel.feedState = FeedState(items: seed.items)
+        feedEntry = seed.entry
+        feedMountToken &+= 1
+    }
+
+    /// SS-065: Ana Sayfa "devam et" yüzeyinden oynatma — kaldığı BÖLÜM ve pozisyondan. Kayıt bölüm
+    /// ID'sini doğrudan taşır (numara lookup'ı yok) → seed tam bölüme çözülür.
     func resumeContinue(_ entry: ContinueWatchingEntryModel.Entry) {
-        requestPlayback(PlaybackIntent(
+        requestPlayback(PlaybackIntentMapper.continueIntent(
             seriesID: entry.seriesID,
-            episodeNumber: nil,
-            startPositionSec: entry.positionSec
+            episodeID: entry.episodeID,
+            positionSec: entry.positionSec
         ))
     }
 

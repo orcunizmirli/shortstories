@@ -62,18 +62,21 @@ extension LibraryCoordinator: ListemDelegate {
         let service = composition.continueWatchingService
         Task { [weak self] in
             let record = try? await service.latestProgress(forSeries: seriesID)
+            // Kayıt varsa TAM bölüm+konumdan (record.episodeID), yoksa dizinin ilk oynatılabilir
+            // bölümünden baştan (episodeID nil → resolver ilk oynatılabilir bölümü seçer).
             self?.tabCoordinator?.requestPlayback(HomeCoordinator.PlaybackIntent(
                 seriesID: seriesID,
-                episodeNumber: nil,
+                episodeID: record?.episodeID,
                 startPositionSec: record?.positionSec ?? 0
             ))
         }
     }
 
-    func listemResumeEpisode(seriesID: SeriesID, episodeID _: EpisodeID, startPositionSec: Double) {
+    func listemResumeEpisode(seriesID: SeriesID, episodeID: EpisodeID, startPositionSec: Double) {
+        // Devam Et kartı: bölüm ID'si doğrudan taşınır → seed tam bölüme çözülür (numara lookup'ı yok).
         tabCoordinator?.requestPlayback(HomeCoordinator.PlaybackIntent(
             seriesID: seriesID,
-            episodeNumber: nil,
+            episodeID: episodeID,
             startPositionSec: startPositionSec
         ))
     }

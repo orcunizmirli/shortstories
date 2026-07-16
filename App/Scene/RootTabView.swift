@@ -64,6 +64,10 @@ private struct HomeTabView: View {
                     .onChange(of: coordinator.pendingPlayback) { _, _ in
                         coordinator.seedFeedWithPendingPlaybackIfNeeded()
                     }
+                    // Seed çözülünce (feedMountToken artar) PlayerFeedView yeni `entry` ile REMOUNT olur:
+                    // PlayerKit seed'i yalnız init/ilk aktivasyonda tüketir → canlı VC'ye enjekte edilemez.
+                    // Havuz koordinatörde yaşadığından remount player'ları korur (teardown keepPlayers).
+                    .id(coordinator.feedMountToken)
                 if let entry = coordinator.continueEntry.item {
                     ContinueWatchingBanner(entry: entry) { coordinator.resumeContinue(entry) }
                         .padding(.horizontal, DSSpacing.l)
