@@ -27,10 +27,29 @@ struct ShortSeriesApp: App {
 
     var body: some Scene {
         WindowGroup {
-            RootTabView(app: coordinator)
+            rootView
                 .environment(\.dependencies, dependencies)
                 .preferredColorScheme(.dark) // kanon §2: dark-locked
                 .onOpenURL { coordinator.open($0) } // SS-142: sıcak açılış deep link
+        }
+    }
+
+    /// Launch routing (03 §3.1): `Splash → Onboarding | Tabs`. Durum makinesi `LaunchCoordinator`'da;
+    /// bu görünüm yalnız aktif durumu çizer. Splash arka planda ön-yükleme yapar (SS-060), onboarding
+    /// tamamlanınca durum `.tabs`'e geçer ve doğrudan video ile açılan Ana Sayfa gösterilir.
+    @ViewBuilder
+    private var rootView: some View {
+        switch coordinator.launch.launchState {
+        case .splash:
+            SplashView(launch: coordinator.launch)
+        case .onboarding:
+            if let model = coordinator.launch.onboardingModel {
+                OnboardingView(model: model) // SS-064
+            } else {
+                SplashView(launch: coordinator.launch) // teorik olarak ulaşılmaz güvenli fallback
+            }
+        case .tabs:
+            RootTabView(app: coordinator)
         }
     }
 }

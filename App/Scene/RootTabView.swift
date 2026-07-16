@@ -37,7 +37,6 @@ struct RootTabView: View {
         .tint(DSColors.accent)
         .walletFlow(app.tabCoordinator.walletFlow)
         .shareSheet(app.tabCoordinator.sharePresenter)
-        .task { app.start() }
     }
 
     private var tabSelection: Binding<TabCoordinator.Tab> {

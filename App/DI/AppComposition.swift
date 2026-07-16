@@ -295,6 +295,25 @@ final class AppComposition {
         )
     }
 
+    /// Onboarding modeli (SS-064) — dil `LanguagePreferenceService`'e yazılır, tür `PreferencesStoring`'e
+    /// persist edilir; bildirim izni + ATT canlı sistem sarmalarına (port arkası) bağlanır. ATT bayrağı
+    /// remote config'ten okunur (08 §9.1 — Faz 1 kapalı). `onFinish` Faz 2 launch routing'e bağlanır.
+    func makeOnboardingModel(
+        onFinish: (@MainActor (OnboardingModel.Completion) -> Void)? = nil
+    ) -> OnboardingModel {
+        OnboardingModel(
+            initialLanguage: languagePreferences.appLanguage,
+            genreOptions: OnboardingGenreCatalog.embedded,
+            language: languagePreferences,
+            preferences: dependencies.preferences,
+            notifications: LiveNotificationAuthorizationRequester(),
+            tracking: LiveAppTrackingRequester(),
+            analytics: dependencies.analytics,
+            attEnabled: dependencies.featureFlags.value(for: OnboardingFlags.attPromptEnabled),
+            onFinish: onFinish
+        )
+    }
+
     /// Uygulama sürümü (Profil alt bölgesi) — Info.plist'ten.
     static var appVersion: String {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0.0"

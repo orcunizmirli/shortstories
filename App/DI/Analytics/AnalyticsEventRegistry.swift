@@ -95,9 +95,13 @@ enum AnalyticsEventRegistry {
         "account_delete_started",
         "account_delete_completed",
 
-        // Onboarding (08 §3.6, ileri faz — adlar registry'de sabittir)
+        // Onboarding (08 §3.1 — SS-064 ShortSeriesApp emit eder; kanonik katalog birebir)
         "onboarding_start",
         "onboarding_step_view",
+        "onboarding_language_select",
+        "onboarding_genre_select",
+        "onboarding_push_prompt",
+        "onboarding_att_prompt",
         "onboarding_complete",
         "onboarding_skip"
     ]
