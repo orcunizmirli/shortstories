@@ -16,6 +16,10 @@ public struct SecureStoreKey: RawRepresentable, Hashable, Sendable {
     public static let deviceID = SecureStoreKey(rawValue: "auth.deviceID")
     /// Oturum kimliği snapshot'ı (`StoredSessionSnapshot` JSON'u): userID + bağlama sağlayıcısı.
     public static let sessionSnapshot = SecureStoreKey(rawValue: "auth.sessionSnapshot")
+    /// En son sunucuya gönderilen APNs kayıt snapshot'ı (`DeviceRegistrationSnapshot` JSON'u):
+    /// token + izin durumu (SS-140 idempotent kayıt kararı). Token PII değeri Keychain'de tutulur
+    /// (UserDefaults'a token YAZILMAZ — PreferencesStoring sözleşmesi).
+    public static let pushRegistration = SecureStoreKey(rawValue: "push.registrationSnapshot")
 }
 
 /// Keychain soyutlaması (03 §9): access/refresh token, anonim hesap kimliği saklar;
