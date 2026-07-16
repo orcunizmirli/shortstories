@@ -9,9 +9,9 @@ import Testing
 // index-0 davranışı değişmez; sonrası mevcut auto-advance akışına devam eder.
 // Harness/yardımcılar (makeDirector/collectDecisions) FeedPlaybackDirectorTests.swift'te.
 
-/// `.timeLimit` yalnız gerçek bir teslim-regresyonunda sonsuz asılmayı engelleyen güvenlik
-/// tavanıdır; auto-advance beklemesi OLAY-GÜDÜMLÜ'dür (`awaitDecisions`, duvar-saati poll'ü yok).
-@Suite("FeedPlaybackDirector — feed-entry/seed", .timeLimit(.minutes(1)))
+/// Auto-advance beklemesi OLAY-GÜDÜMLÜ'dür (`awaitDecision`, abone-önce-yield): duvar-saati
+/// poll'ü/tavanı yok; CI paralel-yük altında starvation teslimi geciktirse bile flake üretmez.
+@Suite("FeedPlaybackDirector — feed-entry/seed")
 struct DirectorSeedTests {
     @Test("Seed yok: settleInitial index 0'dan aktive eder (mevcut davranış)")
     func noSeedActivatesFirst() async {
@@ -83,9 +83,10 @@ struct DirectorSeedTests {
         let result = await harness.director.settleInitial(startType: .tap, now: harness.clock.now)
         #expect(result.index == 2)
 
-        harness.pool.backend(for: EpisodeID("e2"))?.emit(.playedToEnd)
-        let decisions = await awaitDecisions(1, from: harness.director)
-        #expect(decisions == [.advance(toIndex: 3)])
+        let decision = await awaitDecision(from: harness.director) {
+            harness.pool.backend(for: EpisodeID("e2"))?.emit(.playedToEnd)
+        }
+        #expect(decision == .advance(toIndex: 3))
     }
 
     @Test("Seed bir kez tüketilir: ikinci settleInitial seed'i tekrar uygulamaz")

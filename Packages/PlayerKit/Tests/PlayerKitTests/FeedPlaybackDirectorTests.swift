@@ -54,26 +54,28 @@ func collectDecisions(from director: FeedPlaybackDirector) -> (DecisionBox, Task
     return (box, task)
 }
 
-/// Auto-advance kararlarını OLAY-GÜDÜMLÜ (poll'süz) toplar: `autoAdvanceDecisions`
-/// akışını doğrudan yapısal `await` ile tüketir; ilk `count` karar gelince döner.
+/// İlk auto-advance kararını OLAY-GÜDÜMLÜ yakalar. İterator, `trigger` (playedToEnd
+/// emit'i) ateşlenmeden ÖNCE kurulur — ABONE-ÖNCE-YIELD sırası: karar `trigger`'dan
+/// hemen sonra üretilse bile ya canlı park etmiş iterator'a ya da unbounded AsyncStream
+/// buffer'ına düşer; hiçbir sıralamada kaçmaz.
 ///
-/// `eventually` gibi bir DUVAR-SAATİ tavanı YOKTUR. playedToEnd→karar zinciri çok
-/// hop'ludur (fake backend → engine olay pompası → engine actor → director watch
-/// task → director actor → continuation) ve CI paralel-yük matrisinde bu arka-plan
-/// görevleri zamanlayıcı açlığına girebilir. Değer KESİN gelir (engine `endedForCurrentLoad`
-/// latch'i + unbounded AsyncStream buffer'ı → exactly-once teslim), bu yüzden bu görev
-/// continuation'a park eder ve değer yield edildiği AN uyandırılır — kaçırılacak bir
-/// zaman-aşımı penceresi olmadığından starvation yalnız GECİKTİRİR, asla flake üretmez.
-func awaitDecisions(
-    _ count: Int,
-    from director: FeedPlaybackDirector
-) async -> [AutoAdvancePolicy.Decision] {
+/// Duvar-saati bütçesi YOKTUR (poll/deadline/`eventually` yok). playedToEnd→karar zinciri
+/// çok hop'ludur (fake backend → engine olay pompası → engine actor → director watch task →
+/// director actor → continuation) ve CI paralel-yük matrisinde bu arka-plan görevleri
+/// zamanlayıcı açlığına girip teslimi ONLARCA SANİYE geciktirebilir. Teslim KESİN'dir
+/// (engine `endedForCurrentLoad` latch'i + exactly-once + generation eşleşir + unbounded
+/// buffer + tek tüketici), bu yüzden `await next()` değer geldiği AN uyandırılır — bütçe
+/// aşımı diye bir şey olmadığından starvation yalnız GECİKTİRİR, asla flake üretmez. Gerçek
+/// bir teslim-regresyonu (karar hiç üretilmez) CI iş-seviyesi timeout'uyla yakalanır; bu
+/// yüzden per-test duvar-saati tavanı (`.timeLimit`) KULLANILMAZ — o, yavaş teslimi hatalı
+/// yere fail'e çevirir.
+func awaitDecision(
+    from director: FeedPlaybackDirector,
+    triggering trigger: () -> Void
+) async -> AutoAdvancePolicy.Decision? {
     var iterator = director.autoAdvanceDecisions.makeAsyncIterator()
-    var collected: [AutoAdvancePolicy.Decision] = []
-    while collected.count < count, let decision = await iterator.next() {
-        collected.append(decision)
-    }
-    return collected
+    trigger()
+    return await iterator.next()
 }
 
 // MARK: - Pencere/lease koreografisi (SS-044 çekirdeği)
