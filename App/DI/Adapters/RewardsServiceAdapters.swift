@@ -199,23 +199,19 @@ struct WalletBalanceWire: Decodable, Sendable {
 }
 
 /// Claim'de kredilenen ödül (05 §4.7 `reward{coins,bucket,expiresAt}`). Wire'da `isStreakBonus` alanı
-/// YOKTUR — domain bayrağı `bucket`ten türetilir: standart `earned`/`purchased` bucket'ları düzenli
-/// ödüldür (false); sunucu bir streak bonusunu ayrı bucket ile işaretlerse true. `bucket` opsiyonel
-/// tutulur ki eksik/tanınmayan değer decode'u ÇÖKERTMESİN (05 §1 kural 10).
-/// TODO(SS-11x, RewardsKit/sözleşme): 7. gün streak bonusu sözleşmede ayrı bir sinyal taşımıyor
-/// (`bucket` her zaman "earned"). Analitik `is_streak_bonus` daima false kalır; gerçek 7. gün tespiti
-/// ya sözleşmeye ayrı alan/bucket eklenmesini ya da `checkin` state'inden türetmeyi gerektirir (RewardsKit
-/// `RewardTaskClaimResult`/model dokunuşu — bu PR kapsamı dışı: App yalnız).
+/// YOKTUR ve `bucket`ten TÜRETİLEMEZ (SS-141): check-in `bucket` HER ZAMAN 'earned'dır (05 §2.10;
+/// Bucket enum yalnız purchased/earned/unknown) — o coin-TÜRÜdür, 7. gün streak sinyali DEĞİL. Bayrak
+/// SERVER-otoriter check-in state'inden türetilir (`CheckInCycle.isStreakBonus(forClaimedState:)`), bu
+/// yüzden `reward(isStreakBonus:)` çağıran (claim result wire) hesaplayıp geçirir. `bucket` artık
+/// okunmaz — eksik/tanınmayan alanlar decode'da zaten yutulur (05 §1 kural 10).
 struct ClaimedRewardWire: Decodable, Sendable {
     let coins: Int
-    let bucket: String?
     let expiresAt: Date?
 
-    /// Streak bonusunu işaretleyen (varsayımsal) ayrı bucket değeri; standart keseler bunun dışındadır.
-    static let streakBonusBucket = "streakBonus"
-
-    var reward: ClaimedReward {
-        ClaimedReward(coins: coins, isStreakBonus: bucket == Self.streakBonusBucket, expiresAt: expiresAt)
+    /// `isStreakBonus` bucket'tan DEĞİL çağırandan gelir: check-in claim'i onu check-in state'inden
+    /// türetir; görev claim'i her zaman `false` geçer (streak bonusu check-in'e özgüdür).
+    func reward(isStreakBonus: Bool) -> ClaimedReward {
+        ClaimedReward(coins: coins, isStreakBonus: isStreakBonus, expiresAt: expiresAt)
     }
 }
 
@@ -226,7 +222,15 @@ struct CheckInClaimResultWire: Decodable, Sendable {
 
     var result: CheckInClaimResult {
         // Server-otoriter bakiye: üst-seviye `coinBalance` YOK; `wallet` kesesinden türetilir.
-        CheckInClaimResult(reward: reward.reward, checkin: checkin.state, coinBalance: wallet.coinBalance)
+        // isStreakBonus SERVER bucket'ından (daima 'earned') DEĞİL, claim-sonrası check-in state'inden
+        // türetilir (SS-141): bonus günü (cycleDay 7) claim edildiyse true. Bonus günü kuralı ödül
+        // tablosundan bağımsızdır (yalnız döngü uzunluğu), varsayılan `CheckInCycle` yeterlidir.
+        let state = checkin.state
+        return CheckInClaimResult(
+            reward: reward.reward(isStreakBonus: CheckInCycle().isStreakBonus(forClaimedState: state)),
+            checkin: state,
+            coinBalance: wallet.coinBalance
+        )
     }
 }
 
@@ -268,6 +272,7 @@ struct MissionClaimResultWire: Decodable, Sendable {
 
     var result: RewardTaskClaimResult {
         // Server-otoriter bakiye: üst-seviye `coinBalance` YOK; `wallet` kesesinden türetilir.
-        RewardTaskClaimResult(reward: reward.reward, task: mission.task, coinBalance: wallet.coinBalance)
+        // Görev claim'i streak bonusu DEĞİLDİR (check-in'e özgü) → isStreakBonus daima false.
+        RewardTaskClaimResult(reward: reward.reward(isStreakBonus: false), task: mission.task, coinBalance: wallet.coinBalance)
     }
 }

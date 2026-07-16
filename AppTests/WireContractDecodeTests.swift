@@ -75,7 +75,9 @@ final class WireContractDecodeTests: XCTestCase {
 
     // MARK: - #4 checkin/claim 200 zarfı: reward{coins,bucket,expiresAt} + checkin + wallet (05 satır 930-936)
 
-    func testCheckInClaimResultDerivesBalanceFromWalletAndMapsBucket() throws {
+    func testCheckInClaimResultDerivesBalanceFromWalletAndStreakBonusFalseOnNonBonusDay() throws {
+        // SS-141: isStreakBonus SERVER bucket'ından (daima 'earned') değil, claim-sonrası check-in
+        // state'inden türetilir. cycleDay 3 bonus günü DEĞİL → false (bucket "earned" görmezden gelinir).
         let json = """
         {
           "reward": { "coins": 30, "bucket": "earned", "expiresAt": "2026-08-10T00:00:00Z" },
@@ -88,8 +90,7 @@ final class WireContractDecodeTests: XCTestCase {
         """
         let result = try decode(CheckInClaimResultWire.self, json).result
         XCTAssertEqual(result.reward.coins, 30)
-        // `earned` bucket düzenli ödül → isStreakBonus false (05'te reward.bucket daima "earned").
-        XCTAssertFalse(result.reward.isStreakBonus)
+        XCTAssertFalse(result.reward.isStreakBonus) // cycleDay 3 → bonus değil
         XCTAssertEqual(result.reward.expiresAt, isoDate("2026-08-10T00:00:00Z"))
         XCTAssertEqual(result.checkin.cycleDay, 3)
         XCTAssertTrue(result.checkin.todayClaimed)
@@ -97,21 +98,39 @@ final class WireContractDecodeTests: XCTestCase {
         XCTAssertEqual(result.coinBalance, 135)
     }
 
-    func testClaimedRewardMapsStreakBonusBucketToTrue() throws {
-        // Sunucu ileride streak bonusunu ayrı bucket ile işaretlerse doğru eşlenmeli (ileri-uyum).
+    func testCheckInClaimOnDay7DerivesStreakBonusTrueDespiteEarnedBucket() throws {
+        // SS-141 çekirdek düzeltme: bucket "earned" (streak sinyali taşımaz) OLSA DA, claim-sonrası
+        // check-in state bonus günü (cycleDay 7) diyorsa isStreakBonus TRUE türetilir.
+        let json = """
+        {
+          "reward": { "coins": 50, "bucket": "earned", "expiresAt": null },
+          "checkin": { "cycleDay": 7, "todayClaimed": true, "todayReward": 50,
+                       "schedule": [], "streakDays": 7, "streakBonusAt": null, "streakBonusCoins": null },
+          "wallet": { "purchasedCoins": 0, "earnedCoins": 190, "version": 200 }
+        }
+        """
+        let result = try decode(CheckInClaimResultWire.self, json).result
+        XCTAssertTrue(result.reward.isStreakBonus) // cycleDay 7 → bonus günü
+        XCTAssertEqual(result.reward.coins, 50)
+        XCTAssertEqual(result.checkin.cycleDay, 7)
+    }
+
+    func testClaimedRewardWireUsesCallerStreakFlagNotBucket() throws {
+        // Bucket artık okunmuyor: gövdedeki "bucket" alanı yutulur, isStreakBonus çağırandan gelir.
         let wire = try decode(
             ClaimedRewardWire.self,
             #"{ "coins": 100, "bucket": "streakBonus", "expiresAt": null }"#
         )
-        XCTAssertTrue(wire.reward.isStreakBonus)
-        XCTAssertEqual(wire.reward.coins, 100)
+        XCTAssertFalse(wire.reward(isStreakBonus: false).isStreakBonus) // bucket "streakBonus" yok sayılır
+        XCTAssertTrue(wire.reward(isStreakBonus: true).isStreakBonus)
+        XCTAssertEqual(wire.reward(isStreakBonus: false).coins, 100)
     }
 
     func testClaimedRewardMissingBucketDoesNotCrash() throws {
-        // `bucket` opsiyonel: eksik/tanınmayan değer decode'u çökertmez (05 §1 kural 10).
+        // `bucket` alanı eksik/olsa da decode çökmez (05 §1 kural 10); isStreakBonus çağırandan gelir.
         let wire = try decode(ClaimedRewardWire.self, #"{ "coins": 15, "expiresAt": null }"#)
-        XCTAssertFalse(wire.reward.isStreakBonus)
-        XCTAssertEqual(wire.reward.coins, 15)
+        XCTAssertFalse(wire.reward(isStreakBonus: false).isStreakBonus)
+        XCTAssertEqual(wire.reward(isStreakBonus: false).coins, 15)
     }
 
     // MARK: - #4 mission/claim 200 zarfı: reward + mission + wallet (05 satır 941 "aynı kalıp")

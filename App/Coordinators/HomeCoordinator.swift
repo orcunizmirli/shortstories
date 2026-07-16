@@ -191,10 +191,18 @@ final class HomeCoordinator {
         ))
     }
 
+    /// SS-050/062: bölüm kilidi açıldı (coin/reklam/VIP) → feed'de o bölümü oynatılabilir işaretle.
+    /// Yeni `feedState` `PlayerFeedView.updateUIViewController` üzerinden PlayerKit'e diff'li akar
+    /// ve `PlayerFeedViewController.apply(state:)` kilitli kartı YERİNDE reactivate eder (04 §9.2).
+    /// `feedMountToken` BİLİNÇLİ artırılmaz: reactivation korunan kareyi kaybetmemek için remount
+    /// DEĞİL diff'li apply olmalıdır (remount seed'i yeniden tüketip sıfırdan başlatır — regresyon).
+    /// Karar SAF (`FeedUnlockReducer`): bölüm feed'de yoksa / zaten oynatılabilirse feed'e dokunulmaz.
     private func applyUnlock(_ episodeID: EpisodeID) {
-        // TODO(SS-062): feedState'i güncelle → apply(state:) kilitli kartı yerinde reactivate eder
-        // (PlayerFeedViewController.reactivatableUnlockIndex). Feed yüklemesi bağlanınca aktifleşir.
-        _ = episodeID
+        guard let updatedItems = FeedUnlockReducer.applyingUnlock(
+            of: episodeID,
+            to: feedViewModel.feedState.items
+        ) else { return }
+        feedViewModel.feedState = FeedState(items: updatedItems)
     }
 }
 
