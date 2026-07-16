@@ -88,6 +88,15 @@ public struct CheckInCycle: Sendable, Equatable {
         cycleDay == Self.length
     }
 
+    /// Bir check-in claim'inin streak bonusu içerip içermediğini SERVER-otoriter check-in state'inden
+    /// türetir (SS-141). Sözleşmede `reward.bucket` HER ZAMAN 'earned'dır (05 §2.10; Bucket enum yalnız
+    /// purchased/earned/unknown) — o coin-TÜRÜdür, 7. gün sinyali DEĞİL — bu yüzden bucket'a GÜVENİLMEZ.
+    /// Streak bonusu sinyali claim-sonrası `state.cycleDay`'dir: bonus günü (7) claim edildiyse `true`.
+    /// Döngü sarmasında (streak 7, 14, 21…) sunucu `cycleDay`'i 7'ye sarar, dolayısıyla doğru kalır.
+    public func isStreakBonus(forClaimedState state: CheckInState) -> Bool {
+        isStreakBonusDay(cycleDay: state.cycleDay)
+    }
+
     /// Claim sonrası yeni streak (07 §3.2 sıfırlanma kuralı). Gün deltası SERVER-otoriter girdidir:
     /// - `daysSinceLastClaim <= 0` (bugün zaten claim) → değişmez (no-op).
     /// - `== 1` (ardışık gün) → `previousStreak + 1`.

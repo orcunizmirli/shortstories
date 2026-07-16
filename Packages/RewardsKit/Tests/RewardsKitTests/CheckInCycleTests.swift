@@ -57,6 +57,35 @@ struct CheckInCycleTests {
         #expect(!cycle.isStreakBonusDay(cycleDay: 1))
     }
 
+    // MARK: - Claim streak bonusu türetimi (SS-141): SERVER bucket DEĞİL, check-in state cycleDay
+
+    @Test func claimOnDay7IsStreakBonus() {
+        let cycle = CheckInCycle()
+        // Claim-sonrası check-in state'i bonus günü (cycleDay 7) diyor → streak bonusu.
+        #expect(cycle.isStreakBonus(forClaimedState: makeState(cycleDay: 7, streakDays: 7)))
+    }
+
+    @Test func claimOnDays1Through6IsNotStreakBonus() {
+        let cycle = CheckInCycle()
+        for day in 1 ... 6 {
+            #expect(!cycle.isStreakBonus(forClaimedState: makeState(cycleDay: day, streakDays: day)))
+        }
+    }
+
+    @Test func claimStreakBonusFollowsCycleWrap() {
+        // Sınır: döngü sarması — streak 7,14,21 hepsi bonus günü (server cycleDay'i 7'ye sarar).
+        let cycle = CheckInCycle()
+        for streak in [7, 14, 21] {
+            let day = cycle.cycleDay(forStreakDays: streak) // 7
+            #expect(cycle.isStreakBonus(forClaimedState: makeState(cycleDay: day, streakDays: streak)))
+        }
+        // Sarma sınır komşuları bonus DEĞİL: streak 6→gün6, 8→gün1, 13→gün6.
+        for streak in [6, 8, 13] {
+            let day = cycle.cycleDay(forStreakDays: streak)
+            #expect(!cycle.isStreakBonus(forClaimedState: makeState(cycleDay: day, streakDays: streak)))
+        }
+    }
+
     // MARK: - Streak sıfırlanma kuralı (07 §3.2, saf; gün deltası server-otoriter)
 
     @Test func streakContinuesOnConsecutiveDay() {
