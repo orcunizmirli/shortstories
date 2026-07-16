@@ -149,6 +149,7 @@ Kolonlar: event adı, kendine özgü parametreleri (ortak parametreler §2.2 har
 | Event | Parametreler | Tetiklenme anı | Sahip | 2° |
 |---|---|---|---|---|
 | `app_open` | `launch_type: "cold"\|"warm"`, `entry_point: "icon"\|"push"\|"deeplink"`, `cold_start_ms` (yalnız cold) | `Splash` görünür olduğunda; warm için `scenePhase .active` (oturum yenilenmişse) | `ShortSeriesApp` | ✔ |
+| `deeplink_opened` | `route_type` (§8.3 rota tipi: `home\|series\|episode\|play\|discover\|search\|rewards\|coin_store\|vip\|my_list\|profile\|settings\|notifications`), `source: "push"\|"universal"\|"qr"\|"internal"`, `campaign_id?` | Deep link / universal link başarıyla çözülüp hedef sekme + rota kompozisyonuna yönlendirildiğinde (02 §8.4 kural 5) | `ShortSeriesApp` | ✔ |
 | `onboarding_start` | — | `Onboarding` ilk adımı görünür | `ShortSeriesApp` | ✔ |
 | `onboarding_step_view` | `step: "language"\|"genre"\|"permissions"`, `step_index` | Her adım görünür olduğunda | `ShortSeriesApp` | ✔ |
 | `onboarding_language_select` | `language` | Dil seçimi onaylandığında | `ShortSeriesApp` | |
@@ -201,6 +202,7 @@ Kolonlar: event adı, kendine özgü parametreleri (ortak parametreler §2.2 har
 | `coin_purchase_success` | `product_id`, `price_usd`, `coin_amount`, `bonus_coin_amount`, `transaction_id`, `balance_after` | Server-side receipt doğrulaması geçip coin cüzdana yazıldığında (StoreKit başarısı DEĞİL) | `WalletKit` | ✔ |
 | `coin_purchase_fail` | `product_id`, `error_domain`, `error_code`, `stage: "storekit"\|"verification"\|"wallet"` | Herhangi bir aşamada hata | `WalletKit` | ✔ |
 | `coin_purchase_cancel` | `product_id` | StoreKit `userCancelled` | `WalletKit` | |
+| `iap_family_shared_rejected` | `product_id` | `Transaction.updates` akışında Family Sharing KAPALIyken gelen family-shared transaction reddedilip `finish()` edildiğinde | `WalletKit` | |
 | `subscription_view` | `source: "unlock_sheet"\|"profil"\|"onboarding"\|"deeplink"` | `VIPAbonelik` görünür olduğunda | `WalletKit` | ✔ |
 | `subscription_start` | `product_id` (`vip_weekly`/`vip_monthly`/`vip_yearly`), `price_usd`, `has_intro_offer: bool` | `purchase()` çağrılmadan hemen önce | `WalletKit` | ✔ |
 | `subscription_success` | `product_id`, `price_usd`, `is_intro: bool`, `transaction_id` | Doğrulanmış abonelik entitlement'ı aktifleştiğinde | `WalletKit` | ✔ |

@@ -32,6 +32,29 @@ targets:
       - { package: WalletKit }
       - { package: RewardsKit }
       - { package: ProfileKit }
+    # SS-142 platform kaydı: custom scheme (CFBundleURLTypes) + universal link (associated-domains).
+    # Bu iki giriş noktası olmadan gelen link platformda tetiklenmez (onOpenURL çağrılmaz / AASA
+    # eşleşmez). GENERATE_INFOPLIST_FILE array anahtarları (URL types) taşıyamadığından üretilen
+    # Info.plist açık tanımlanır; orientation/launch-screen anahtarları buraya taşınır (02 §8.1/§8.2).
+    info:
+      path: App/Info.plist
+      properties:
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        UILaunchScreen: {}                       # üretilen launch screen (portrait)
+        UISupportedInterfaceOrientations:        # portrait-locked (kanon §2)
+          - UIInterfaceOrientationPortrait
+        CFBundleURLTypes:                         # custom scheme shortseries:// (02 §8.1)
+          - CFBundleTypeRole: Editor
+            CFBundleURLName: com.shortseries.app
+            CFBundleURLSchemes:
+              - shortseries
+    entitlements:
+      path: App/ShortSeriesApp.entitlements
+      properties:
+        # Universal link: https://shortseries.app/... path'leri uygulamaya çözülür (02 §8.1.1 AASA).
+        com.apple.developer.associated-domains:
+          - applinks:shortseries.app
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.shortseries.app
@@ -39,10 +62,18 @@ targets:
         CURRENT_PROJECT_VERSION: 1
         TARGETED_DEVICE_FAMILY: "1"            # iPhone-only (kanon §2)
         SWIFT_VERSION: "6.0"
-        GENERATE_INFOPLIST_FILE: YES
-        INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait   # portrait-locked
-        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        GENERATE_INFOPLIST_FILE: NO            # açık Info.plist (yukarıdaki info:) — array anahtarları için
         CODE_SIGN_STYLE: Automatic
+  ShortSeriesAppTests:                          # App/DI adaptörlerinin SAF dönüşüm birim testleri
+    type: bundle.unit-test
+    platform: iOS
+    sources: [AppTests]
+    dependencies:
+      - target: ShortSeriesApp
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        SWIFT_VERSION: "6.0"
   DesignSystemCatalog:                          # SS-007 demo target
     type: application
     platform: iOS

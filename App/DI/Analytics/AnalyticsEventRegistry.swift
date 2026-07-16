@@ -1,0 +1,136 @@
+/// Analitik event kayıt defteri (08-analitik-deney.md §2.1/§2.3 TEK DOĞRULUK KAYNAĞININ istemci
+/// yansıması). Registry'de OLMAYAN bir event gönderilemez (§2.3): `AppAnalyticsTracker` her `track`
+/// çağrısını buradan doğrular. Kayıt kompozisyon kökündedir çünkü event adları feature modüllerine
+/// dağılmış olsa da (her feature kendi `analytics.track("...")` çağrısını yapar) tek doğrulama
+/// noktası App'tir — R6 gereği Firebase/gerçek sink App kompozisyonunda hapsolur.
+///
+/// Doğrulama non-destructive'dir: bilinmeyen event üretimde DÜŞÜRÜLMEZ (analitik kaybı, gerçek
+/// kullanıcı verisi, geri alınamaz), yalnız `fault` seviyesinde loglanır → drift CI/QA'da yakalanır
+/// (§2.1 adlandırma sözleşmesi ihlalleri görünür olur). Ayrıca ad biçimi (`snake_case`, boş değil)
+/// kontrol edilir.
+enum AnalyticsEventRegistry {
+    /// 08 §3 kanonik event kataloğu — feature modüllerinin GERÇEKTEN emit ettiği adların birleşimi
+    /// (kaynak taraması ile senkron) + ileri fazların bildirdiği stabil adlar. Yeni bir event eklenirken
+    /// önce buraya kaydedilir (§2.3 "önce registry").
+    static let known: Set<String> = [
+        // Ortak
+        "screen_view",
+        "app_open",
+        "deeplink_opened",
+        "deeplink_fallback",
+
+        // Player / feed (04, 08 §3.2)
+        "video_start",
+        "video_stall",
+        "feed_impression",
+        "swipe_next",
+        "swipe_prev",
+
+        // Keşfet / arama / detay (08 §3.1/§3.3)
+        "discover_refreshed",
+        "discover_shelf_see_all",
+        "discover_banner_tapped",
+        "discover_card_tapped",
+        "genre_filter_selected",
+        "tag_tapped",
+        "search_open",
+        "search_query",
+        "search_no_result",
+        "search_result_tap",
+        "series_detail_view",
+        "series_cta_tapped",
+        "episode_grid_tapped",
+        "share_tap",
+
+        // Listem (08 §3.3)
+        "mylist_segment_changed",
+        "mylist_item_removed",
+        "favorite_add",
+        "favorite_remove",
+        "favorite_opened",
+        "continue_watching_tapped",
+
+        // Monetizasyon / cüzdan (06, 08 §3.4)
+        "unlock_coin",
+        "unlock_sheet_dismissed",
+        "unlock_insufficient_coins",
+        "unlock_vip_upsell",
+        "unlock_failed",
+        "episode_unlock_prompt",
+        "auto_unlock_toggled",
+        "coin_store_view",
+        "coin_purchase_start",
+        "coin_purchase_success",
+        "coin_purchase_cancel",
+        "coin_purchase_fail",
+        "subscription_view",
+        "subscription_start",
+        "subscription_success",
+        "subscription_cancel_intent",
+        "subscription_fail",
+        "restore_tapped",
+        "iap_credited",
+        "iap_subscription_updated",
+        "iap_product_missing",
+        "iap_receipt_invalid",
+        "iap_family_shared_rejected",
+        "entitlement_mismatch",
+
+        // Ödüller / retention (07, 08 §3.5)
+        "checkin_view",
+        "checkin_claim",
+        "checkin_streak_break",
+        "mission_view",
+        "mission_progress",
+        "mission_complete",
+        "mission_claim",
+
+        // Profil / ayarlar / hesap (08 §3.6)
+        "profile_row_tapped",
+        "settings_changed",
+        "push_disabled",
+        "link_account_started",
+        "link_account_success",
+        "link_account_failed",
+        "account_delete_started",
+        "account_delete_completed",
+
+        // Onboarding (08 §3.6, ileri faz — adlar registry'de sabittir)
+        "onboarding_start",
+        "onboarding_step_view",
+        "onboarding_complete",
+        "onboarding_skip"
+    ]
+
+    /// Event adı `snake_case` kalıbına uyuyor mu (§2.1): küçük harf/rakam/alt-çizgi, harfle başlar,
+    /// boş/uç alt-çizgi yok.
+    static func isWellFormed(_ name: String) -> Bool {
+        guard let first = name.first, first.isLowercaseASCIILetter else { return false }
+        guard !name.hasSuffix("_") else { return false }
+        return name.allSatisfy { $0.isLowercaseASCIILetter || $0.isASCIIDigit || $0 == "_" }
+    }
+
+    /// Doğrulama sonucu — çağıran (tracker) buna göre loglar.
+    enum Validation: Equatable {
+        case valid
+        /// Ad biçimi bozuk (§2.1 ihlali).
+        case malformed
+        /// Biçim doğru ama registry'de yok (§2.3 ihlali — kayıtsız event).
+        case unregistered
+    }
+
+    static func validate(_ name: String) -> Validation {
+        guard isWellFormed(name) else { return .malformed }
+        return known.contains(name) ? .valid : .unregistered
+    }
+}
+
+private extension Character {
+    var isLowercaseASCIILetter: Bool {
+        ("a" ... "z").contains(self)
+    }
+
+    var isASCIIDigit: Bool {
+        ("0" ... "9").contains(self)
+    }
+}
