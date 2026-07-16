@@ -158,6 +158,18 @@ public struct APIClient: APIClientProtocol {
 
         try validate(response, data: data)
 
+        // 204/boş-gövde kısa-devresi (05 §4.2.1/§8): JSONDecoder boş `Data`'da "Unexpected end
+        // of file" fırlatır — bu, boş gövde başarılı olduğunda sahte bir hatadır. Gövde-taşımayan
+        // tip (`EmptyResponse`/boştan decode edilebilir) için `init(from:)` çağrılmadan başarı
+        // döner. Non-empty gövde davranışı DEĞİŞMEZ. Gövde gerektiren tipe boş gövde gelirse
+        // gerçek bir decoding hatası olarak yüzer.
+        if data.isEmpty {
+            if let empty = decoder.decodeEmptyBody(as: E.Response.self) {
+                return empty
+            }
+            throw AppError.network(.decoding)
+        }
+
         do {
             return try decoder.decode(E.Response.self, from: data)
         } catch {

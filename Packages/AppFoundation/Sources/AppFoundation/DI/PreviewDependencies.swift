@@ -80,6 +80,15 @@ public final class StubSessionManager: SessionManaging, @unchecked Sendable {
     public func bootstrapGuestSessionIfNeeded() async throws -> SessionState {
         lock.withLock { currentState }
     }
+
+    public func linkSession(
+        userID: String,
+        provider: AuthProvider,
+        accessToken _: String,
+        refreshToken _: String
+    ) {
+        lock.withLock { currentState = .linked(userID: userID, provider: provider) }
+    }
 }
 
 /// In-memory Keychain stub'ı; canlı uygulama `KeychainSecureStore`'dur.

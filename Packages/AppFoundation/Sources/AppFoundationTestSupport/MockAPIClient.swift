@@ -58,6 +58,14 @@ public final class MockAPIClient: APIClientProtocol, @unchecked Sendable {
         }
         switch result {
         case let .success(data):
+            // Canlı APIClient ile aynı 204/boş-gövde kısa-devresi: boş `Data` stub'ı gövde-taşımayan
+            // tip için sahte EOF üretmeden başarı döner (05 §4.2.1/§8).
+            if data.isEmpty {
+                if let empty = decoder.decodeEmptyBody(as: E.Response.self) {
+                    return empty
+                }
+                throw AppError.network(.decoding)
+            }
             do {
                 return try decoder.decode(E.Response.self, from: data)
             } catch {

@@ -42,4 +42,19 @@ public protocol SessionManaging: Sendable {
     /// Başarısızlık `AppError.auth(.guestBootstrapFailed)` olarak fırlar.
     @discardableResult
     func bootstrapGuestSessionIfNeeded() async throws -> SessionState
+
+    /// Misafir→bağlı hesap CANLI yükseltmesi (05 §4.2 `POST /auth/link` / `POST /auth/switch`
+    /// başarısı). Sunucunun döndürdüğü kimliği ve rotasyonlu token'ları alır: bellek-içi durumu
+    /// `.linked`e yükseltir, `stateUpdates`e YAYAR ve Keychain'i günceller (relaunch tutarlılığı).
+    ///
+    /// Kanon: `userId` sunucu-otoriter KORUNUR (aynı hesaba kimlik eklenir; §3.3), coin bakiyesi /
+    /// kilitli bölümler / VIP / Listem sunucu tarafında korunur — client hiçbir varlığı kaybetmez.
+    /// Yalnız auth akışları (ProfileKit adaptörü) çağırır; feature'lar durumu yalnız okur.
+    /// Tekrar çağrı idempotenttir: durum zaten hedef `.linked` ise gereksiz yayın yapılmaz.
+    func linkSession(
+        userID: String,
+        provider: AuthProvider,
+        accessToken: String,
+        refreshToken: String
+    ) async
 }

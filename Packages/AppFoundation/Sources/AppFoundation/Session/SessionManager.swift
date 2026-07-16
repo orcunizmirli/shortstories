@@ -78,6 +78,36 @@ public final class SessionManager: SessionManaging {
         return try await task.value
     }
 
+    // MARK: - Canlı bağlama yükseltmesi (05 §4.2)
+
+    /// `POST /auth/link`/`switch` başarısında ProfileKit adaptörü çağırır: bellek-içi durumu
+    /// `.linked`e yükseltir ve YAYAR (`ProfilModel.observeSession` anında görür; relaunch
+    /// gerekmez), rotasyonlu token + kimlik snapshot'ını Keychain'e yazar. `userId` sunucu-otoriter
+    /// korunur — client bakiye/entitlement gibi hiçbir varlığı kaybetmez. Tekrar-idempotent.
+    public func linkSession(
+        userID: String,
+        provider: AuthProvider,
+        accessToken: String,
+        refreshToken: String
+    ) {
+        // Keychain yazımı best-effort: başarısızlığı bellek-içi yükseltmeyi ENGELLEMEZ (canlı
+        // durum yayını asıl amaçtır; snapshot yalnız relaunch tutarlılığı içindir). Snapshot,
+        // `StoredSessionSnapshot` şemasıyla `restoreFromKeychain`in `.linked` gördüğü kayıttır.
+        try? secureStore.setString(accessToken, forKey: .accessToken)
+        try? secureStore.setString(refreshToken, forKey: .refreshToken)
+        let snapshot = StoredSessionSnapshot(userID: userID, provider: provider)
+        if let data = try? JSONEncoder().encode(snapshot) {
+            try? secureStore.setData(data, forKey: .sessionSnapshot)
+        }
+        // Tekrar-idempotent: durum zaten hedefse gereksiz yayın YAPILMAZ (abonelere kopya .linked
+        // gönderilmez).
+        let newState = SessionState.linked(userID: userID, provider: provider)
+        guard state != newState else {
+            return
+        }
+        setState(newState)
+    }
+
     // MARK: - Bootstrap
 
     private func performGuestBootstrap() async throws -> SessionState {

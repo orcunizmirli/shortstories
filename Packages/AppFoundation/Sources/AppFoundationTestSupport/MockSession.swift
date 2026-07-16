@@ -60,4 +60,24 @@ public final class MockSession: SessionManaging, @unchecked Sendable {
         }
         return state
     }
+
+    /// Canlı `SessionManager` ile aynı sözleşme: durumu `.linked`e yükseltir ve abonelere yayar.
+    /// Tekrar-idempotent (durum zaten hedefse yayın yapılmaz); token'lar mock'ta yok sayılır.
+    public func linkSession(
+        userID: String,
+        provider: AuthProvider,
+        accessToken _: String,
+        refreshToken _: String
+    ) {
+        let newState = SessionState.linked(userID: userID, provider: provider)
+        let subscribers: [AsyncStream<SessionState>.Continuation]? = lock.withLock {
+            guard currentState != newState else { return nil }
+            currentState = newState
+            return continuations
+        }
+        guard let subscribers else { return }
+        for continuation in subscribers {
+            continuation.yield(newState)
+        }
+    }
 }

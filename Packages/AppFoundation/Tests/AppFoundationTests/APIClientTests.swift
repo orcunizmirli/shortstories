@@ -48,6 +48,26 @@ private struct PostTestEndpoint: Endpoint {
     }
 }
 
+/// Gövde-taşımayan uç (05 §4.2.1/§8: e-posta start/password, analitik batch → 204 No Content).
+private struct EmptyBodyEndpoint: Endpoint {
+    typealias Response = EmptyResponse
+    var path: String {
+        "/empty"
+    }
+
+    var method: HTTPMethod {
+        .post
+    }
+
+    var requiresAuth: Bool {
+        false
+    }
+
+    var retryPolicy: RetryPolicy {
+        .never
+    }
+}
+
 /// URLProtocolStub statik durum taşır: onu kullanan TÜM suite'ler bu kökün altına girer;
 /// `.serialized` alt suite'lere özyinelemeli uygulanır ve çapraz kirlenmeyi önler.
 @Suite(.serialized)
@@ -188,6 +208,56 @@ extension URLProtocolStubSerialTests {
             }
             // offline retryable'dır: 1 ilk deneme + 2 retry
             #expect(URLProtocolStub.receivedRequests.count == 3)
+        }
+
+        // MARK: - 204 / boş gövde decode kısa-devresi
+
+        @Test func bosGovdeli204BasariDoner() async throws {
+            URLProtocolStub.setHandler { request in
+                (URLProtocolStub.httpResponse(for: request, status: 204), Data())
+            }
+
+            // Boş gövdeli 2xx: JSONDecoder'ın sahte "Unexpected end of file"i YERİNE başarı.
+            let response = try await client.send(EmptyBodyEndpoint())
+
+            #expect(response == EmptyResponse())
+            #expect(URLProtocolStub.receivedRequests.count == 1)
+        }
+
+        @Test func bosGovdeli200DeBasariDoner() async throws {
+            // 204 zorunlu değil: herhangi bir 2xx + boş gövde aynı kısa-devreye girer.
+            URLProtocolStub.setHandler { request in
+                (URLProtocolStub.httpResponse(for: request, status: 200), Data())
+            }
+
+            let response = try await client.send(EmptyBodyEndpoint())
+
+            #expect(response == EmptyResponse())
+        }
+
+        @Test func bosGovdeAmaGovdeGerektirenTipDecodingHatasiVerir() async {
+            // Boş gövde + gövde bekleyen tip: sahte EOF değil, tipli decoding hatası (sözleşme ihlali).
+            URLProtocolStub.setHandler { request in
+                (URLProtocolStub.httpResponse(for: request, status: 200), Data())
+            }
+
+            await #expect(throws: AppError.network(.decoding)) {
+                _ = try await client.send(GetTestEndpoint())
+            }
+        }
+
+        @Test func doluGovdeNormalDecodeDegismedi() async throws {
+            // Regresyon: non-empty gövde davranışı aynen korunur (kısa-devre yalnız boş gövdede).
+            URLProtocolStub.setHandler { request in
+                (
+                    URLProtocolStub.httpResponse(for: request, status: 200),
+                    Data(#"{"value":"ok"}"#.utf8)
+                )
+            }
+
+            let response = try await client.send(GetTestEndpoint())
+
+            #expect(response == TestPayload(value: "ok"))
         }
     }
 }
