@@ -144,9 +144,23 @@ final class AppComposition {
     /// RewardsKit son-görülen streak kalıcılığı → UserDefaults.
     let lastSeenStreakStore: any LastSeenStreakStoring = UserDefaultsLastSeenStreakStore()
 
-    /// LibraryKit Listem JOIN portu → ContentKit katalog.
+    /// LibraryKit Listem JOIN portu → ContentKit katalog + AppFoundation katalog cache (offline-önce).
+    /// Bölüm-ID → dizi çözümü izleme geçmişi tek kaynağından (`ContinueWatchingService`) gelir.
     var libraryCatalogReading: any LibraryCatalogReading {
-        CatalogLibraryReading(catalog: catalog)
+        let continueWatching = continueWatchingService
+        return CatalogLibraryReading(
+            catalog: catalog,
+            cache: persistence.makeCatalogCacheStore(),
+            resolveSeries: { episodeIDs in
+                var map: [EpisodeID: SeriesID] = [:]
+                for episodeID in episodeIDs {
+                    if let record = try? await continueWatching.progress(forEpisode: episodeID) {
+                        map[episodeID] = record.seriesID
+                    }
+                }
+                return map
+            }
+        )
     }
 
     /// DiscoverKit DiziDetay izleme-geçmişi portu → LibraryKit `ContinueWatchingService`.
@@ -159,9 +173,10 @@ final class AppComposition {
         FavoritesServiceGateway(service: favoritesService)
     }
 
-    /// ProfileKit hesap-bağlama servisi → `APIClient` + Keychain.
+    /// ProfileKit hesap-bağlama servisi → `APIClient` + canlı `SessionManager` (linkSession hook'u
+    /// oturumu `.linked`e yükseltir + Keychain'e yazar).
     var accountLinkingService: any AccountLinkingServicing {
-        APIAccountLinkingService(client: dependencies.apiClient, secureStore: dependencies.secureStore)
+        APIAccountLinkingService(client: dependencies.apiClient, session: dependencies.session)
     }
 
     /// ProfileKit hesap-silme + veri-indirme servisi → `APIClient`.

@@ -10,66 +10,66 @@ import ProfileKit
 
 // MARK: - Hesap bağlama (POST /auth/link, POST /auth/switch)
 
-/// ProfileKit `AccountLinkingServicing` → `APIClient` + `SecureStoring`. Başarıda dönen access/refresh
-/// token'ları Keychain'e yazar (`AuthInterceptor` anında bağlı hesabın token'ını kullanır; relaunch'ta
-/// `SessionManager.restoreFromKeychain` `.linked` görür) ve `AccountSummary` döner.
-///
-/// SINIR: `SessionManager` şu an bağlı-duruma canlı geçiş için public hook sunmaz (yalnız guest
-/// bootstrap + refresh-failure). Bu yüzden adaptör Keychain'i günceller ama BELLEK-İÇİ `session.state`'i
-/// canlı yükseltemez — o geçiş `SessionManager`'a bir link-hook eklenince (ayrı AppFoundation dilimi)
-/// tamamlanır. Delegate (`hesapBaglamaDidLink`) App coordinator'ını bilgilendirir.
+/// ProfileKit `AccountLinkingServicing` → `APIClient` + AppFoundation `SessionManaging`. Başarıda
+/// sunucunun döndürdüğü kimlik + rotasyonlu token'ları `SessionManaging.linkSession(...)` hook'una
+/// verir: hook bellek-içi oturumu CANLI `.linked`e yükseltir, `stateUpdates`e YAYAR (`ProfilModel`
+/// relaunch'sız tazelenir — `hesapBaglamaDidLink` yalnız sheet'i kapatır) VE token + kimlik
+/// snapshot'ını Keychain'e yazar (relaunch tutarlılığı). `userId` sunucu-otoriter korunur;
+/// bakiye/VIP/entitlement sunucuda tutulduğundan client hiçbir varlığı kaybetmez; tekrar çağrı
+/// idempotenttir (durum zaten `.linked` ise yayın yapılmaz). Beklenen conflict sonucu DEĞER olarak
+/// döner (sunucu 200 verir); yalnız GERÇEK hatalar throw eder (05 §4.2 sözleşmesi, port dokümanı).
 struct APIAccountLinkingService: AccountLinkingServicing {
     /// F1'de yalnız Apple bağlanır (Google/e-posta F2) — `HesapBaglamaModel.provider` ile aynı karar;
     /// o sabit @MainActor-izole olduğundan nonisolated adaptörde yerel eşdeğer tutulur.
     static let linkedProvider: AuthProvider = .apple
 
     private let client: any APIClientProtocol
-    private let secureStore: any SecureStoring
+    private let session: any SessionManaging
 
-    init(client: any APIClientProtocol, secureStore: any SecureStoring) {
+    init(client: any APIClientProtocol, session: any SessionManaging) {
         self.client = client
-        self.secureStore = secureStore
+        self.session = session
     }
 
     func link(_ credential: AppleCredential) async throws -> AccountLinkOutcome {
         let wire = try await client.send(AuthLinkEndpoint(credential: credential))
-        return try applyOutcome(wire)
+        switch wire.status {
+        case .linked:
+            guard let credentials = wire.session else { throw AppError.auth(.linkingFailed) }
+            await activateLinkedSession(credentials)
+            return .linked(AccountSummary(kind: .linked(provider: Self.linkedProvider)))
+        case .conflict:
+            guard let conflict = wire.conflict else { throw AppError.auth(.linkingFailed) }
+            return .conflict(Self.linkConflict(from: conflict))
+        }
     }
 
     func switchToExistingAccount(_ conflict: AccountLinkConflict) async throws -> AccountSummary {
         let wire = try await client.send(AuthSwitchEndpoint(switchToken: conflict.switchToken))
-        persistSession(wire.session)
+        await activateLinkedSession(wire.session)
         return AccountSummary(kind: .linked(provider: Self.linkedProvider))
     }
 
-    private func applyOutcome(_ wire: AuthLinkWire) throws -> AccountLinkOutcome {
-        switch wire.status {
-        case .linked:
-            guard let session = wire.session else { throw AppError.auth(.linkingFailed) }
-            persistSession(session)
-            return .linked(AccountSummary(kind: .linked(provider: Self.linkedProvider)))
-        case .conflict:
-            guard let conflict = wire.conflict else { throw AppError.auth(.linkingFailed) }
-            return .conflict(
-                AccountLinkConflict(
-                    existingAccountMasked: conflict.existingAccountMasked,
-                    switchToken: conflict.switchToken,
-                    willDiscardGuestData: conflict.willDiscardGuestData
-                )
-            )
-        }
+    /// Bağlama/switch başarısını CANLI oturuma yansıtır. `SessionManaging.linkSession` bellek-içi
+    /// durumu `.linked`e yükseltir + yayar VE token/snapshot'ı Keychain'e yazar — adaptör artık
+    /// Keychain'e ELLE yazmaz (tek yol). Canlı witness @MainActor senkrondur; `any SessionManaging`
+    /// üzerinden `await`lenir.
+    private func activateLinkedSession(_ credentials: SessionCredentialsWire) async {
+        await session.linkSession(
+            userID: credentials.userId,
+            provider: Self.linkedProvider,
+            accessToken: credentials.accessToken,
+            refreshToken: credentials.refreshToken
+        )
     }
 
-    /// Bağlı hesabın token + kimlik snapshot'ını Keychain'e yazar. Snapshot `StoredSessionSnapshot`
-    /// ile ŞEMA-UYUMLUDUR (`userID`/`provider` anahtarları, düz `JSONEncoder`) → relaunch'ta
-    /// `SessionManager` bunu `.linked` olarak geri yükler.
-    private func persistSession(_ session: SessionCredentialsWire) {
-        try? secureStore.setString(session.accessToken, forKey: .accessToken)
-        try? secureStore.setString(session.refreshToken, forKey: .refreshToken)
-        let snapshot = SessionSnapshotMirror(userID: session.userId, provider: Self.linkedProvider)
-        if let data = try? JSONEncoder().encode(snapshot) {
-            try? secureStore.setData(data, forKey: .sessionSnapshot)
-        }
+    /// Saf dönüşüm (izole test edilir): 409 conflict wire → ProfileKit `AccountLinkConflict`.
+    static func linkConflict(from wire: AuthLinkWire.ConflictWire) -> AccountLinkConflict {
+        AccountLinkConflict(
+            existingAccountMasked: wire.existingAccountMasked,
+            switchToken: wire.switchToken,
+            willDiscardGuestData: wire.willDiscardGuestData
+        )
     }
 }
 
@@ -195,13 +195,6 @@ private struct DataExportEndpoint: Endpoint {
 }
 
 // MARK: - Wire
-
-/// `StoredSessionSnapshot` şema aynası (App-yerel): relaunch'ta `SessionManager`'ın düz `JSONDecoder`'ı
-/// ile geri okunur (`userID`/`provider` anahtarları birebir).
-private struct SessionSnapshotMirror: Encodable {
-    let userID: String
-    let provider: AuthProvider?
-}
 
 /// Bağlı hesap oturum kimlik-bilgileri (05 §4.2 link/switch yanıtı).
 struct SessionCredentialsWire: Decodable, Sendable {

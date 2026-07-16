@@ -44,6 +44,21 @@ final class AdapterTransformTests: XCTestCase {
         XCTAssertTrue(info.isAvailable)
     }
 
+    // MARK: - Hesap bağlama conflict eşlemesi
+
+    func testLinkConflictMapping() {
+        let conflict = APIAccountLinkingService.linkConflict(
+            from: AuthLinkWire.ConflictWire(
+                existingAccountMasked: "a•••@x.com",
+                switchToken: "tok_123",
+                willDiscardGuestData: true
+            )
+        )
+        XCTAssertEqual(conflict.existingAccountMasked, "a•••@x.com")
+        XCTAssertEqual(conflict.switchToken, "tok_123")
+        XCTAssertTrue(conflict.willDiscardGuestData)
+    }
+
     // MARK: - İzleme ilerlemesi eşlemeleri
 
     func testWatchProgressRecordToDomain() {
