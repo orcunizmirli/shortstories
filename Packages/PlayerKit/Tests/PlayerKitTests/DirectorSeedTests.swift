@@ -9,10 +9,10 @@ import Testing
 // index-0 davranışı değişmez; sonrası mevcut auto-advance akışına devam eder.
 // Harness/yardımcılar (makeDirector/collectDecisions) FeedPlaybackDirectorTests.swift'te.
 
-@Suite("FeedPlaybackDirector — feed-entry/seed")
+/// `.timeLimit` yalnız gerçek bir teslim-regresyonunda sonsuz asılmayı engelleyen güvenlik
+/// tavanıdır; auto-advance beklemesi OLAY-GÜDÜMLÜ'dür (`awaitDecisions`, duvar-saati poll'ü yok).
+@Suite("FeedPlaybackDirector — feed-entry/seed", .timeLimit(.minutes(1)))
 struct DirectorSeedTests {
-    private static let decisionTimeout: TimeInterval = 15
-
     @Test("Seed yok: settleInitial index 0'dan aktive eder (mevcut davranış)")
     func noSeedActivatesFirst() async {
         let harness = await makeDirector(items: Fixture.feedItems(count: 5))
@@ -78,18 +78,14 @@ struct DirectorSeedTests {
     @Test("Seed sonrası auto-advance korunur: bölüm bitince sonraki karta geçiş")
     func autoAdvanceContinuesAfterSeed() async {
         let harness = await makeDirector(items: Fixture.feedItems(count: 5))
-        let (box, task) = collectDecisions(from: harness.director)
-        defer { task.cancel() }
 
         await harness.director.seed(FeedEntry(seriesID: SeriesID("s1"), episodeID: EpisodeID("e2")))
         let result = await harness.director.settleInitial(startType: .tap, now: harness.clock.now)
         #expect(result.index == 2)
 
         harness.pool.backend(for: EpisodeID("e2"))?.emit(.playedToEnd)
-        let arrived = await eventually(timeoutSeconds: Self.decisionTimeout) {
-            box.decisions == [.advance(toIndex: 3)]
-        }
-        #expect(arrived)
+        let decisions = await awaitDecisions(1, from: harness.director)
+        #expect(decisions == [.advance(toIndex: 3)])
     }
 
     @Test("Seed bir kez tüketilir: ikinci settleInitial seed'i tekrar uygulamaz")

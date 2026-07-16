@@ -54,6 +54,28 @@ func collectDecisions(from director: FeedPlaybackDirector) -> (DecisionBox, Task
     return (box, task)
 }
 
+/// Auto-advance kararlarını OLAY-GÜDÜMLÜ (poll'süz) toplar: `autoAdvanceDecisions`
+/// akışını doğrudan yapısal `await` ile tüketir; ilk `count` karar gelince döner.
+///
+/// `eventually` gibi bir DUVAR-SAATİ tavanı YOKTUR. playedToEnd→karar zinciri çok
+/// hop'ludur (fake backend → engine olay pompası → engine actor → director watch
+/// task → director actor → continuation) ve CI paralel-yük matrisinde bu arka-plan
+/// görevleri zamanlayıcı açlığına girebilir. Değer KESİN gelir (engine `endedForCurrentLoad`
+/// latch'i + unbounded AsyncStream buffer'ı → exactly-once teslim), bu yüzden bu görev
+/// continuation'a park eder ve değer yield edildiği AN uyandırılır — kaçırılacak bir
+/// zaman-aşımı penceresi olmadığından starvation yalnız GECİKTİRİR, asla flake üretmez.
+func awaitDecisions(
+    _ count: Int,
+    from director: FeedPlaybackDirector
+) async -> [AutoAdvancePolicy.Decision] {
+    var iterator = director.autoAdvanceDecisions.makeAsyncIterator()
+    var collected: [AutoAdvancePolicy.Decision] = []
+    while collected.count < count, let decision = await iterator.next() {
+        collected.append(decision)
+    }
+    return collected
+}
+
 // MARK: - Pencere/lease koreografisi (SS-044 çekirdeği)
 
 @Suite("FeedPlaybackDirector — pencere koreografisi")
