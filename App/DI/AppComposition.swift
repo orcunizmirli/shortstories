@@ -1,3 +1,4 @@
+import AnalyticsKit
 import AppFoundation
 import AuthenticationServices
 import ContentKit
@@ -72,11 +73,31 @@ final class AppComposition {
     /// userId türetimi Faz 2'de bağlanır (TODO).
     private let appAccountToken: UUID
 
+    // MARK: - A/B deney istemcisi (SS-154) — deney boyutu tüm analitik event'lerine düşer
+
+    /// Canlı A/B deney istemcisi (08 §7.1). F1: boş katalog → atama pasif/kontrol (exposure yok).
+    let experimentClient: ExperimentClient
+
+    /// `ab_variants` boyutunu HER feature event'ine ekleyen dekoratör; servisler/fabrikalar bunu
+    /// `dependencies.analytics` YERİNE alır. İstisna: `ExperimentClient.analytics` BASE kalır (§7.3).
+    let decoratedAnalytics: any AnalyticsTracking
+
+    /// Feature'ların deney varyantını okuduğu port (08 §7.3) → canlı `ExperimentClient`.
+    var experimentReading: any ExperimentReading {
+        experimentClient
+    }
+
     init(dependencies: any Dependencies) throws {
         self.dependencies = dependencies
         let apiClient = dependencies.apiClient
 
         persistence = try PersistenceStore()
+
+        // SS-154: A/B deney grafiği — persistence SONRASI, analitik-kullanan servislerden ÖNCE kurulur
+        // (`decoratedAnalytics` hazır olsun). Kurulum + F1 sınırı TODO'ları `makeExperimentGraph`'ta.
+        let experiments = Self.makeExperimentGraph(analytics: dependencies.analytics, secureStore: dependencies.secureStore)
+        experimentClient = experiments.client
+        decoratedAnalytics = experiments.decorated
 
         catalog = CatalogAPI(client: apiClient)
         search = SearchAPI(client: apiClient)
@@ -84,7 +105,7 @@ final class AppComposition {
 
         walletStore = WalletStore(
             remote: WalletRemoteClient(client: apiClient),
-            analytics: dependencies.analytics,
+            analytics: decoratedAnalytics,
             log: dependencies.logger
         )
         languagePreferences = LanguagePreferenceService(preferences: dependencies.preferences)
@@ -112,7 +133,7 @@ final class AppComposition {
         // Cüzdan satın-alma grafiği: tek StoreKit ürün servisi StorefrontLoader ve satın alma
         // servisi arasında paylaşılır (ürün cache'i tekilleşir).
         let walletRemote = WalletRemoteClient(client: apiClient)
-        let products = StoreKitProductService(analytics: dependencies.analytics)
+        let products = StoreKitProductService(analytics: decoratedAnalytics)
         storeProducts = products
         coinStorefront = StorefrontLoader(remote: walletRemote, products: products)
         let token = UUID()
@@ -121,10 +142,27 @@ final class AppComposition {
             purchases: StoreKitPurchaseService(products: products),
             remote: walletRemote,
             wallet: walletStore,
-            analytics: dependencies.analytics,
+            analytics: decoratedAnalytics,
             log: dependencies.logger,
             appAccountToken: { token }
         )
+    }
+
+    /// SS-154 deney grafiği: userID = deviceID (Keychain kalıcı → sticky atama). F1: boş katalog + boş
+    /// `previouslyExposed` (default) → atama pasif, exposure yok. `ab_variants` dekoratörü BASE'i sarar
+    /// (§7.3 exposure BASE'e gider). TODO(F1): previouslyExposed persist (scenePhase bg) + katalog (SS-024).
+    private static func makeExperimentGraph(
+        analytics: any AnalyticsTracking,
+        secureStore: any SecureStoring
+    ) -> (client: ExperimentClient, decorated: ExperimentDimensionTracker) {
+        let deviceID = (try? secureStore.string(forKey: .deviceID)) ?? ""
+        let client = ExperimentClient(
+            catalog: ExperimentCatalog(experiments: []),
+            analytics: analytics,
+            userID: deviceID
+        )
+        // `abVariants` closure `@Sendable` (`ExperimentClient` `@unchecked Sendable`, kilitli okuma).
+        return (client, ExperimentDimensionTracker(base: analytics, abVariants: { client.abVariantsParameter() }))
     }
 
     // MARK: - Port adaptörleri (canlı — Faz 2 sekme view'ları bu fabrikaları kullanır)
@@ -237,7 +275,7 @@ final class AppComposition {
             taskCatalog: taskCatalog,
             taskProgress: taskProgress,
             rewardClaiming: rewardClaiming,
-            analytics: dependencies.analytics,
+            analytics: decoratedAnalytics,
             featureFlags: dependencies.featureFlags,
             delegate: delegate,
             lastSeenStreakStore: lastSeenStreakStore
@@ -250,7 +288,7 @@ final class AppComposition {
             favoritesService: favoritesService,
             continueWatchingService: continueWatchingService,
             catalog: libraryCatalogReading,
-            analytics: dependencies.analytics,
+            analytics: decoratedAnalytics,
             delegate: delegate
         )
     }
@@ -264,7 +302,7 @@ final class AppComposition {
         ProfilModel(
             session: dependencies.session,
             walletSummary: walletSummaryReading,
-            analytics: dependencies.analytics,
+            analytics: decoratedAnalytics,
             delegate: delegate,
             appLanguage: languagePreferences,
             appVersion: appVersion,
@@ -280,7 +318,7 @@ final class AppComposition {
         AyarlarModel(
             preferences: dependencies.preferences,
             language: languagePreferences,
-            analytics: dependencies.analytics,
+            analytics: decoratedAnalytics,
             delegate: delegate,
             notificationPermission: notificationPermission
         )
@@ -294,7 +332,7 @@ final class AppComposition {
         HesapBaglamaModel(
             appleSignIn: AppleSignInService(anchor: anchor),
             linking: accountLinkingService,
-            analytics: dependencies.analytics,
+            analytics: decoratedAnalytics,
             delegate: delegate
         )
     }
@@ -303,7 +341,7 @@ final class AppComposition {
     func makeHesapSilmeModel(delegate: (any HesapSilmeDelegate)?) -> HesapSilmeModel {
         HesapSilmeModel(
             deletion: accountDeletionService,
-            analytics: dependencies.analytics,
+            analytics: decoratedAnalytics,
             delegate: delegate
         )
     }
@@ -321,7 +359,7 @@ final class AppComposition {
             preferences: dependencies.preferences,
             notifications: LiveNotificationAuthorizationRequester(),
             tracking: LiveAppTrackingRequester(),
-            analytics: dependencies.analytics,
+            analytics: decoratedAnalytics,
             attEnabled: dependencies.featureFlags.value(for: OnboardingFlags.attPromptEnabled),
             // SS-140: bildirim izni VERİLİNCE APNs kaydını tetikle (canlı UIApplication sarması).
             remoteNotifications: LiveRemoteNotificationRegistering(),
@@ -338,7 +376,7 @@ final class AppComposition {
         let preferences = dependencies.preferences
         return PushService(
             registrar: deviceTokenRegistrar,
-            analytics: dependencies.analytics,
+            analytics: decoratedAnalytics,
             remoteRegistration: LiveRemoteNotificationRegistering(),
             authorization: LiveNotificationAuthorizationReader(),
             optInProvider: { NotificationPreferences.read(from: preferences).primaryEnabled },
