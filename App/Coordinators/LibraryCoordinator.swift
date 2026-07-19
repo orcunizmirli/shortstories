@@ -48,8 +48,8 @@ final class LibraryCoordinator {
         switch route {
         case let .diziDetay(seriesID, source):
             DiziDetayView(model: composition.makeDiziDetayModel(seriesID: seriesID, source: source, delegate: tabCoordinator))
-        case .arama, .ayarlar:
-            EmptyView() // Listem stack'inde bu hedefler push edilmez.
+        case .arama, .ayarlar, .bildirimMerkezi:
+            EmptyView() // Listem stack'inde bu hedefler push edilmez (Profil stack'i).
         }
     }
 }

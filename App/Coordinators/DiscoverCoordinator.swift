@@ -70,8 +70,8 @@ final class DiscoverCoordinator {
             DiziDetayView(model: composition.makeDiziDetayModel(seriesID: seriesID, source: source, delegate: tabCoordinator))
         case let .arama(query):
             AramaView(model: composition.makeAramaModel(delegate: self, source: .kesfet, initialQuery: query))
-        case .ayarlar:
-            EmptyView() // Ayarlar Keşfet stack'inde push edilmez.
+        case .ayarlar, .bildirimMerkezi:
+            EmptyView() // Ayarlar/BildirimMerkezi Keşfet stack'inde push edilmez (Profil stack'i).
         }
     }
 }

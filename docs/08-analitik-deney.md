@@ -231,6 +231,8 @@ Kolonlar: event adı, kendine özgü parametreleri (ortak parametreler §2.2 har
 | `push_permission_prompt` | `source: "onboarding"\|"mission"\|"ayarlar"`, `action: "grant"\|"deny"` | Sistem diyaloğu kapandığında | `AppFoundation` | ✔ |
 | `push_open` | `campaign_id`, `push_type: "new_episode"\|"continue"\|"coin_reward"\|"recommendation"`, `series_id?` | Push'a dokunularak uygulama açıldığında/öne geldiğinde | `AppFoundation` | ✔ |
 | `push_disabled` | `source: "ayarlar"\|"os_settings_detected"` | Kullanıcı bildirim tercihini kapattığında veya OS düzeyinde kapandığı tespit edildiğinde | `ProfileKit` | |
+| `notification_center_opened` | `unread_count` (int; okunmamış bildirim sayısı) | BildirimMerkezi ilk yüklemesi çözülünce bir kez (loaded/emptyLoaded/errorWithCache; SS-144, 02 §4.15) | `ProfileKit` | |
+| `notification_item_tapped` | `type: "new_episode"\|"continue"\|"coin_reward"\|"recommendation"\|"reward"\|"campaign"\|"unknown"` (§3.6 `push_type` ile hizalı + BildirimMerkezi-yerel `reward`/`campaign`/`unknown`), `route` (ham deep-link String; App `Route(url:)` çözer, §8.4) | BildirimMerkezi satırına dokunulduğunda (SS-144, NTF-04) | `ProfileKit` | |
 
 **Not:** `push_received` (teslimat) istemciden güvenilir ölçülemez (iOS arka plan kısıtları); teslimat sayıları APNs yanıtlarından **backend'de** loglanır. İstemci yalnızca `push_open` gönderir; open-rate paydası backend teslimat logudur.
 

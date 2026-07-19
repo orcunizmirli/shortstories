@@ -5,9 +5,11 @@
 /// noktası App'tir — R6 gereği Firebase/gerçek sink App kompozisyonunda hapsolur.
 ///
 /// Doğrulama non-destructive'dir: bilinmeyen event üretimde DÜŞÜRÜLMEZ (analitik kaybı, gerçek
-/// kullanıcı verisi, geri alınamaz), yalnız `fault` seviyesinde loglanır → drift CI/QA'da yakalanır
-/// (§2.1 adlandırma sözleşmesi ihlalleri görünür olur). Ayrıca ad biçimi (`snake_case`, boş değil)
-/// kontrol edilir.
+/// kullanıcı verisi, geri alınamaz), yalnız `fault` seviyesinde loglanır. Registry-drift LOKAL/DEBUG'da
+/// yakalanır — `AppAnalyticsTracker` strictInDebug `assertionFailure` yolu ve App target testleri
+/// (`AnalyticsRegistryGuardTests`); ANCAK bu App target CI matrisinde DEĞİL (pr.yml yalnız paket
+/// testlerini koşar), dolayısıyla guard CI paket testlerinde koşmaz. Ayrıca ad biçimi (`snake_case`,
+/// boş değil) kontrol edilir.
 enum AnalyticsEventRegistry {
     /// 08 §3 kanonik event kataloğu — feature modüllerinin GERÇEKTEN emit ettiği adların birleşimi
     /// (kaynak taraması ile senkron) + ileri fazların bildirdiği stabil adlar. Yeni bir event eklenirken
@@ -97,6 +99,12 @@ enum AnalyticsEventRegistry {
         "link_account_failed",
         "account_delete_started",
         "account_delete_completed",
+        // BildirimMerkezi (08 §3.6 — ProfileKit `NotificationCenterModel` emit eder; SS-144/NTF-04).
+        // Model bunları emit ettiğinden registry'de OLMALARI ŞART: aksi halde strictInDebug her açılışta
+        // `assertionFailure` tetikler. `notification_center_opened {unread_count}` (ilk yükleme çözülünce
+        // bir kez), `notification_item_tapped {type, route}` (satır dokunuşu).
+        "notification_center_opened",
+        "notification_item_tapped",
 
         // Onboarding (08 §3.1 — SS-064 ShortSeriesApp emit eder; kanonik katalog birebir)
         "onboarding_start",

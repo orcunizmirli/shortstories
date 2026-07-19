@@ -157,8 +157,11 @@ final class TabCoordinator {
             _ = section
             profile.showSettings()
         case .notifications:
-            // TODO(F2 / SS-144): BildirimMerkezi deep link'i — ekran Faz 2.
+            // SS-144: `shortseries://notifications` (deep-link) + push tap ikisi de Profil sekmesine
+            // geçip BildirimMerkezi'ni Profil stack'inde iter (02 §4.15/§8.2). Atıf yukarıda
+            // `deeplink_opened {route_type: "notifications", source}` ile atıldı.
             switchTab(.profil)
+            profile.showNotificationCenter()
         }
     }
 

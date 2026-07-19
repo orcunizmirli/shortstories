@@ -1,4 +1,5 @@
 import AppFoundation
+import DiscoverKit
 import Foundation
 import Observation
 import ProfileKit
@@ -15,16 +16,24 @@ final class ProfileCoordinator {
     private let walletFlow: WalletFlowCoordinator
     weak var tabCoordinator: TabCoordinator?
 
-    /// Profil stack'i — Ayarlar push hedefi (`AppRoute.ayarlar`).
-    var path = NavigationPath()
+    /// Profil stack'i — Ayarlar / BildirimMerkezi push hedefleri. Tipli `[AppRoute]` (NavigationPath
+    /// element-peek edilemez): `appendIfNotTop` deep-link/push landing'lerini idempotent tutar (R3).
+    var path: [AppRoute] = []
 
     /// Sheet olarak sunulan hesap akışları (non-nil → sunulur).
     private(set) var hesapBaglamaModel: HesapBaglamaModel?
     private(set) var hesapSilmeModel: HesapSilmeModel?
 
     /// Profil modeli — oturum + cüzdan özeti + uygulama dili. `lazy`: delegate = self.
+    /// BildirimMerkezi satırı `ProfileFlags.notificationCenterEnabled` ile gate'lenir (SS-144, F1
+    /// varsayılan KAPALI); flag açılınca Profil'de "Bildirimler" satırı görünür.
     @ObservationIgnored private(set) lazy var profilModel: ProfilModel =
-        composition.makeProfilModel(delegate: self)
+        composition.makeProfilModel(
+            delegate: self,
+            notificationCenterEnabled: composition.dependencies.featureFlags.value(
+                for: ProfileFlags.notificationCenterEnabled
+            )
+        )
 
     init(composition: AppComposition, walletFlow: WalletFlowCoordinator) {
         self.composition = composition
@@ -34,7 +43,14 @@ final class ProfileCoordinator {
     // MARK: - Cross-tab / deep link yardımcıları
 
     func showSettings() {
-        path.append(AppRoute.ayarlar)
+        path.appendIfNotTop(.ayarlar)
+    }
+
+    /// BildirimMerkezi'ni Profil stack'inde push eder (SS-144). Profil rozet satırı, `notifications`
+    /// deep-link'i ve push tap ikisi de buraya akar (03 §3.2 kural 4). Sekme geçişi çağıran taraftadır
+    /// (TabCoordinator).
+    func showNotificationCenter() {
+        path.appendIfNotTop(.bildirimMerkezi)
     }
 
     // MARK: - Sheet sunum durumu setter'ları (RootTabView okur)
@@ -60,6 +76,8 @@ final class ProfileCoordinator {
         switch route {
         case .ayarlar:
             AyarlarView(model: composition.makeAyarlarModel(delegate: self))
+        case .bildirimMerkezi:
+            BildirimMerkeziView(model: composition.makeNotificationCenterModel(delegate: self))
         case .diziDetay, .arama:
             EmptyView() // Profil stack'inde bu hedefler push edilmez.
         }
@@ -98,7 +116,7 @@ extension ProfileCoordinator: ProfileDelegate {
     }
 
     func profileOpensNotificationCenter() {
-        // TODO(F2 / SS-144): BildirimMerkezi — satır flag ardında, ekran Faz 2.
+        showNotificationCenter()
     }
 
     func profileOpensSupport() {
@@ -170,5 +188,34 @@ extension ProfileCoordinator: HesapSilmeDelegate {
 
     func hesapSilmeRequestsDismiss() {
         hesapSilmeModel = nil
+    }
+}
+
+// MARK: - NotificationCenterDelegate (SS-144; NTF-04, 02 §4.15/§8.4)
+
+extension ProfileCoordinator: NotificationCenterDelegate {
+    /// Satır dokunuşu → bildirimin ham `route`'u push ile AYNI şekilde çözülür + dağıtılır (NTF-04):
+    /// `NotificationRouteBridge` ile `DeepLinkRoute`'a köprülenir, çözülürse `TabCoordinator.handle`
+    /// (push tap ile AYNI dağıtım); hedef artık geçersizse (URL'e çevrilemez / bilinmeyen path / dizi
+    /// kaldırıldı) `Kesfet` fallback'i uygulanır (§8.4 kural 3/4). Kaynak `.appInternal` (uygulama-içi
+    /// dokunuş — soğuk-açılış/push atıfı değil).
+    func notificationCenterOpensRoute(_ route: String) {
+        guard let deepLink = NotificationRouteBridge.route(from: route) else {
+            fallBackToDiscover()
+            return
+        }
+        tabCoordinator?.handle(deepLink, source: .appInternal)
+    }
+
+    /// Model YAPISAL geçersiz rota (boş) bildirdi → doğrudan `Kesfet` fallback (App Route çözümüne bile
+    /// gitmeden; 02 §4.15 geçersiz-hedef + §8.4 kuralı).
+    func notificationCenterFallsBackToDiscover() {
+        fallBackToDiscover()
+    }
+
+    /// `Kesfet` sekmesine düşürme ortak yolu (§8.4). BildirimMerkezi Profil stack'inde kalır; kullanıcı
+    /// geri geldiğinde ekran korunur.
+    private func fallBackToDiscover() {
+        tabCoordinator?.switchTab(.kesfet)
     }
 }

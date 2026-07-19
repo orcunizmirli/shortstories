@@ -5,9 +5,13 @@ import XCTest
 
 /// REGISTRY ⊇ EMIT guard'ı (08 §2.3): feature paketlerinin GERÇEKTEN emit ettiği her event adı
 /// `AnalyticsEventRegistry.known` içinde olmalı. Kayıtsız bir ad `AppAnalyticsTracker`'da DEBUG'da
-/// `assertionFailure` tetikler (debug crash) — bu bulgu bir test-boşluğuydu. `emittedEventNames`
-/// `grep -r 'analytics.track(' Packages/*/Sources` taramasının kar-donmuş halidir; yeni bir feature
-/// event'i eklenip registry'e yazılmazsa bu test kırmızıya döner (drift'i CI/lokal yakalar).
+/// `assertionFailure` tetikler (debug crash) — bu bulgu bir test-boşluğuydu. `emittedEventNames` ELLE
+/// TUTULAN bir snapshot'tır (otomatik grep DEĞİL; `grep -r 'analytics.track(' Packages/*/Sources` yalnız
+/// derleme kılavuzu) — yeni bir feature event'i hem buraya hem registry'e elle yazılmazsa drift KAÇABİLİR.
+/// Bu hedef (ShortSeriesAppTests App target) CI matrisinde DEĞİL (pr.yml yalnız paket testlerini
+/// -CI şemasıyla koşar; host-launch flake nedeniyle App bilinçle dışlanmış). Bu yüzden registry-drift
+/// YALNIZCA lokal/DEBUG'da yakalanır — bu testi lokal koşarken ya da `AppAnalyticsTracker` strictInDebug
+/// assertion'ında — CI paket testlerinde DEĞİL.
 final class AnalyticsRegistryGuardTests: XCTestCase {
     /// Feature paketlerinin emit ettiği event adları (kaynak taraması; registry bu kümeyi KAPSAMALI).
     static let emittedEventNames: [String] = [
@@ -38,7 +42,9 @@ final class AnalyticsRegistryGuardTests: XCTestCase {
         // Profil / ayarlar / hesap (ProfileKit)
         "profile_row_tapped", "settings_changed", "push_disabled",
         "link_account_started", "link_account_success", "link_account_failed",
-        "account_delete_started", "account_delete_completed"
+        "account_delete_started", "account_delete_completed",
+        // BildirimMerkezi (ProfileKit NotificationCenterModel — SS-144/NTF-04)
+        "notification_center_opened", "notification_item_tapped"
     ]
 
     func testRegistrySupersetsEveryEmittedEvent() {
