@@ -19,6 +19,17 @@ public struct VIPSubscriptionView: View {
                 if model.showsPaymentIssueBanner {
                     paymentIssueBanner
                 }
+                if model.winBackSurface.isVisible {
+                    WinBackBannerView(
+                        surface: model.winBackSurface,
+                        isPurchasing: model.purchasePhase.isPurchasing,
+                        isDisabled: model.purchasePhase.preventsNewPurchase,
+                        offerDisplayPrice: model.winBackBannerOfferPrice,
+                        renewalDisclosure: model.winBackRenewalDisclosure,
+                        onCTA: { model.subscribeViaWinBack() },
+                        onAppear: { model.winBackBannerAppeared() }
+                    )
+                }
                 benefits
                 switch model.mode {
                 case .purchase:
@@ -89,7 +100,7 @@ public struct VIPSubscriptionView: View {
                     Task { await model.subscribe() }
                 }
                 .disabled(model.purchasePhase.preventsNewPurchase)
-                renewalDisclosure
+                RenewalDisclosureText()
             }
         }
     }
@@ -142,7 +153,7 @@ public struct VIPSubscriptionView: View {
                             .font(DSTypography.bodyEmphasized)
                             .foregroundStyle(DSColors.textPrimary)
                     }
-                    if let renewal = renewalText {
+                    if model.showsManagementRenewalText, let renewal = renewalText {
                         Text(renewal)
                             .font(DSTypography.caption)
                             .foregroundStyle(DSColors.textSecondary)
@@ -236,16 +247,6 @@ public struct VIPSubscriptionView: View {
             .padding(DSSpacing.m)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(DSColors.warning.opacity(0.2), in: RoundedRectangle(cornerRadius: DSRadius.card))
-    }
-
-    private var renewalDisclosure: some View {
-        VStack(spacing: DSSpacing.xxs) {
-            Text("Abonelik, mevcut dönem bitmeden en az 24 saat önce iptal edilmediği sürece otomatik yenilenir.")
-            Text("Yönetim ve iptal App Store hesap ayarlarından yapılır.")
-        }
-        .font(DSTypography.caption)
-        .foregroundStyle(DSColors.textTertiary)
-        .multilineTextAlignment(.center)
     }
 
     private var footer: some View {

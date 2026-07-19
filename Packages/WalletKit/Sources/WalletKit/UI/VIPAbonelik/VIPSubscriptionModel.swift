@@ -58,6 +58,78 @@ public final class VIPSubscriptionModel {
         plans.first { $0.plan == selectedPlan }
     }
 
+    // MARK: - Win-back yüzeyi (SS-099 F2)
+
+    /// Win-back banner'ın görünürlük + mesaj KARARI. İstemci karar VERMEZ; server-otoriter türev
+    /// (`WinBackEligibility` sunucu sinyalini ezmeye izin vermez) + App-enjekte remote-config/varyant/
+    /// frekans kapılarından geçer (`WinBackSurface.resolve`). View bunu okur; `subscription`/`plans`
+    /// gözlenebilir olduğundan entitlement düşünce/plan yüklenince banner reaktif güncellenir.
+    public var winBackSurface: WinBackSurface {
+        let now = winBack.now()
+        let eligibility = WinBackEligibility.evaluate(
+            subscription: subscription,
+            serverSignal: winBack.serverSignal,
+            now: now,
+            formerVIPGraceDays: winBack.formerVIPGraceDays,
+            nearExpiryWindow: winBack.nearExpiryWindow
+        )
+        return WinBackSurface.resolve(
+            eligibility: eligibility,
+            remoteConfigEnabled: winBack.isRemoteConfigEnabled,
+            variant: winBack.variant,
+            frequency: winBack.frequency,
+            policy: winBack.policy,
+            offer: winBackOffer,
+            expiryDateText: subscription.expiresAt.map(winBack.expiryDateFormatter),
+            now: now
+        )
+    }
+
+    /// Win-back offer'ı GRACEFUL çözer (06 §8.2 uygun olmayana gösterme): auto-renew kapalı VIP'te
+    /// kullanıcının mevcut planına ait üründen, eski VIP'te seçili (varsayılan yıllık) üründen okur —
+    /// canlı katman doldurmadıysa `nil`. Fiyat StoreKit `displayPrice`'tan; hardcode YASAK.
+    private var winBackOffer: WinBackOffer? {
+        guard let product = winBackOfferOption?.product else { return nil }
+        return WinBackOffer.resolve(from: product)
+    }
+
+    /// Offer'ın okunacağı plan: hâlâ VIP'sek mevcut plana ait ürün (`SubscriptionStatus.Plan` ile
+    /// `SubscriptionPlan` aynı raw değerlerle eşlenir), aksi halde seçili plan (varsayılan yıllık).
+    private var winBackOfferOption: VIPPlanOption? {
+        if let plan = subscription.plan, let match = plans.first(where: { $0.plan.rawValue == plan.rawValue }) {
+            return match
+        }
+        return selectedOption
+    }
+
+    // MARK: - Win-back §11.4 açıklaması + tek-kaynak tarih (SS-099 F1/F2)
+
+    /// Fiyatlı win-back CTA'sına BİTİŞİK §11.4 açıklaması (offer fiyatı + dönemi + offer-sonrası
+    /// normal fiyat/dönem). Surface fiyat gösteriyorsa (`.discount` + offer) VE normal fiyat/dönem
+    /// TAM ise dolu; eksikse `nil` → fiyatlı CTA gösterilmez (compliance > gösterim; fiyat StoreKit'ten).
+    public var winBackRenewalDisclosure: WinBackRenewalDisclosure? {
+        guard winBackSurface.offerDisplayPrice != nil else { return nil }
+        return WinBackRenewalDisclosure.resolve(from: winBackOfferOption)
+    }
+
+    /// View kararı (F1): `true` iken banner CTA'sının altına §11.4 açıklaması çizilir — HER modda
+    /// (purchase + management). App Store Guideline 3.1.2: fiyatlı satın-alma CTA'sına bitişik açıklama.
+    public var winBackRequiresRenewalDisclosure: Bool {
+        winBackRenewalDisclosure != nil
+    }
+
+    /// Banner CTA fiyatı — YALNIZ §11.4 açıklaması TAM iken; aksi halde `nil` → nötr "geri dön"
+    /// (açıklamasız fiyatlı satın-alma CTA'sı çizilmez).
+    public var winBackBannerOfferPrice: String? {
+        winBackRenewalDisclosure?.offerPrice
+    }
+
+    /// View kararı (F2): autoRenewOff win-back banner'ı bitiş cümlesini gösterirken managementSection'ın
+    /// ayrı yenileme-tarihi satırı BASTIRILIR (tek kaynak; çift + format-tutarsız tarih gösterimi önlenir).
+    public var showsManagementRenewalText: Bool {
+        !(winBackSurface.isVisible && winBackSurface.reason == .autoRenewOff)
+    }
+
     // MARK: - Bağımlılıklar
 
     private let source: VIPSource
@@ -65,6 +137,9 @@ public final class VIPSubscriptionModel {
     private let wallet: any WalletGateway
     private let purchasing: any WalletPurchasing
     private let analytics: any AnalyticsTracking
+    /// Win-back seam (SS-099 F2): App remote-config kill-switch + SS-154 varyant + segment sinyali +
+    /// frekans durumu + tarih biçimleyiciyi enjekte eder. Varsayılan `.disabled` → banner yok.
+    private let winBack: WinBackConfiguration
     private weak var delegate: (any VIPSubscriptionDelegate)?
 
     private var observationTask: Task<Void, Never>?
@@ -75,6 +150,9 @@ public final class VIPSubscriptionModel {
     /// Aktivasyon delegate'i bu ekran ömründe atıldı mı (idempotent). Zaten VIP açılan yönetim
     /// modunda `true` tohumlanır → canlı akışın replay'i sahte "aktifleşti" tetiklemez.
     private var didFireActivation = false
+    /// Win-back banner'ı bu ekran ömründe App'e "gösterildi" olarak bir kez bildirdik mi (idempotent
+    /// frekans persist tetikleyicisi; yüzey saf kalır, sayacı App artırır).
+    private var didNotifyWinBack = false
 
     public init(
         source: VIPSource,
@@ -82,6 +160,7 @@ public final class VIPSubscriptionModel {
         wallet: any WalletGateway,
         purchasing: any WalletPurchasing,
         analytics: any AnalyticsTracking,
+        winBack: WinBackConfiguration = .disabled,
         delegate: (any VIPSubscriptionDelegate)?
     ) {
         self.source = source
@@ -89,6 +168,7 @@ public final class VIPSubscriptionModel {
         self.wallet = wallet
         self.purchasing = purchasing
         self.analytics = analytics
+        self.winBack = winBack
         self.delegate = delegate
     }
 
@@ -208,6 +288,29 @@ public final class VIPSubscriptionModel {
         case .pending, .verificationPending:
             break
         }
+    }
+
+    /// Win-back banner CTA'sı (SS-099 F2): offer'ın ait olduğu plana geçip mevcut VIP satın-alma
+    /// akışına bağlanır — coin/entitlement mutasyonu YOK, karar `subscribe()` durum makinesine düşer.
+    /// TODO(SS-099): StoreKit 2 win-back offer purchase özel imza ister (`Product.PurchaseOption`
+    ///   win-back offer imza/nonce). Canlı katman offer'ı bağladığında `purchasing.purchase` bu
+    ///   parametreyi taşıyacak; şimdilik standart abonelik satın alma akışına (graceful) bağlanır.
+    public func subscribeViaWinBack() {
+        if let option = winBackOfferOption {
+            select(option.plan)
+        }
+        Task { await subscribe() }
+    }
+
+    /// Win-back banner bu ekran ömründe İLK kez göründüğünde App'e bildirir (frekans sayacını App
+    /// persist eder; 07 §5.3). İdempotent — banner yeniden çizilse de bir kez tetikler. View banner'ın
+    /// `.onAppear`'ında çağırır.
+    public func winBackBannerAppeared() {
+        guard !didNotifyWinBack else { return }
+        let surface = winBackSurface
+        guard surface.isVisible, let variant = surface.variant, let reason = surface.reason else { return }
+        didNotifyWinBack = true
+        winBack.onBannerShown?(variant, reason)
     }
 
     /// "Aboneliği Yönet" (06 §8.3): iptal/plan değişimi Apple UI'ıyla; uygulama içinde ayrı akış yok.

@@ -62,6 +62,9 @@ extension StoreProduct {
         if let subscription = product.subscription {
             let eligible = await subscription.isEligibleForIntroOffer
             let intro = subscription.introductoryOffer.map { IntroOffer($0) }
+            // TODO: SS-099 F2 — win-back offer canlı eşlemesi (StoreKit `subscription.winBackOffers`,
+            // iOS 18+; uygunluk StoreKit'ten). Doldurulana dek `winBackOffer` graceful `nil` kalır
+            // (06 §8.2 "uygun olmayana gösterme"); `WinBackOffer.resolve` bunu yansıtır.
             subscriptionInfo = SubscriptionInfo(
                 isEligibleForIntroOffer: eligible,
                 introOffer: eligible ? intro : nil,

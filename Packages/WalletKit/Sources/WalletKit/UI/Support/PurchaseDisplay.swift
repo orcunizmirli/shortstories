@@ -60,13 +60,18 @@ public enum VIPPlanCopy {
         }
     }
 
-    /// Intro teklifinin toplam süre ifadesi: tek birim → "hafta"; çok dönem → "3 ay"
-    /// (`periodValue × periodCount`). payUpFront (value=3/count=1) ve payAsYouGo (value=1/count=3)
-    /// kodlamalarının ikisi de aynı toplam süreyi verir.
-    public static func introDuration(_ intro: IntroOffer) -> String {
-        let units = max(1, intro.periodValue) * max(1, intro.periodCount)
-        let noun = periodNoun(intro.periodUnit)
+    /// Toplam süre ifadesi: tek birim → "hafta"; çok dönem → "3 ay" (`value × count`). payUpFront
+    /// (value=3/count=1) ve payAsYouGo (value=1/count=3) kodlamalarının ikisi de aynı süreyi verir.
+    /// Intro + win-back offer'ın ortak süre biçimleyicisi (tek kaynak).
+    public static func periodDuration(unit: PeriodUnit, value: Int, count: Int) -> String {
+        let units = max(1, value) * max(1, count)
+        let noun = periodNoun(unit)
         return units == 1 ? noun : "\(units) \(noun)"
+    }
+
+    /// Intro teklifinin toplam süre ifadesi (bkz. `periodDuration`).
+    public static func introDuration(_ intro: IntroOffer) -> String {
+        periodDuration(unit: intro.periodUnit, value: intro.periodValue, count: intro.periodCount)
     }
 
     /// Plan fiyat alt satırı: intro yoksa "X/hafta"; intro varsa "İlk 3 ay X, sonra Y/hafta".

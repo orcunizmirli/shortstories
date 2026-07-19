@@ -36,7 +36,7 @@ public struct StoreProduct: Sendable, Equatable, Identifiable {
     }
 }
 
-/// Abonelik ürününün dönem + intro offer bilgisi (06 §4.8).
+/// Abonelik ürününün dönem + intro/win-back offer bilgisi (06 §4.8 / §5.1 / §8.2).
 public struct SubscriptionInfo: Sendable, Equatable {
     /// StoreKit belirler; uygun olmayan kullanıcıya intro fiyatı GÖSTERİLMEZ (06 §3.3).
     public let isEligibleForIntroOffer: Bool
@@ -44,17 +44,24 @@ public struct SubscriptionInfo: Sendable, Equatable {
     public let introOffer: IntroOffer?
     public let periodUnit: PeriodUnit
     public let periodValue: Int
+    /// Eski/lapsed VIP'e sunulan indirimli dönüş offer'ı (SS-099 win-back; StoreKit 2 win-back
+    /// offer, iOS 18+). Uygunluğu StoreKit belirler → uygun olmayana `nil` gösterilmez (06 §8.2
+    /// intro deseni). Fiyat `displayPrice`'tan; USD hardcode YASAK (06 §11.2). Canlı katman
+    /// doldurana dek `nil` (graceful) — `WinBackOffer.resolve` bunu yansıtır.
+    public let winBackOffer: WinBackOffer?
 
     public init(
         isEligibleForIntroOffer: Bool,
         introOffer: IntroOffer?,
         periodUnit: PeriodUnit,
-        periodValue: Int
+        periodValue: Int,
+        winBackOffer: WinBackOffer? = nil
     ) {
         self.isEligibleForIntroOffer = isEligibleForIntroOffer
         self.introOffer = introOffer
         self.periodUnit = periodUnit
         self.periodValue = periodValue
+        self.winBackOffer = winBackOffer
     }
 }
 
