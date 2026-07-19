@@ -76,10 +76,28 @@ final class RichPushPlanTests: XCTestCase {
         XCTAssertEqual(id, RichPushCategory.newEpisodeIdentifier)
     }
 
-    func testUnknownCampaignTypeYieldsNilCategory() {
-        // F1 dışı tip → PushPayload nil → kategori yok (yine de metin+görsel teslim edilebilir).
+    func testCoinRewardCategoryFromExplicitType() {
+        // F2 (SS-143): coin_reward wire tipi artık çözülür → coin-ödül kategorisi.
         let id = RichPushPresentation.categoryIdentifier(from: [
             "type": "coin_reward",
+            "route": "shortseries://store/coins"
+        ])
+        XCTAssertEqual(id, RichPushCategory.coinRewardIdentifier)
+    }
+
+    func testRecommendationCategoryFromExplicitType() {
+        // F2 (SS-143): recommendation wire tipi çözülür → öneri kategorisi.
+        let id = RichPushPresentation.categoryIdentifier(from: [
+            "type": "recommendation",
+            "route": "shortseries://series/srs_9f2c1a"
+        ])
+        XCTAssertEqual(id, RichPushCategory.recommendationIdentifier)
+    }
+
+    func testUnknownCampaignTypeYieldsNilCategory() {
+        // F1/F2 dışı tip → PushPayload nil → kategori yok (yine de metin+görsel teslim edilebilir).
+        let id = RichPushPresentation.categoryIdentifier(from: [
+            "type": "flash_sale",
             "route": "shortseries://store/coins"
         ])
         XCTAssertNil(id)
@@ -92,6 +110,20 @@ final class RichPushPlanTests: XCTestCase {
     func testCategoryIdentifierMapping() {
         XCTAssertEqual(RichPushCategory.identifier(for: .newEpisode), RichPushCategory.newEpisodeIdentifier)
         XCTAssertEqual(RichPushCategory.identifier(for: .continueWatching), RichPushCategory.continueIdentifier)
+        XCTAssertEqual(RichPushCategory.identifier(for: .coinReward), RichPushCategory.coinRewardIdentifier)
+        XCTAssertEqual(RichPushCategory.identifier(for: .recommendation), RichPushCategory.recommendationIdentifier)
+    }
+
+    /// Her `PushCampaignType` için kategori kimliği KAYITLI bir descriptor'a çözülmeli (NSE'nin yazdığı
+    /// hiçbir kategori AppDelegate kaydından eksik kalmasın — F2 dahil eksiksiz kapsam güvencesi).
+    func testEveryCampaignTypeMapsToRegisteredCategory() {
+        let registered = Set(RichPushCategory.all.map(\.identifier))
+        for type in PushCampaignType.allCases {
+            XCTAssertTrue(
+                registered.contains(RichPushCategory.identifier(for: type)),
+                "kampanya tipi \(type) kayıtlı bir kategoriye eşlenmeli"
+            )
+        }
     }
 
     // MARK: - Birleşik sunum kararı
@@ -168,9 +200,14 @@ final class RichPushPlanTests: XCTestCase {
 
     // MARK: - Kategori kayıt tanımları (AppDelegate ile aynı kaynak)
 
-    func testRegisteredCategoriesCoverBothCampaignTypes() {
+    func testRegisteredCategoriesCoverAllCampaignTypes() {
         let identifiers = Set(RichPushCategory.all.map(\.identifier))
-        XCTAssertEqual(identifiers, [RichPushCategory.newEpisodeIdentifier, RichPushCategory.continueIdentifier])
+        XCTAssertEqual(identifiers, [
+            RichPushCategory.newEpisodeIdentifier,
+            RichPushCategory.continueIdentifier,
+            RichPushCategory.coinRewardIdentifier,
+            RichPushCategory.recommendationIdentifier
+        ])
     }
 
     func testNewEpisodeCategoryHasWatchAction() {
@@ -182,6 +219,19 @@ final class RichPushPlanTests: XCTestCase {
     func testContinueCategoryHasResumeAction() {
         let category = RichPushCategory.all.first { $0.identifier == RichPushCategory.continueIdentifier }
         XCTAssertEqual(category?.actions.map(\.title), ["Devam Et"])
+        XCTAssertEqual(category?.actions.first?.opensApp, true)
+    }
+
+    func testCoinRewardCategoryHasCollectAction() {
+        let category = RichPushCategory.all.first { $0.identifier == RichPushCategory.coinRewardIdentifier }
+        XCTAssertEqual(category?.actions.map(\.title), ["Topla"])
+        // Dokununca uygulama öne gelmeli (deep link coin/ödül yüzeyine yönlensin).
+        XCTAssertEqual(category?.actions.first?.opensApp, true)
+    }
+
+    func testRecommendationCategoryHasWatchAction() {
+        let category = RichPushCategory.all.first { $0.identifier == RichPushCategory.recommendationIdentifier }
+        XCTAssertEqual(category?.actions.map(\.title), ["İzle"])
         XCTAssertEqual(category?.actions.first?.opensApp, true)
     }
 }

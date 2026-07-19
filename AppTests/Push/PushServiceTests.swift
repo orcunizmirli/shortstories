@@ -76,12 +76,88 @@ final class PushServiceTests: XCTestCase {
         XCTAssertEqual(analytics.event(named: "push_open")?.parameters["series_id"], .string("srs_9f2c1a"))
     }
 
-    func testUnknownCampaignTypeIsSilentlyIgnored() {
+    // MARK: - F2 (SS-143) coin-ödül + öneri push'ları
+
+    func testCoinRewardPushOpensCoinStoreRouteAndTracks() {
         let service = makeService()
         service.handleOpenedPush([
-            "type": "coin_reward",
-            "campaign_id": "coins_promo",
-            "route": "shortseries://store/coins"
+            "campaignType": "coin_reward",
+            "campaignId": "coins_promo",
+            "deeplink": "shortseries://store/coins"
+        ])
+
+        // Coin-ödül → CoinMağaza (sabit-path, içerik ID yok), menşe push.
+        XCTAssertEqual(dispatchSpy.dispatched.count, 1)
+        XCTAssertEqual(dispatchSpy.dispatched.first?.route, .coinStore(offer: nil))
+        XCTAssertEqual(dispatchSpy.dispatched.first?.source, .push)
+
+        let event = analytics.event(named: "push_open")
+        XCTAssertEqual(event?.parameters["push_type"], .string("coin_reward"))
+        XCTAssertEqual(event?.parameters["campaign_id"], .string("coins_promo"))
+        // Coin/ödül yüzeyi içerik taşımaz → series_id yok.
+        XCTAssertNil(event?.parameters["series_id"])
+    }
+
+    func testCoinRewardPushCanTargetRewardsCheckin() {
+        let service = makeService()
+        service.handleOpenedPush([
+            "campaignType": "coin_reward",
+            "campaignId": "streak_reminder",
+            "deeplink": "shortseries://rewards/checkin"
+        ])
+
+        // Aynı kampanya tipi ÖdülMerkezi check-in şeridine de yönlenebilir (rota belirler).
+        XCTAssertEqual(dispatchSpy.dispatched.first?.route, .rewards(anchor: .checkin))
+        XCTAssertEqual(analytics.event(named: "push_open")?.parameters["push_type"], .string("coin_reward"))
+    }
+
+    func testRecommendationPushOpensSeriesDetailAndTracks() {
+        let service = makeService()
+        service.handleOpenedPush([
+            "campaignType": "recommendation",
+            "campaignId": "for_you_2026",
+            "deeplink": "shortseries://series/srs_9f2c1a",
+            "seriesId": "srs_9f2c1a"
+        ])
+
+        // Öneri → önerilen dizi DiziDetay (Keşfet stack'i, TabCoordinator .series delegesi).
+        XCTAssertEqual(dispatchSpy.dispatched.count, 1)
+        XCTAssertEqual(dispatchSpy.dispatched.first?.route, .series(id: SeriesID("srs_9f2c1a")))
+        XCTAssertEqual(dispatchSpy.dispatched.first?.source, .push)
+
+        let event = analytics.event(named: "push_open")
+        XCTAssertEqual(event?.parameters["push_type"], .string("recommendation"))
+        XCTAssertEqual(event?.parameters["campaign_id"], .string("for_you_2026"))
+        XCTAssertEqual(event?.parameters["series_id"], .string("srs_9f2c1a"))
+    }
+
+    func testRecommendationPushWithInvalidSeriesIdTracksButDoesNotDispatch() {
+        let service = makeService()
+        // Geçersiz-ID savunması: PushPayload parse olur (ID doğrulaması burada YAPILMAZ) ama
+        // DeepLinkRoute(url:) contentIDPattern regex'ini geçmeyen ID'yi düşürür → rota nil.
+        service.handleOpenedPush([
+            "campaignType": "recommendation",
+            "campaignId": "for_you_2026",
+            "deeplink": "shortseries://series/not-a-valid-id",
+            "seriesId": "not-a-valid-id"
+        ])
+
+        // Rota düşürüldü → hiçbir dispatch olmaz (path injection'a set edilemez).
+        XCTAssertTrue(dispatchSpy.dispatched.isEmpty)
+        // Ama push_open YİNE atılır (atıf kaybolmaz) — push_type payload rawValue'sundan.
+        let event = analytics.event(named: "push_open")
+        XCTAssertEqual(event?.parameters["push_type"], .string("recommendation"))
+        // series_id payload'dan taşınır (rota çözülmese de analitik atıf korunur).
+        XCTAssertEqual(event?.parameters["series_id"], .string("not-a-valid-id"))
+    }
+
+    func testUnknownCampaignTypeIsSilentlyIgnored() {
+        let service = makeService()
+        // F1/F2 dışı wire tip → PushPayload nil (savunmacı gate) → dispatch YOK, push_open atılmaz.
+        service.handleOpenedPush([
+            "campaignType": "flash_sale",
+            "campaignId": "promo",
+            "deeplink": "shortseries://store/coins"
         ])
 
         XCTAssertTrue(dispatchSpy.dispatched.isEmpty)

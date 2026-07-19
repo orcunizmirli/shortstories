@@ -12,12 +12,17 @@ import Foundation
 /// Rich push kategori + aksiyon tanımları. NSE, kampanya tipinden türettiği kimliği
 /// `content.categoryIdentifier`e yazar; `AppDelegate` AYNI kimliklerle `UNNotificationCategory` kaydeder
 /// (aksiyon butonları eşleşsin). Kimlikler push kampanya tipiyle 1:1'dir (07 §5.2 "İçerik" kategorisi;
-/// SS-141 aksiyonları: yeni bölüm → "İzle", kaldığın yerden devam → "Devam Et").
+/// SS-141 F1 aksiyonları: yeni bölüm → "İzle", kaldığın yerden devam → "Devam Et"; SS-143 F2: coin-ödül
+/// → "Topla" (coin/ödül yüzeyi), öneri → "İzle" (önerilen DiziDetay)).
 enum RichPushCategory {
     /// Yeni bölüm bildirimi kategorisi ("İzle" aksiyonu).
     static let newEpisodeIdentifier = "ss_new_episode"
     /// Kaldığın yerden devam bildirimi kategorisi ("Devam Et" aksiyonu).
     static let continueIdentifier = "ss_continue"
+    /// Coin/ödül hatırlatması kategorisi (F2; "Topla" aksiyonu → coin/ödül yüzeyi: CoinMağaza / ÖdülMerkezi).
+    static let coinRewardIdentifier = "ss_coin_reward"
+    /// Kişiselleştirilmiş öneri kategorisi (F2; "İzle" aksiyonu → önerilen dizi DiziDetay).
+    static let recommendationIdentifier = "ss_recommendation"
 
     /// Aksiyon butonu tanımı — UN tipsiz saf değer. `AppDelegate` bunu `UNNotificationAction`'a çevirir.
     struct Action: Equatable {
@@ -33,7 +38,9 @@ enum RichPushCategory {
         let actions: [Action]
     }
 
-    /// `AppDelegate`in açılışta kaydedeceği tüm rich push kategorileri (F1 kapsamı: yeni bölüm + devam-et).
+    /// `AppDelegate`in açılışta kaydedeceği tüm rich push kategorileri (F1: yeni bölüm + devam-et;
+    /// F2: coin-ödül + öneri). `AppDelegate.setNotificationCategories` bunun tümünü kaydeder → NSE'nin
+    /// `content.categoryIdentifier`e yazdığı her kampanya tipi için aksiyon butonu çözülebilir.
     static let all: [Descriptor] = [
         Descriptor(
             identifier: newEpisodeIdentifier,
@@ -42,6 +49,14 @@ enum RichPushCategory {
         Descriptor(
             identifier: continueIdentifier,
             actions: [Action(identifier: "ss_resume", title: "Devam Et", opensApp: true)]
+        ),
+        Descriptor(
+            identifier: coinRewardIdentifier,
+            actions: [Action(identifier: "ss_collect", title: "Topla", opensApp: true)]
+        ),
+        Descriptor(
+            identifier: recommendationIdentifier,
+            actions: [Action(identifier: "ss_watch", title: "İzle", opensApp: true)]
         )
     ]
 
@@ -50,6 +65,8 @@ enum RichPushCategory {
         switch type {
         case .newEpisode: newEpisodeIdentifier
         case .continueWatching: continueIdentifier
+        case .coinReward: coinRewardIdentifier
+        case .recommendation: recommendationIdentifier
         }
     }
 }
