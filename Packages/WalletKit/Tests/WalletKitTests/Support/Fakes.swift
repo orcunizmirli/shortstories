@@ -217,12 +217,15 @@ extension WalletSnapshot {
     static func fixture(
         purchased: Int = 0,
         earned: Int = 0,
+        earnedExpiringSoon: ExpiryNotice? = nil,
+        earnedBuckets: [EarnedCoinBucket] = [],
         firstTopUpEligible: Bool = false,
         version: Int = 1
     ) -> WalletSnapshot {
         WalletSnapshot(
             balance: CoinBalance(purchasedCoins: purchased, earnedCoins: earned),
-            earnedExpiringSoon: nil,
+            earnedExpiringSoon: earnedExpiringSoon,
+            earnedBuckets: earnedBuckets,
             firstTopUpEligible: firstTopUpEligible,
             updatedAt: Date(timeIntervalSince1970: 1_700_000_000),
             version: version

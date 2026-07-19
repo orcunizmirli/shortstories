@@ -94,6 +94,10 @@ public struct UnlockSheetView: View {
             }
             .disabled(isCoinButtonDisabled)
 
+            if let note = model.viewState.coinSpendNote {
+                earnedFirstNote(note)
+            }
+
             Toggle(isOn: autoUnlockBinding) {
                 VStack(alignment: .leading, spacing: DSSpacing.xxs) {
                     Text("Sonraki bölümleri otomatik aç")
@@ -132,6 +136,20 @@ public struct UnlockSheetView: View {
 
     private var autoUnlockBinding: Binding<Bool> {
         Binding(get: { model.autoUnlockEnabled }, set: { model.setAutoUnlock($0) })
+    }
+
+    /// Earned-önce harcama şeffaflığı (SS-115 D2 / 06 §2.4): "önce kazanılmış coin kullanılır"
+    /// açıklaması. Mesaj saf `EarnedFirstNote`'tan (tek kaynak); burada yalnız DS token'la çizilir.
+    private func earnedFirstNote(_ note: EarnedFirstNote) -> some View {
+        HStack(spacing: DSSpacing.xs) {
+            Image(systemName: "info.circle")
+                .font(DSTypography.caption)
+                .foregroundStyle(DSColors.textTertiary)
+            Text(verbatim: note.message)
+                .font(DSTypography.caption)
+                .foregroundStyle(DSColors.textTertiary)
+        }
+        .accessibilityElement(children: .combine)
     }
 
     // MARK: Reklam satırı (Faz 2 — bayrak açıksa)

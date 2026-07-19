@@ -45,6 +45,79 @@ public struct SpendPlan: Sendable, Equatable {
     public let shortfall: Int
 }
 
+/// Bir sonraki harcamanın tek kese satırı (06 §2.4). Sunucu ledger'ının kese-başına satır
+/// düzeniyle (05 §2.6: "iki satır") aynı anlamı UI'ya taşır; `bucket` yalnız `.earned`/
+/// `.purchased` olur (harcama ön-izlemesinde `.unknown` üretilmez).
+public struct SpendSource: Sendable, Equatable {
+    public let bucket: CoinTransaction.Bucket
+    public let coins: Int
+
+    public init(bucket: CoinTransaction.Bucket, coins: Int) {
+        self.bucket = bucket
+        self.coins = coins
+    }
+}
+
+/// Earned-önce harcama kuralının (E9; 06 §2.4) UI'ya açılan ŞEFFAF okumaları. Saf türev;
+/// bakiye/düşüm otoritesi sunucudadır. UnlockSheet "önce kazanılmış coin'den düşülür" bandı
+/// bunları kullanır.
+public extension SpendPlan {
+    /// Harcamanın kese-bazlı dökümü, harcama SIRASINDA (önce earned, sonra purchased). Yalnız
+    /// fiilen düşen (> 0) satırlar; karışık düşüşte iki satır (ledger'la birebir).
+    var sources: [SpendSource] {
+        var lines: [SpendSource] = []
+        if earnedSpent > 0 {
+            lines.append(SpendSource(bucket: .earned, coins: earnedSpent))
+        }
+        if purchasedSpent > 0 {
+            lines.append(SpendSource(bucket: .purchased, coins: purchasedSpent))
+        }
+        return lines
+    }
+
+    /// Bir sonraki harcamanın İLK çektiği kese (banner metni için). Hiç düşüm yoksa `nil`.
+    var primaryBucket: CoinTransaction.Bucket? {
+        sources.first?.bucket
+    }
+
+    /// Harcama iki keseden karışık mı düşüyor (ledger iki satır → UI "X kazanılmış + Y satın
+    /// alınmış" açıklaması).
+    var drawsFromBothBuckets: Bool {
+        earnedSpent > 0 && purchasedSpent > 0
+    }
+
+    /// UnlockSheet earned-önce şeffaflık satırının (SS-115 D2) içeriği. Yalnız harcama TAM karşılanır
+    /// (`isCovered`) VE earned keseden pay düşerken doludur; yalnız-purchased veya karşılanamayan
+    /// (shortfall) durumda `nil` (satır çizilmez — "önce earned" anlatılacak bir şey yok).
+    var earnedFirstNote: EarnedFirstNote? {
+        guard isCovered, earnedSpent > 0 else { return nil }
+        if purchasedSpent > 0 {
+            return .mixed(earned: earnedSpent, purchased: purchasedSpent)
+        }
+        return .earnedOnly(coins: earnedSpent)
+    }
+}
+
+/// Earned-önce harcama kuralının (kanon §5; 06 §2.4) UnlockSheet'e açılan ŞEFFAF okuması
+/// (SS-115 D2). Saf türev; mesaj TEK kaynak burada (View verbatim çizer, test doğrular).
+public enum EarnedFirstNote: Sendable, Equatable {
+    /// Unlock tamamen kazanılmış coin'den düşer.
+    case earnedOnly(coins: Int)
+    /// Karışık düşüş: önce earned, sonra purchased (ledger iki satır, 05 §2.6).
+    case mixed(earned: Int, purchased: Int)
+
+    /// Coin butonunun altına basılan açıklama. "Önce kazanılmış" ifadesiyle earned-önce kuralını
+    /// (E9) kullanıcıya görünür kılar (sürpriz vade kaybı → kayıp kaçınma, 06 §2.5).
+    public var message: String {
+        switch self {
+        case let .earnedOnly(coins):
+            "Önce kazanılmış \(coins) coin'in kullanılır"
+        case let .mixed(earned, purchased):
+            "Önce kazanılmış \(earned) coin, sonra satın alınan \(purchased) coin kullanılır"
+        }
+    }
+}
+
 /// Earned-önce harcama planlayıcısı — saf, yan etkisiz, izole test edilir.
 public enum SpendPlanner {
     public static func plan(spending amount: Int, from balance: CoinBalance) -> SpendPlan {

@@ -39,8 +39,18 @@ public final class CoinShopModel {
     public private(set) var items: [CoinShopItem] = []
     public private(set) var balance: CoinBalance = .zero
     public private(set) var earnedExpiringSoon: ExpiryNotice?
+    /// Sunucu-otoriter earned lotları (06 §2.5); açılışta snapshot'tan seed edilir. Yaklaşan-vade
+    /// uyarısı bunlardan türetilir (istemci bakiye HESAPLAMAZ). Sunucu `earnedBuckets` gönderene
+    /// dek (05 §2.5 WIRE TODO) boş kalır → uyarı tekil `earnedExpiringSoon` bandına düşer.
+    public private(set) var earnedBuckets: [EarnedCoinBucket] = []
     public private(set) var firstTopUpEligible = false
     public private(set) var purchasePhase: StorePurchasePhase = .idle
+
+    /// Yaklaşan-vade uyarısının saf sunum türevi (SS-115 D1). View doğrudan çizer; uygun vade
+    /// yoksa `nil` (bant çizilmez). `now` enjekte → deterministik "N gün".
+    public var earnedExpiryWarning: EarnedExpiryWarning? {
+        EarnedExpiryWarning.resolve(buckets: earnedBuckets, notice: earnedExpiringSoon, now: now())
+    }
 
     // MARK: - Bağımlılıklar
 
@@ -49,6 +59,7 @@ public final class CoinShopModel {
     private let wallet: any WalletGateway
     private let purchasing: any WalletPurchasing
     private let analytics: any AnalyticsTracking
+    private let now: @Sendable () -> Date
     private weak var delegate: (any CoinShopDelegate)?
 
     private var priceByProductID: [String: Decimal] = [:]
@@ -64,7 +75,8 @@ public final class CoinShopModel {
         wallet: any WalletGateway,
         purchasing: any WalletPurchasing,
         analytics: any AnalyticsTracking,
-        delegate: (any CoinShopDelegate)?
+        delegate: (any CoinShopDelegate)?,
+        now: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.source = source
         self.loader = loader
@@ -72,6 +84,7 @@ public final class CoinShopModel {
         self.purchasing = purchasing
         self.analytics = analytics
         self.delegate = delegate
+        self.now = now
     }
 
     // MARK: - Yaşam döngüsü
@@ -96,6 +109,7 @@ public final class CoinShopModel {
         guard !isDisposed else { return }
         balance = snapshot.balance
         earnedExpiringSoon = snapshot.earnedExpiringSoon
+        earnedBuckets = snapshot.earnedBuckets
         trackStoreView()
         startObserving()
         await load()

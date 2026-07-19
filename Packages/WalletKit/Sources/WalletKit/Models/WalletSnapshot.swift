@@ -19,6 +19,14 @@ public struct ExpiryNotice: Sendable, Equatable, Decodable {
 public struct WalletSnapshot: Sendable, Equatable, Decodable {
     public let balance: CoinBalance
     public let earnedExpiringSoon: ExpiryNotice?
+    /// Sunucu-otoriter FEFO earned lotları (06 §2.5): her lot kendi `expiresAt`'iyle. Yaklaşan-vade
+    /// (`EarnedCoinExpiryPlanner`) ve earned-önce harcama şeffaflığı bu lotlardan türetilir.
+    ///
+    /// WIRE TODO (05 §2.5): `GET /wallet` şu an YALNIZ tekil `earnedExpiringSoon` bandı döner;
+    /// çok-lotlu `earnedBuckets` alanı sunucu sözleşmesine EKLENMELİDİR (kohort/TTL kuralları
+    /// 06 §2.5 / 07). Alan gelene dek `decodeIfPresent` ile boş kalır (mevcut yanıtlar kırılmaz);
+    /// eklendiğinde bu model değişmeden decode eder. Tekil bant, lot yoksa geriye-uyum için tutulur.
+    public let earnedBuckets: [EarnedCoinBucket]
     public let firstTopUpEligible: Bool
     public let updatedAt: Date
     public let version: Int
@@ -26,12 +34,14 @@ public struct WalletSnapshot: Sendable, Equatable, Decodable {
     public init(
         balance: CoinBalance,
         earnedExpiringSoon: ExpiryNotice?,
+        earnedBuckets: [EarnedCoinBucket] = [],
         firstTopUpEligible: Bool,
         updatedAt: Date,
         version: Int
     ) {
         self.balance = balance
         self.earnedExpiringSoon = earnedExpiringSoon
+        self.earnedBuckets = earnedBuckets
         self.firstTopUpEligible = firstTopUpEligible
         self.updatedAt = updatedAt
         self.version = version
@@ -41,6 +51,7 @@ public struct WalletSnapshot: Sendable, Equatable, Decodable {
         case purchasedCoins
         case earnedCoins
         case earnedExpiringSoon
+        case earnedBuckets
         case firstTopUpEligible
         case updatedAt
         case version
@@ -53,6 +64,7 @@ public struct WalletSnapshot: Sendable, Equatable, Decodable {
             earnedCoins: container.decode(Int.self, forKey: .earnedCoins)
         )
         earnedExpiringSoon = try container.decodeIfPresent(ExpiryNotice.self, forKey: .earnedExpiringSoon)
+        earnedBuckets = try container.decodeIfPresent([EarnedCoinBucket].self, forKey: .earnedBuckets) ?? []
         firstTopUpEligible = try container.decode(Bool.self, forKey: .firstTopUpEligible)
         updatedAt = try container.decode(Date.self, forKey: .updatedAt)
         version = try container.decode(Int.self, forKey: .version)

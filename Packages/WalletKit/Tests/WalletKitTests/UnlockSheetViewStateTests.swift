@@ -100,4 +100,49 @@ struct UnlockSheetViewStateTests {
         )
         #expect(state.orderedOptions == [.coin, .vip])
     }
+
+    // MARK: - Earned-önce harcama şeffaflığı (SS-115 D2)
+
+    @Test func bakiyeYeterliKarisikEarnedNotuTuretilir() {
+        // 60 fiyat; 45 earned + 105 purchased → önce earned düşer (karışık), not dolu.
+        let state = UnlockSheetViewState.resolve(
+            balance: CoinBalance(purchasedCoins: 105, earnedCoins: 45),
+            unlockPrice: 60,
+            config: full,
+            vipIntroEligible: false
+        )
+        #expect(state.coinSpendNote == .mixed(earned: 45, purchased: 15))
+    }
+
+    @Test func bakiyeYetersizEarnedNotuYok() {
+        // Insufficient → coin ile açılmayacak, not gösterilmez.
+        let state = UnlockSheetViewState.resolve(
+            balance: CoinBalance(purchasedCoins: 10, earnedCoins: 5),
+            unlockPrice: 60,
+            config: full,
+            vipIntroEligible: false
+        )
+        #expect(state.coinSpendNote == nil)
+    }
+
+    @Test func yalnizPurchasedEarnedNotuYok() {
+        let state = UnlockSheetViewState.resolve(
+            balance: CoinBalance(purchasedCoins: 100, earnedCoins: 0),
+            unlockPrice: 60,
+            config: full,
+            vipIntroEligible: false
+        )
+        #expect(state.coinSpendNote == nil)
+    }
+
+    @Test func coinBayragiKapaliEarnedNotuYok() {
+        let config = UnlockOptionsConfig(coinEnabled: false, adEnabled: false, vipEnabled: true)
+        let state = UnlockSheetViewState.resolve(
+            balance: CoinBalance(purchasedCoins: 105, earnedCoins: 45),
+            unlockPrice: 60,
+            config: config,
+            vipIntroEligible: false
+        )
+        #expect(state.coinSpendNote == nil)
+    }
 }

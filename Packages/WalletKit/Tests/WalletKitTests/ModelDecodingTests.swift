@@ -36,7 +36,29 @@ struct ModelDecodingTests {
         let snapshot = try decode(WalletSnapshot.self, json)
 
         #expect(snapshot.earnedExpiringSoon == nil)
+        #expect(snapshot.earnedBuckets.isEmpty) // alan yoksa boş (WIRE TODO: sunucu henüz göndermiyor)
         #expect(snapshot.firstTopUpEligible)
+    }
+
+    @Test func walletSnapshotEarnedBucketsDecode() throws {
+        // İleriye-dönük sözleşme (05 §2.5 WIRE TODO): sunucu çok-lotlu earnedBuckets gönderirse decode.
+        let json = """
+        { "purchasedCoins": 120, "earnedCoins": 55, "firstTopUpEligible": false,
+          "earnedBuckets": [
+            { "amount": 30, "expiresAt": "2026-07-14T00:00:00Z" },
+            { "amount": 25, "expiresAt": "2026-07-20T00:00:00Z" }
+          ],
+          "updatedAt": "2026-07-11T09:00:00Z", "version": 130 }
+        """
+        let snapshot = try decode(WalletSnapshot.self, json)
+
+        #expect(snapshot.earnedBuckets.count == 2)
+        #expect(snapshot.earnedBuckets[0].amount == 30)
+        #expect(snapshot.earnedBuckets[1].amount == 25)
+        // Türetilen yaklaşan-vade (7 gün eşiği, now = grant öncesi): yalnız ilk lot pencerede.
+        let now = Date(timeIntervalSince1970: 1_783_728_000) // 2026-07-11 00:00 UTC
+        let notice = EarnedCoinExpiryPlanner.upcomingExpiry(buckets: snapshot.earnedBuckets, now: now)
+        #expect(notice?.coins == 30)
     }
 
     @Test func unlockResponseDecodeIkiLedgerSatiri() throws {

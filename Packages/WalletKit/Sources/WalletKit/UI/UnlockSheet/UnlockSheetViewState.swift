@@ -52,17 +52,23 @@ public struct UnlockSheetViewState: Equatable, Sendable {
     public let showsVIPIntro: Bool
     /// Başlık bloğunda gösterilen güncel toplam bakiye.
     public let balanceTotal: Int
+    /// Earned-önce harcama şeffaflığı (SS-115 D2): bu unlock coin ile YAPILIRSA (bakiye yeterli)
+    /// hangi keseden ne düşer. Yalnız `coinState == .sufficient` VE earned'dan pay düşerken dolu;
+    /// aksi halde `nil` (satır çizilmez). Server-otoriter kuralın istemci ön-izlemesidir.
+    public let coinSpendNote: EarnedFirstNote?
 
     public init(
         orderedOptions: [UnlockOptionKind],
         coinState: CoinUnlockState?,
         showsVIPIntro: Bool,
-        balanceTotal: Int
+        balanceTotal: Int,
+        coinSpendNote: EarnedFirstNote? = nil
     ) {
         self.orderedOptions = orderedOptions
         self.coinState = coinState
         self.showsVIPIntro = showsVIPIntro
         self.balanceTotal = balanceTotal
+        self.coinSpendNote = coinSpendNote
     }
 
     /// Analitik `options_shown` parametresi (06 §6.7 / 08 §3.4): "coin,ad,vip" alt kümesi.
@@ -90,11 +96,17 @@ public struct UnlockSheetViewState: Equatable, Sendable {
         if config.vipEnabled {
             order.append(.vip)
         }
+        // Earned-önce şeffaflık: yalnız bakiye yeterliyken (fiilen coin ile açılacaksa) hesaplanır.
+        var coinSpendNote: EarnedFirstNote?
+        if case let .sufficient(price) = coinState {
+            coinSpendNote = SpendPlanner.plan(spending: price, from: balance).earnedFirstNote
+        }
         return UnlockSheetViewState(
             orderedOptions: order,
             coinState: coinState,
             showsVIPIntro: config.vipEnabled && vipIntroEligible,
-            balanceTotal: balance.totalCoins
+            balanceTotal: balance.totalCoins,
+            coinSpendNote: coinSpendNote
         )
     }
 

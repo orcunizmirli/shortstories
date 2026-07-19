@@ -46,15 +46,31 @@ public struct CoinShopView: View {
                     .font(DSTypography.caption)
                     .foregroundStyle(DSColors.textSecondary)
             }
-            if let expiry = model.earnedExpiringSoon {
-                Text("\(expiry.amount) coin yakında sona erecek")
-                    .font(DSTypography.caption)
-                    .foregroundStyle(DSColors.warning)
+            if let warning = model.earnedExpiryWarning {
+                earnedExpiryChip(warning)
             }
             if model.firstTopUpEligible {
                 firstTopUpBanner
             }
         }
+    }
+
+    /// Yaklaşan-vade uyarı çipi (SS-115 D1 / 06 §2.5): yalnız yaklaşan vade varken çizilir. DS
+    /// warning token'ı + saat rozeti; mesaj saf `EarnedExpiryWarning`'ten (tek kaynak).
+    private func earnedExpiryChip(_ warning: EarnedExpiryWarning) -> some View {
+        HStack(spacing: DSSpacing.xs) {
+            Image(systemName: "clock.badge.exclamationmark")
+                .font(DSTypography.caption)
+                .foregroundStyle(DSColors.warning)
+            Text(verbatim: warning.message)
+                .font(DSTypography.captionEmphasized)
+                .foregroundStyle(DSColors.warning)
+        }
+        .padding(.horizontal, DSSpacing.s)
+        .padding(.vertical, DSSpacing.xs)
+        .background(DSColors.warning.opacity(0.15), in: Capsule())
+        .accessibilityElement(children: .combine)
+        .padding(.top, DSSpacing.xxs)
     }
 
     private var firstTopUpBanner: some View {
