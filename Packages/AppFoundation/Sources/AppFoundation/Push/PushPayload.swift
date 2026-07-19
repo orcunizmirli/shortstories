@@ -1,21 +1,32 @@
 import Foundation
 
-/// F1 push kampanya tipi (SS-143; 08 §3.6 `push_open.push_type`). YALNIZ yeni-bölüm ve devam-et
-/// F1 kapsamındadır (01 NTF-02 Must); coin-ödül/öneri F2'dir (Should) ve `PushPayload` parse'ında
-/// SESSİZCE reddedilir (bilinmeyen/F2 tip → payload `nil`). rawValue'lar 08 `push_type` enum'uyla birebir.
+/// Push kampanya tipi (SS-143; 08 §3.6 `push_open.push_type`). F1 kapsamı yeni-bölüm + devam-et
+/// (01 NTF-02 Must); F2 kapsamı coin-ödül + kişiselleştirilmiş öneri (Should). BİLİNMEYEN tip HÂLÂ
+/// `PushPayload` parse'ında sessizce reddedilir (bilinmeyen → payload `nil`; savunmacı). rawValue'lar
+/// 08 `push_type` enum'uyla birebir (`"new_episode"|"continue"|"coin_reward"|"recommendation"`).
 public enum PushCampaignType: String, Sendable, Equatable, CaseIterable {
     /// Yeni bölüm yayında (02 §5.6) — hedef `series/{id}/episode/{n}`.
     case newEpisode = "new_episode"
     /// Kaldığın yerden devam (02 §8.2 `play?t=`) — hedef `play/{id}?t={sec}`.
     case continueWatching = "continue"
+    /// Coin/ödül hatırlatması (F2; 08 §3.6 `"coin_reward"`) — hedef coin/ödül yüzeyi: `store/coins`
+    /// (CoinMagazasi, 02 §8.2) veya `rewards[/checkin]` (OdulMerkezi). Sabit-path hedef; içerik ID yok.
+    case coinReward = "coin_reward"
+    /// Kişiselleştirilmiş öneri (F2; 08 §3.6 `"recommendation"`) — hedef önerilen dizi `series/{id}`
+    /// (DiziDetay); `seriesId` payload'da analitik için taşınır, ID doğrulaması rota çözümünde yapılır.
+    /// Wire `rawValue` = case adı (`"recommendation"`); redundantRawValues gereği açık yazılmaz.
+    case recommendation
 }
 
 /// APNs push payload'ının uygulama-alanı değer tipi (SS-143). `UNUserNotificationCenter`'dan gelen ham
 /// `userInfo` sözlüğünü çözer; UN tipleri App delegate seam'inde kalır — bu tip yalnız Foundation taşır.
 /// Parse SAF ve deterministiktir (gerçek APNs olmadan test edilir, deliverable 4).
 ///
-/// F1 GATE (task kapsamı): yalnız yeni-bölüm + devam-et; diğer/eksik tip → `nil` (sessiz yok say,
-/// 02 §5.6 hata dalı). Kanonik payload sözleşmesi (07 §6.1 + 05 §1.7 "Wire formatı camelCase"):
+/// TİP GATE: yeni-bölüm + devam-et (F1) + coin-ödül + öneri (F2); BİLİNMEYEN/eksik tip → `nil`
+/// (sessiz yok say, 02 §5.6 hata dalı). İçerik ID doğrulaması BURADA YAPILMAZ (geçersiz-ID rota da
+/// parse olur ki `push_open` atılabilsin, 08 §3.6); injection savunması + rota düşürme aşağı akıştaki
+/// `DeepLinkRoute(url:)`/`DeepLinkResolver`'dadır (02 §8.4 kural 4). Kanonik payload sözleşmesi
+/// (07 §6.1 + 05 §1.7 "Wire formatı camelCase"):
 /// `deeplink` (deep link, zorunlu), `campaignType` (kampanya tipi discriminator), `campaignId` (atıf),
 /// `seriesId` (opsiyonel analitik). Parse SAVUNMACIDIR: harici/güvenilmeyen backend girdisi olduğu
 /// için legacy snake_case anahtarlar (`route`/`type`/`campaign_id`/`series_id`) da köprülenir (SS-141
@@ -48,7 +59,8 @@ public struct PushPayload: Sendable, Equatable {
     private static let seriesIDKeys = ["seriesId", "series_id"]
 
     /// APNs `userInfo` sözlüğünden çözer. Rota (`deeplink`/`route`) ZORUNLU; tip (`campaignType`/`type`)
-    /// açıksa onu kullanır (F2/bilinmeyen → `nil`), yoksa rota şeklinden türetir (07 §6.2 tipsiz örnek).
+    /// açıksa onu kullanır (F1+F2 tipleri çözülür, bilinmeyen → `nil`), yoksa rota şeklinden türetir
+    /// (07 §6.2 tipsiz örnek).
     /// Kanonik camelCase birincil, legacy snake_case fallback (savunmacı köprüleme). Çözülemezse `nil`.
     public init?(userInfo: [AnyHashable: Any]) {
         guard let routeString = Self.string(forKeys: Self.routeKeys, in: userInfo),
@@ -86,7 +98,7 @@ public struct PushPayload: Sendable, Equatable {
     /// Açık `type` varsa onu döner (F1 dışı `rawValue` → `nil`); yoksa rota şeklinden coarse türetir.
     static func resolveType(explicit: String?, route: URL) -> PushCampaignType? {
         if let explicit {
-            // coin_reward/recommendation/bilinmeyen → nil (F1 sessiz reddi).
+            // new_episode/continue (F1) + coin_reward/recommendation (F2) → çözülür; bilinmeyen → nil.
             return PushCampaignType(rawValue: explicit)
         }
         return derivedType(from: route)

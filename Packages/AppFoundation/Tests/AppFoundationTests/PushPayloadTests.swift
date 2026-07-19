@@ -2,9 +2,11 @@ import Foundation
 import Testing
 @testable import AppFoundation
 
-/// SS-143 — push payload parse'ının SAF doğrulamaları (gerçek APNs olmadan; deliverable 4). F1 gate:
-/// yalnız yeni-bölüm + devam-et; F2/bilinmeyen tip → nil (sessiz yok say). `type` yoksa rota şeklinden
-/// coarse türetim (02 §5.6 tipsiz örnek).
+/// SS-143 — push payload parse'ının SAF doğrulamaları (gerçek APNs olmadan; deliverable 4). Tip gate:
+/// yeni-bölüm + devam-et (F1) + coin-ödül + öneri (F2); bilinmeyen tip → nil (sessiz yok say). `type`
+/// yoksa rota şeklinden coarse türetim (02 §5.6 tipsiz örnek). İçerik-ID doğrulaması burada YAPILMAZ
+/// (rota düşürme/injection savunması aşağı akıştaki DeepLinkResolver'dadır; geçersiz-ID push'u yine parse
+/// olur ki push_open atılabilsin).
 struct PushPayloadTests {
     // MARK: - Kanonik camelCase wire sözleşmesi (07 §6.1 / 05 §1.7 "Wire formatı camelCase")
 
@@ -43,11 +45,84 @@ struct PushPayloadTests {
     }
 
     @Test func camelCaseUnknownTypeIgnored() {
-        // F2/bilinmeyen tip camelCase gelse de sessizce reddedilir (F1 gate korunur).
+        // BİLİNMEYEN tip camelCase gelse de sessizce reddedilir (savunmacı gate korunur).
         #expect(PushPayload(userInfo: [
-            "campaignType": "coin_reward",
+            "campaignType": "flash_sale",
             "deeplink": "shortseries://store/coins"
         ]) == nil)
+    }
+
+    // MARK: - F2 kampanya tipleri (SS-143 F2): coin-ödül + kişiselleştirilmiş öneri
+
+    @Test func canonicalCamelCaseCoinRewardParsesToCoinRoute() throws {
+        // Coin-ödül hatırlatma push'u → CoinMagazasi (`store/coins`); wire camelCase birincil.
+        let payload = try #require(PushPayload(userInfo: [
+            "campaignId": "coins_2026w29",
+            "campaignType": "coin_reward",
+            "deeplink": "shortseries://store/coins?offer=launch"
+        ]))
+        #expect(payload.type == .coinReward)
+        #expect(payload.campaignID == "coins_2026w29")
+        #expect(payload.route == URL(string: "shortseries://store/coins?offer=launch"))
+    }
+
+    @Test func coinRewardTargetsRewardsSurface() throws {
+        // Coin-ödül push'u OdulMerkezi'ni de hedefleyebilir (`rewards/checkin`, 02 §8.2) — tip yine coinReward.
+        let payload = try #require(PushPayload(userInfo: [
+            "campaignType": "coin_reward",
+            "deeplink": "shortseries://rewards/checkin"
+        ]))
+        #expect(payload.type == .coinReward)
+        #expect(payload.route == URL(string: "shortseries://rewards/checkin"))
+    }
+
+    @Test func canonicalCamelCaseRecommendationParsesToSeriesRoute() throws {
+        // Kişiselleştirilmiş öneri push'u → önerilen dizi DiziDetay (`series/{id}`); seriesId analitik taşır.
+        let payload = try #require(PushPayload(userInfo: [
+            "campaignId": "reco_srs_9f2c1a",
+            "campaignType": "recommendation",
+            "deeplink": "shortseries://series/srs_9f2c1a",
+            "seriesId": "srs_9f2c1a"
+        ]))
+        #expect(payload.type == .recommendation)
+        #expect(payload.campaignID == "reco_srs_9f2c1a")
+        #expect(payload.route == URL(string: "shortseries://series/srs_9f2c1a"))
+        #expect(payload.seriesID == "srs_9f2c1a")
+    }
+
+    @Test func legacySnakeCaseCoinRewardParses() throws {
+        // Legacy snake_case sözleşmesi de köprülenir (savunmacı fallback) — regresyon koruması.
+        let payload = try #require(PushPayload(userInfo: [
+            "type": "coin_reward",
+            "campaign_id": "coins_promo",
+            "route": "shortseries://store/coins"
+        ]))
+        #expect(payload.type == .coinReward)
+        #expect(payload.campaignID == "coins_promo")
+        #expect(payload.route == URL(string: "shortseries://store/coins"))
+    }
+
+    @Test func legacySnakeCaseRecommendationParses() throws {
+        let payload = try #require(PushPayload(userInfo: [
+            "type": "recommendation",
+            "route": "shortseries://series/srs_9f2c1a",
+            "series_id": "srs_9f2c1a"
+        ]))
+        #expect(payload.type == .recommendation)
+        #expect(payload.seriesID == "srs_9f2c1a")
+    }
+
+    @Test func recommendationInvalidContentIDStillParses() throws {
+        // Deliverable 3: geçersiz içerik ID'li öneri push'u BURADA yine parse olur (route korunur) ki
+        // `push_open` atılabilsin (08 §3.6, "mevcut kalıp"); rota düşürme/injection savunması aşağı
+        // akıştaki `DeepLinkResolver` regex'indedir (DiscoverKit `invalidSeriesIDIsDropped`). PushPayload
+        // içerik-ID doğrulaması YAPMAZ — bu ayrım atıf'ın rota geçersizken de atılmasını sağlar.
+        let payload = try #require(PushPayload(userInfo: [
+            "campaignType": "recommendation",
+            "deeplink": "shortseries://series/DROP%20TABLE"
+        ]))
+        #expect(payload.type == .recommendation)
+        #expect(payload.route == URL(string: "shortseries://series/DROP%20TABLE"))
     }
 
     @Test func camelCaseTypelessDeeplinkDerivesType() throws {
@@ -101,26 +176,20 @@ struct PushPayloadTests {
         #expect(payload.seriesID == nil)
     }
 
-    // MARK: - F2 / bilinmeyen tip → nil (sessiz yok say)
-
-    @Test func coinRewardTypeIgnored() {
-        #expect(PushPayload(userInfo: [
-            "type": "coin_reward",
-            "route": "shortseries://store/coins"
-        ]) == nil)
-    }
-
-    @Test func recommendationTypeIgnored() {
-        #expect(PushPayload(userInfo: [
-            "type": "recommendation",
-            "route": "shortseries://series/srs_123"
-        ]) == nil)
-    }
+    // MARK: - Bilinmeyen tip → nil (sessiz yok say; F1/F2 dışı kalır)
 
     @Test func unknownTypeIgnored() {
         #expect(PushPayload(userInfo: [
             "type": "flash_sale",
             "route": "shortseries://home"
+        ]) == nil)
+    }
+
+    @Test func unknownVipUpsellTypeIgnored() {
+        // F2 iki tip ekler (coin_reward/recommendation); başka her tip HÂLÂ reddedilir (savunmacı).
+        #expect(PushPayload(userInfo: [
+            "type": "vip_upsell",
+            "route": "shortseries://store/vip"
         ]) == nil)
     }
 
