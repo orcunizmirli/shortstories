@@ -88,6 +88,16 @@ actor FavoritesStore: FavoritesRepository {
         try modelContext.save()
     }
 
+    func deleteAll() throws {
+        // Hesap değişiminde (05 §3.3) TÜM kayıtlar (synced + pendingAdd + pendingRemove) silinir.
+        // Aktör-izole fetch→delete→save; boş store'da fetch boş döner (no-op).
+        let all = try modelContext.fetch(FetchDescriptor<FavoriteEntity>())
+        for entity in all {
+            modelContext.delete(entity)
+        }
+        try modelContext.save()
+    }
+
     // MARK: - Yardımcılar
 
     private func fetchEntity(seriesId: String) throws -> FavoriteEntity? {

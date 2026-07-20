@@ -63,4 +63,10 @@ public protocol FavoritesRepository: Sendable {
 
     /// Sunucu `DELETE` onayı: `pendingRemove` kaydı kalıcı silinir.
     func confirmRemoval(_ seriesID: SeriesID) async throws
+
+    /// TÜM favori kayıtlarını (synced + pendingAdd + pendingRemove) siler. Hesap DEĞİŞİMİNDE
+    /// (misafir→mevcut hesaba geçiş, 05 §3.3) yerel store SIFIRLANIR: yeni hesap önceki misafirin
+    /// favorilerini GÖRMEZ ve bekleyen işlemler yeni hesaba SIZMAZ. Boş store'da no-op'tur
+    /// (idempotent). SessionState mutasyonuna DOKUNMAZ — yalnız yerel veriyi sıfırlar.
+    func deleteAll() async throws
 }

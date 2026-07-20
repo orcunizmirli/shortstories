@@ -200,6 +200,10 @@ final class GatedFavoritesRepository: FavoritesRepository, @unchecked Sendable {
     func confirmRemoval(_ seriesID: SeriesID) async throws {
         try await base.confirmRemoval(seriesID)
     }
+
+    func deleteAll() async throws {
+        try await base.deleteAll()
+    }
 }
 
 // MARK: - Katalog JOIN fake'i

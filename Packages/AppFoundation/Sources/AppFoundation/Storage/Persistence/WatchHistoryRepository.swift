@@ -79,4 +79,10 @@ public protocol WatchHistoryRepository: Sendable {
     /// o kayıt `pendingUpload` KALIR (bir sonraki tur yükler) — böylece henüz sunucuya gitmemiş
     /// bir yazma yanlışlıkla `synced` işaretlenip kaybolmaz (05 §3.3 last-write-wins, simetrik guard).
     func markSynced(uploaded records: [WatchProgressRecord]) async throws
+
+    /// TÜM izleme-geçmişi kayıtlarını (synced + pendingUpload) siler. Hesap DEĞİŞİMİNDE (misafir→
+    /// mevcut hesaba geçiş, 05 §3.3) yerel store SIFIRLANIR: yeni hesap önceki misafirin geçmişini
+    /// GÖRMEZ ve sonraki senkron misafir pendingUpload'larını yeni hesaba YÜKLEMEZ. Boş store'da
+    /// no-op'tur (idempotent). SessionState mutasyonuna DOKUNMAZ — yalnız yerel veriyi sıfırlar.
+    func deleteAll() async throws
 }

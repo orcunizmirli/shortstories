@@ -187,4 +187,34 @@ struct WatchHistoryRepositoryTests {
         try await repo.saveProgress(record("e-1", series: "s-1", at: 1000))
         #expect(try await repo.latestProgress(forSeries: SeriesID("s-none")) == nil)
     }
+
+    /// SS-132 veri-izolasyonu (05 §3.3 hesap değişimi): `deleteAll()` TÜM izleme-geçmişi
+    /// kayıtlarını (synced + pendingUpload) siler. Misafir→mevcut hesaba geçişte store sıfırlanır
+    /// → yeni hesap önceki misafirin geçmişini GÖRMEZ ve sonraki senkron misafir pendingUpload'larını
+    /// yeni hesaba YÜKLEMEZ (hesaplar-arası kirlenme yok).
+    @Test func deleteAllRemovesEverySyncStateRecord() async throws {
+        let repo = try makeRepo()
+        // Karışık: pendingUpload + synced kayıtlar.
+        try await repo.saveProgress(record("ep-1", series: "s-1", at: 1000))
+        try await repo.saveProgress(record("ep-2", series: "s-1", completed: true, at: 2000))
+        try await repo.mergeServerProgress([record("ep-3", series: "s-2", at: 3000)])
+        #expect(try await repo.progress(forSeries: SeriesID("s-1")).count == 2)
+
+        try await repo.deleteAll()
+
+        // Hiçbir okuma yolu misafir verisini görmemeli.
+        #expect(try await repo.progress(forEpisode: EpisodeID("ep-1")) == nil)
+        #expect(try await repo.progress(forEpisode: EpisodeID("ep-3")) == nil)
+        #expect(try await repo.progress(forSeries: SeriesID("s-1")).isEmpty)
+        #expect(try await repo.continueWatching(limit: 0).isEmpty)
+        #expect(try await repo.pendingUploads().isEmpty)
+        #expect(try await repo.latestProgress(forSeries: SeriesID("s-1")) == nil)
+    }
+
+    /// Boş store'da `deleteAll()` idempotenttir (throw etmez, no-op).
+    @Test func deleteAllOnEmptyStoreIsNoOp() async throws {
+        let repo = try makeRepo()
+        try await repo.deleteAll()
+        #expect(try await repo.pendingUploads().isEmpty)
+    }
 }

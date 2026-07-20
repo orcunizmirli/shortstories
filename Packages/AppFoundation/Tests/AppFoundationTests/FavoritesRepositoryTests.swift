@@ -83,4 +83,30 @@ struct FavoritesRepositoryTests {
         #expect(try await repo.pendingSync().isEmpty)
         #expect(try await repo.favorites().isEmpty)
     }
+
+    /// SS-132 veri-izolasyonu (05 §3.3 hesap değişimi): `deleteAll()` TÜM favori kayıtlarını
+    /// (synced + pendingAdd + pendingRemove) siler. Misafir→mevcut hesaba geçişte store sıfırlanır
+    /// → yeni hesap önceki misafirin favorilerini GÖRMEZ ve bekleyen işlemler yeni hesaba SIZMAZ.
+    @Test func deleteAllRemovesEverySyncStateRecord() async throws {
+        let repo = try makeRepo()
+        try await repo.addFavorite(SeriesID("s-1"), at: Date(timeIntervalSince1970: 1000)) // pendingAdd
+        try await repo.addFavorite(SeriesID("s-2"), at: Date(timeIntervalSince1970: 2000))
+        try await repo.confirmAdd(SeriesID("s-2")) // synced
+        try await repo.removeFavorite(SeriesID("s-2")) // pendingRemove
+        #expect(try await repo.pendingSync().isEmpty == false)
+
+        try await repo.deleteAll()
+
+        #expect(try await repo.favorites().isEmpty)
+        #expect(try await repo.isFavorite(SeriesID("s-1")) == false)
+        #expect(try await repo.isFavorite(SeriesID("s-2")) == false)
+        #expect(try await repo.pendingSync().isEmpty)
+    }
+
+    /// Boş store'da `deleteAll()` idempotenttir (throw etmez, no-op).
+    @Test func deleteAllOnEmptyStoreIsNoOp() async throws {
+        let repo = try makeRepo()
+        try await repo.deleteAll()
+        #expect(try await repo.favorites().isEmpty)
+    }
 }

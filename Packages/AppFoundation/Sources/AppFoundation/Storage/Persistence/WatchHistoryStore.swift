@@ -51,6 +51,16 @@ actor WatchHistoryStore: WatchHistoryRepository {
         try modelContext.save()
     }
 
+    func deleteAll() throws {
+        // Hesap değişiminde (05 §3.3) TÜM kayıtlar (synced + pendingUpload) silinir. Aktör-izole
+        // fetch→delete→save tek serileştirme noktasında yürür; boş store'da fetch boş döner (no-op).
+        let all = try modelContext.fetch(FetchDescriptor<WatchProgressEntity>())
+        for entity in all {
+            modelContext.delete(entity)
+        }
+        try modelContext.save()
+    }
+
     // MARK: - Okuma
 
     func progress(forEpisode episodeID: EpisodeID) throws -> WatchProgressRecord? {
