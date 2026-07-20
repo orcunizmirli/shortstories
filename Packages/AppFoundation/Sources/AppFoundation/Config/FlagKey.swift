@@ -76,6 +76,10 @@ public struct FlagKey<Value: FlagValue>: Sendable {
 /// Kanonik flag sabitleri (03 §11). Yaşam döngüsü: her flag bir sahip + son temizlik
 /// tarihiyle FlagRegistry.md'ye kaydedilir; ölü flag üç release içinde silinir.
 public enum Flags {
+    /// UnlockSheet "reklam izle" satırının ana şalteri (06 §6.2 `ads.rewarded_enabled`). F1'de KAPALI
+    /// (yapı var, gizli); F2 SS-114 (AdMob köprüsü) açar. Günlük cap'ten (`rewardedDailyCap`) BAĞIMSIZ
+    /// üst şalter; kapalıyken reklam satırı hiç render edilmez (istemci sürümü beklemeden server degrade).
+    public static let rewardedAdsEnabled = FlagKey(name: "ads.rewarded_enabled", default: false)
     public static let rewardedDailyCap = FlagKey(name: "rewards.daily_ad_cap", default: 5)
     public static let dataSaverMaxHeight = FlagKey(name: "player.data_saver_max_height", default: 480)
 }
