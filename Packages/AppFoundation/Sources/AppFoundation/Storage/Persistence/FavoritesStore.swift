@@ -48,6 +48,27 @@ actor FavoritesStore: FavoritesRepository {
         try modelContext.save()
     }
 
+    func removeFavorites(_ seriesIDs: Set<SeriesID>) throws {
+        // Çoklu silme (02 §4.12): eşleşen tüm kayıtları TEK fetch + TEK save ile işaretle.
+        // Her kayıt `removeFavorite` ile AYNI semantiği izler (pendingAdd → sil, aksi halde
+        // pendingRemove); zaten pendingRemove olan idempotenttir. Boş küme / eşleşme yoksa no-op.
+        guard !seriesIDs.isEmpty else { return }
+        let ids = seriesIDs.map(\.rawValue)
+        let descriptor = FetchDescriptor<FavoriteEntity>(
+            predicate: #Predicate { ids.contains($0.seriesId) }
+        )
+        let entities = try modelContext.fetch(descriptor)
+        guard !entities.isEmpty else { return }
+        for entity in entities {
+            if entity.syncState == FavoriteSyncState.pendingAdd.rawValue {
+                modelContext.delete(entity)
+            } else if entity.syncState != FavoriteSyncState.pendingRemove.rawValue {
+                entity.syncState = FavoriteSyncState.pendingRemove.rawValue
+            }
+        }
+        try modelContext.save()
+    }
+
     func toggleFavorite(_ seriesID: SeriesID, at date: Date) throws -> Bool {
         // Aktör-izole, askı noktası olmayan tek adım: oku→değiştir→yaz atomiktir. Alt
         // yardımcılar (`isFavorite`/`addFavorite`/`removeFavorite`) senkron çalışır; bu metot

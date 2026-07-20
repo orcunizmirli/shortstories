@@ -66,6 +66,11 @@ final class CachedSeriesEntity {
     var fetchedAt: Date
     /// LRU tahliye sıralama anahtarı.
     var lastAccessAt: Date
+    /// `payload.count` snapshot'ı (store anında yazılır). LRU tahliye bütçesini `payload`
+    /// blob'unu belleğe çekmeden hesaplamak için tutulur (WP-F1-G OPT-2). Additive kolon;
+    /// default `0` → SwiftData lightweight migration eski satırlara güvenle uygular (cache
+    /// yeniden üretilebilir olduğundan geçici 0 sayımı zararsız, ilk store'da tazelenir).
+    var sizeBytes: Int = 0
 
     init(
         seriesId: String,
@@ -73,7 +78,8 @@ final class CachedSeriesEntity {
         payloadSchemaVersion: Int,
         etag: String?,
         fetchedAt: Date,
-        lastAccessAt: Date
+        lastAccessAt: Date,
+        sizeBytes: Int
     ) {
         self.seriesId = seriesId
         self.payload = payload
@@ -81,6 +87,7 @@ final class CachedSeriesEntity {
         self.etag = etag
         self.fetchedAt = fetchedAt
         self.lastAccessAt = lastAccessAt
+        self.sizeBytes = sizeBytes
     }
 }
 
@@ -94,6 +101,9 @@ final class CachedEpisodeListEntity {
     var fetchedAt: Date
     /// LRU tahliye (CachedSeriesEntity ile aynı politika).
     var lastAccessAt: Date
+    /// `payload.count` snapshot'ı (WP-F1-G OPT-2; `CachedSeriesEntity.sizeBytes` ile aynı
+    /// politika: blob'suz LRU bütçe hesabı + additive/default-0 lightweight migration).
+    var sizeBytes: Int = 0
 
     init(
         seriesId: String,
@@ -101,7 +111,8 @@ final class CachedEpisodeListEntity {
         payloadSchemaVersion: Int,
         etag: String?,
         fetchedAt: Date,
-        lastAccessAt: Date
+        lastAccessAt: Date,
+        sizeBytes: Int
     ) {
         self.seriesId = seriesId
         self.payload = payload
@@ -109,6 +120,7 @@ final class CachedEpisodeListEntity {
         self.etag = etag
         self.fetchedAt = fetchedAt
         self.lastAccessAt = lastAccessAt
+        self.sizeBytes = sizeBytes
     }
 }
 

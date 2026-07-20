@@ -49,6 +49,13 @@ public protocol FavoritesRepository: Sendable {
     /// aksi halde `pendingRemove` işaretlenir (sunucu DELETE'i beklenir).
     func removeFavorite(_ seriesID: SeriesID) async throws
 
+    /// Optimistic ÇOKLU çıkarma (Listem çoklu silme, 02 §4.12): verilen dizilerin HEPSİ TEK
+    /// serileştirilmiş yerel yazmada işlenir — her kayıt için `removeFavorite` ile AYNI semantik
+    /// (`pendingAdd` → doğrudan sil, aksi halde `pendingRemove`), ama N ayrı `save()` yerine tek
+    /// `save()`. Boş küme no-op. Varsayılan uygulama tek tek `removeFavorite`'a düşer (geri
+    /// uyumluluk); SwiftData store tek yazmaya indirger.
+    func removeFavorites(_ seriesIDs: Set<SeriesID>) async throws
+
     /// Görünür favori durumunu ATOMİK ters çevirir ve yeni durumu döndürür. Oku→değiştir→yaz
     /// tek bir aktör-izole adımda yürür (askı noktası YOK); böylece eşzamanlı iki toggle bayat
     /// okuyup net-tek etki üretemez (TOCTOU koruması). `add`/`removeFavorite` ile aynı optimistic
@@ -69,4 +76,15 @@ public protocol FavoritesRepository: Sendable {
     /// favorilerini GÖRMEZ ve bekleyen işlemler yeni hesaba SIZMAZ. Boş store'da no-op'tur
     /// (idempotent). SessionState mutasyonuna DOKUNMAZ — yalnız yerel veriyi sıfırlar.
     func deleteAll() async throws
+}
+
+public extension FavoritesRepository {
+    /// Geri uyumlu varsayılan: batch kaldırmayı desteklemeyen konformanslar için tek tek
+    /// `removeFavorite`'a düşer. Somut SwiftData store bunu TEK `save()`'e indirgeyerek override
+    /// eder (03 §9). Boş kümede döngü hiç dönmez → no-op.
+    func removeFavorites(_ seriesIDs: Set<SeriesID>) async throws {
+        for seriesID in seriesIDs {
+            try await removeFavorite(seriesID)
+        }
+    }
 }

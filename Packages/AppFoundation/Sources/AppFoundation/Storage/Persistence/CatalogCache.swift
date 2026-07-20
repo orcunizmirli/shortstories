@@ -12,8 +12,35 @@ import SwiftData
 /// **LRU tahliye (05 §3.2):** `CachedSeriesEntity` + `CachedEpisodeListEntity` toplamı
 /// `PersistenceBudgets.catalogMaxRecords` / `catalogMaxBytes`'ı aşınca `lastAccessAt` en eski
 /// olan önce silinir. `FeedSnapshotEntity` LRU'ya dahil değildir (tekil, `key` başına snapshot).
+///
+/// **LRU dokunuşu coalesce (WP-F1-G OPT-1):** okuma yolu `lastAccessAt`'i yalnız *bellek-içi*
+/// günceller (dirty damga) ve `save()` ETMEZ — yazma amplifikasyonunu önler. Damga, bir sonraki
+/// `save()`'te (store veya eviction) diske coalesce edilir; tahliye sıralaması bellekteki güncel
+/// `lastAccessAt`'i gördüğünden en-eski-erişimliyi doğru seçer. Uçuşta kaybolan damgalar cache
+/// için tolere edilir (yalnız LRU sırasını hafifçe bayatlatır, veri kaybı değil).
+///
+/// **Blob'suz tahliye bütçesi (WP-F1-G OPT-2):** eviction bütçeyi `sizeBytes` kolonundan
+/// hesaplar ve `propertiesToFetch` ile `payload` blob'larını belleğe ÇEKMEZ.
 @ModelActor
 actor CatalogCache: CatalogCacheStore {
+    /// Diske yapılan `save()` sayısı (OPT-1 tanısı/testi: okuma yolu bunu ARTIRMAMALI).
+    private(set) var persistedSaveCount = 0
+
+    /// `modelContext.save()` sarmalayıcısı — coalesce edilmiş yazma sayımını tek noktada tutar.
+    private func persist() throws {
+        try modelContext.save()
+        persistedSaveCount += 1
+    }
+
+    /// OPT-2 LOW migrasyon back-fill onarımı (write-on-read YOK): `sizeBytes == 0` ama payload
+    /// dolu ise (lightweight migration back-fill) `assign`'i gerçek `payload.count` ile çağırır.
+    /// Yalnız bellek-içi damgalar; disk `save()` OPT-1 dirty-stamp'iyle bir sonraki save()'e
+    /// coalesce olur. `payload` gerçekten boşsa (0 boyut) dokunmaz.
+    private func backfillSizeBytesIfNeeded(sizeBytes: Int, payload: Data, assign: (Int) -> Void) {
+        guard sizeBytes == 0, !payload.isEmpty else { return }
+        assign(payload.count)
+    }
+
     // MARK: - Series
 
     func cachedSeries(id: SeriesID, expectedSchemaVersion: Int) throws -> CachedPayload? {
@@ -27,14 +54,20 @@ actor CatalogCache: CatalogCacheStore {
         // edilemez → sessizce silinir, çağıran sunucudan tazeler.
         if entity.payloadSchemaVersion != expectedSchemaVersion {
             modelContext.delete(entity)
-            try modelContext.save()
+            try persist()
             return nil
         }
-        // TODO: (WP-F1-G review, ertelendi) her okuma `lastAccessAt` için bir `save()` yapar
-        // (LRU dokunuşu). Yüksek okuma hacminde bu yazmalar coalesce edilebilir (ör. dirty
-        // damgalama + periyodik/uygulama-arka-plan flush). Ayrı optimizasyon kalemi.
+        // OPT-2 LOW (migrasyon back-fill onarımı): lightweight migration eski satırlara
+        // `sizeBytes = 0` yazar → tahliye byte-bütçesine 0 katkı verir (byte-cap o satırlar
+        // re-store edilene dek eksik sayar). İlk şema-uyumlu okumada gerçek boyutu geri yaz.
+        // Bu yazma OPT-1 dirty-stamp'iyle birleşir (okuma başına ayrı disk save() YOK — bir
+        // sonraki save()'e `lastAccessAt` ile coalesce). Payload gerçekten boşsa dokunma.
+        backfillSizeBytesIfNeeded(sizeBytes: entity.sizeBytes, payload: entity.payload) {
+            entity.sizeBytes = $0
+        }
+        // OPT-1: LRU dokunuşu yalnız bellek-içi (dirty damga); save() YOK. Bir sonraki
+        // store/eviction save()'inde diske coalesce edilir.
         entity.lastAccessAt = Date()
-        try modelContext.save()
         return CachedPayload(payload: entity.payload, etag: entity.etag, fetchedAt: entity.fetchedAt)
     }
 
@@ -50,6 +83,7 @@ actor CatalogCache: CatalogCacheStore {
             existing.etag = etag
             existing.fetchedAt = fetchedAt
             existing.lastAccessAt = fetchedAt
+            existing.sizeBytes = payload.count
         } else {
             modelContext.insert(CachedSeriesEntity(
                 seriesId: target,
@@ -57,10 +91,11 @@ actor CatalogCache: CatalogCacheStore {
                 payloadSchemaVersion: schemaVersion,
                 etag: etag,
                 fetchedAt: fetchedAt,
-                lastAccessAt: fetchedAt
+                lastAccessAt: fetchedAt,
+                sizeBytes: payload.count
             ))
         }
-        try modelContext.save()
+        try persist()
     }
 
     // MARK: - Episode list
@@ -74,11 +109,15 @@ actor CatalogCache: CatalogCacheStore {
         guard let entity = try modelContext.fetch(descriptor).first else { return nil }
         if entity.payloadSchemaVersion != expectedSchemaVersion {
             modelContext.delete(entity)
-            try modelContext.save()
+            try persist()
             return nil
         }
+        // OPT-2 LOW: bkz. cachedSeries — migrasyon back-fill onarımı, OPT-1 dirty-stamp'e coalesce.
+        backfillSizeBytesIfNeeded(sizeBytes: entity.sizeBytes, payload: entity.payload) {
+            entity.sizeBytes = $0
+        }
+        // OPT-1: bkz. cachedSeries — bellek-içi dirty damga, save() yok.
         entity.lastAccessAt = Date()
-        try modelContext.save()
         return CachedPayload(payload: entity.payload, etag: entity.etag, fetchedAt: entity.fetchedAt)
     }
 
@@ -94,6 +133,7 @@ actor CatalogCache: CatalogCacheStore {
             existing.etag = etag
             existing.fetchedAt = fetchedAt
             existing.lastAccessAt = fetchedAt
+            existing.sizeBytes = payload.count
         } else {
             modelContext.insert(CachedEpisodeListEntity(
                 seriesId: target,
@@ -101,10 +141,11 @@ actor CatalogCache: CatalogCacheStore {
                 payloadSchemaVersion: schemaVersion,
                 etag: etag,
                 fetchedAt: fetchedAt,
-                lastAccessAt: fetchedAt
+                lastAccessAt: fetchedAt,
+                sizeBytes: payload.count
             ))
         }
-        try modelContext.save()
+        try persist()
     }
 
     // MARK: - Feed snapshot
@@ -117,7 +158,7 @@ actor CatalogCache: CatalogCacheStore {
         guard let entity = try modelContext.fetch(descriptor).first else { return nil }
         if entity.payloadSchemaVersion != expectedSchemaVersion {
             modelContext.delete(entity)
-            try modelContext.save()
+            try persist()
             return nil
         }
         return CachedPayload(payload: entity.payload, etag: nil, fetchedAt: entity.fetchedAt)
@@ -140,7 +181,7 @@ actor CatalogCache: CatalogCacheStore {
                 fetchedAt: fetchedAt
             ))
         }
-        try modelContext.save()
+        try persist()
     }
 
     // MARK: - LRU tahliye
@@ -157,35 +198,47 @@ actor CatalogCache: CatalogCacheStore {
             }
         }
 
-        var bytes: Int {
+        /// OPT-2: bütçe `payload.count` yerine `sizeBytes` kolonundan okunur — blob yüklenmez.
+        var sizeBytes: Int {
             switch self {
-            case let .series(entity): entity.payload.count
-            case let .episodeList(entity): entity.payload.count
+            case let .series(entity): entity.sizeBytes
+            case let .episodeList(entity): entity.sizeBytes
             }
         }
     }
 
     @discardableResult
     func evictCatalogCacheIfNeeded() throws -> Int {
-        // TODO: (WP-F1-G review, ertelendi) tahliye bütçe hesabı için TÜM `payload` blob'larını
-        // belleğe çeker (`entity.payload.count`). Entity'ye ayrı `sizeBytes` kolonu ekleyip yalnız
-        // onu fetch etmek blob okumasını ortadan kaldırır — ancak yeni kolon migration gerektirir,
-        // bu yüzden ayrı iş kalemi.
-        let seriesEntities = try modelContext.fetch(FetchDescriptor<CachedSeriesEntity>())
-        let listEntities = try modelContext.fetch(FetchDescriptor<CachedEpisodeListEntity>())
+        // OPT-2: yalnız LRU/bütçe metadata'sı çekilir (`seriesId`, `lastAccessAt`, `sizeBytes`);
+        // `payload` blob'ları `propertiesToFetch` ile YÜKLENMEZ. `.delete(entity)` de payload'a
+        // dokunmaz, dolayısıyla tüm tahliye yolu blob-okumasızdır.
+        var seriesDescriptor = FetchDescriptor<CachedSeriesEntity>()
+        seriesDescriptor.propertiesToFetch = [\.seriesId, \.lastAccessAt, \.sizeBytes]
+        let seriesEntities = try modelContext.fetch(seriesDescriptor)
+
+        var listDescriptor = FetchDescriptor<CachedEpisodeListEntity>()
+        listDescriptor.propertiesToFetch = [\.seriesId, \.lastAccessAt, \.sizeBytes]
+        let listEntities = try modelContext.fetch(listDescriptor)
 
         var candidates = seriesEntities.map(CatalogCandidate.series)
             + listEntities.map(CatalogCandidate.episodeList)
 
         var remainingRecords = candidates.count
-        var remainingBytes = candidates.reduce(Int64(0)) { $0 + Int64($1.bytes) }
+        var remainingBytes = candidates.reduce(Int64(0)) { $0 + Int64($1.sizeBytes) }
 
         func overBudget() -> Bool {
             remainingRecords > PersistenceBudgets.catalogMaxRecords || remainingBytes > PersistenceBudgets.catalogMaxBytes
         }
-        guard overBudget() else { return 0 }
+        guard overBudget() else {
+            // OPT-1: bütçe aşımı yok ama okuma yolundan biriken LRU damgaları dirty olabilir →
+            // burada tek save()'te diske coalesce et (silme yok, `deleted == 0`).
+            if modelContext.hasChanges {
+                try persist()
+            }
+            return 0
+        }
 
-        // En eski erişimli önce (LRU).
+        // En eski erişimli önce (LRU) — bellek-içi güncel `lastAccessAt` (OPT-1 damgası dâhil).
         candidates.sort { $0.lastAccessAt < $1.lastAccessAt }
 
         var deleted = 0
@@ -196,12 +249,67 @@ actor CatalogCache: CatalogCacheStore {
             case let .episodeList(entity): modelContext.delete(entity)
             }
             remainingRecords -= 1
-            remainingBytes -= Int64(candidate.bytes)
+            remainingBytes -= Int64(candidate.sizeBytes)
             deleted += 1
         }
-        if deleted > 0 {
-            try modelContext.save()
-        }
+        // Silmeler + coalesce edilmiş LRU damgaları tek save()'te diske yazılır.
+        try persist()
         return deleted
+    }
+
+    // MARK: - Tanı erişimi (test/diagnostik)
+
+    /// Bir series kaydının blob'suz `sizeBytes` kolonunu döndürür (OPT-2 doğrulaması). `payload`
+    /// `propertiesToFetch` ile fault bırakılır — bütçe hesabının blob yüklemediğini de örnekler.
+    func storedSeriesSizeBytes(id: SeriesID) throws -> Int? {
+        let target = id.rawValue
+        var descriptor = FetchDescriptor<CachedSeriesEntity>(
+            predicate: #Predicate { $0.seriesId == target }
+        )
+        descriptor.fetchLimit = 1
+        descriptor.propertiesToFetch = [\.sizeBytes]
+        return try modelContext.fetch(descriptor).first?.sizeBytes
+    }
+
+    /// Bir episode-list kaydının blob'suz `sizeBytes` kolonu (OPT-2 doğrulaması).
+    func storedEpisodeListSizeBytes(seriesID: SeriesID) throws -> Int? {
+        let target = seriesID.rawValue
+        var descriptor = FetchDescriptor<CachedEpisodeListEntity>(
+            predicate: #Predicate { $0.seriesId == target }
+        )
+        descriptor.fetchLimit = 1
+        descriptor.propertiesToFetch = [\.sizeBytes]
+        return try modelContext.fetch(descriptor).first?.sizeBytes
+    }
+
+    /// Test/diagnostik (OPT-2 LOW back-fill onarımı): OPT-2 `sizeBytes` kolonu EKLENMEDEN önce
+    /// yazılmış, lightweight migration ile `sizeBytes = 0` back-fill edilmiş bir series satırını
+    /// simüle eder. `store*` KULLANMAZ — çünkü store doğru `payload.count`'ı yazardı; buradaki
+    /// amaç payload dolu ama `sizeBytes == 0` olan migrasyon durumunu ham insert ile kurmaktır.
+    func insertMigrationBackfilledSeries(id: SeriesID, payload: Data, schemaVersion: Int, fetchedAt: Date) throws {
+        modelContext.insert(CachedSeriesEntity(
+            seriesId: id.rawValue,
+            payload: payload,
+            payloadSchemaVersion: schemaVersion,
+            etag: nil,
+            fetchedAt: fetchedAt,
+            lastAccessAt: fetchedAt,
+            sizeBytes: 0
+        ))
+        try persist()
+    }
+
+    /// Test/diagnostik: `insertMigrationBackfilledSeries`'in episode-list eşdeğeri.
+    func insertMigrationBackfilledEpisodeList(seriesID: SeriesID, payload: Data, schemaVersion: Int, fetchedAt: Date) throws {
+        modelContext.insert(CachedEpisodeListEntity(
+            seriesId: seriesID.rawValue,
+            payload: payload,
+            payloadSchemaVersion: schemaVersion,
+            etag: nil,
+            fetchedAt: fetchedAt,
+            lastAccessAt: fetchedAt,
+            sizeBytes: 0
+        ))
+        try persist()
     }
 }

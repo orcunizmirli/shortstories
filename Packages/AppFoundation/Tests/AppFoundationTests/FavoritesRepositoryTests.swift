@@ -84,6 +84,36 @@ struct FavoritesRepositoryTests {
         #expect(try await repo.favorites().isEmpty)
     }
 
+    /// Batch kaldırma (02 §4.12 çoklu silme): TEK çağrıda karışık durumları `removeFavorite` ile
+    /// AYNI semantikte işler — `pendingAdd` doğrudan silinir, `synced` `pendingRemove` olur, listede
+    /// olmayan ID no-op; verilmeyen favori dokunulmadan kalır.
+    @Test func removeFavoritesBatchHandlesMixedStatesInOnePass() async throws {
+        let repo = try makeRepo()
+        try await repo.addFavorite(SeriesID("s-add"), at: Date(timeIntervalSince1970: 1000)) // pendingAdd
+        try await repo.addFavorite(SeriesID("s-synced"), at: Date(timeIntervalSince1970: 2000))
+        try await repo.confirmAdd(SeriesID("s-synced")) // synced
+        try await repo.addFavorite(SeriesID("s-keep"), at: Date(timeIntervalSince1970: 3000))
+        try await repo.confirmAdd(SeriesID("s-keep")) // synced, dokunulmayacak
+
+        try await repo.removeFavorites([SeriesID("s-add"), SeriesID("s-synced"), SeriesID("s-missing")])
+
+        // pendingAdd doğrudan silindi → kuyrukta yok; synced → pendingRemove; keep dokunulmadı.
+        #expect(try await repo.isFavorite(SeriesID("s-add")) == false)
+        #expect(try await repo.isFavorite(SeriesID("s-synced")) == false)
+        #expect(try await repo.isFavorite(SeriesID("s-keep")))
+        #expect(try await repo.favorites().map(\.seriesID) == [SeriesID("s-keep")])
+        #expect(try await repo.pendingSync() == [PendingFavoriteSync(seriesID: SeriesID("s-synced"), state: .pendingRemove)])
+    }
+
+    /// Boş kümede batch kaldırma no-op (throw etmez, kayıtları değiştirmez).
+    @Test func removeFavoritesEmptySetIsNoOp() async throws {
+        let repo = try makeRepo()
+        try await repo.addFavorite(SeriesID("s-1"), at: Date(timeIntervalSince1970: 1000))
+        try await repo.removeFavorites([])
+        #expect(try await repo.isFavorite(SeriesID("s-1")))
+        #expect(try await repo.favorites().map(\.seriesID) == [SeriesID("s-1")])
+    }
+
     /// SS-132 veri-izolasyonu (05 §3.3 hesap değişimi): `deleteAll()` TÜM favori kayıtlarını
     /// (synced + pendingAdd + pendingRemove) siler. Misafir→mevcut hesaba geçişte store sıfırlanır
     /// → yeni hesap önceki misafirin favorilerini GÖRMEZ ve bekleyen işlemler yeni hesaba SIZMAZ.
