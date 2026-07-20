@@ -95,11 +95,19 @@ public final class UnlockSheetModel {
 
     public private(set) var isUnlocking = false
     public private(set) var errorReason: UnlockErrorReason?
+    /// Reklam-ile-aç satırı durumu (SS-114): server-otoriter görünürlük/eylem (`begin()`'de çözülene dek `.hidden`).
+    public private(set) var adAvailability: RewardedAdUnlockAvailability = .hidden
+    /// Reklam gösterimi/unlock akışı sürüyor (satır loading; çift tetik engellenir).
+    public private(set) var isWatchingAd = false
+    /// Son reklam denemesinin inline geri bildirimi (fill yok/hata/red); başarı/erken-kapatmada `nil`.
+    public private(set) var adWatchError: AdWatchError?
 
     // MARK: - Bağımlılıklar
 
     private let wallet: any WalletGateway
     private let analytics: any AnalyticsTracking
+    /// Reklam-ile-aç portu (SS-114). Enjekte edilmezse (Faz 1) satır görünmez; App adaptörü bağlar (RewardsKit import yok).
+    private let rewardedAdUnlock: (any RewardedAdUnlocking)?
     private let now: @Sendable () -> Date
     private weak var delegate: (any UnlockSheetDelegate)?
 
@@ -117,6 +125,7 @@ public final class UnlockSheetModel {
         wallet: any WalletGateway,
         analytics: any AnalyticsTracking,
         delegate: (any UnlockSheetDelegate)?,
+        rewardedAdUnlock: (any RewardedAdUnlocking)? = nil,
         config: UnlockOptionsConfig = .phase1,
         vipIntroEligible: Bool = false,
         now: @escaping @Sendable () -> Date = { Date() }
@@ -133,7 +142,9 @@ public final class UnlockSheetModel {
         self.wallet = wallet
         self.analytics = analytics
         self.delegate = delegate
-        self.config = config
+        self.rewardedAdUnlock = rewardedAdUnlock
+        // Reklam satırı başta gizli: `adEnabled` `availability()` çözülene dek false (fill/cap/VIP/A-B bilinmeden yok).
+        self.config = UnlockOptionsConfig(coinEnabled: config.coinEnabled, adEnabled: false, vipEnabled: config.vipEnabled)
         self.vipIntroEligible = vipIntroEligible
         self.now = now
     }
@@ -171,8 +182,29 @@ public final class UnlockSheetModel {
         balance = await wallet.currentBalance()
         // Await sırasında sheet kapandıysa gözlem kurma (kalıcı sızıntı olmasın).
         guard !isDisposed else { return }
+        // Reklam görünürlüğünü ÖNCE çöz ki `options_shown` doğru alt küme taşısın (port yoksa no-op).
+        await refreshAdAvailability()
+        guard !isDisposed else { return }
         trackPromptShown()
         startObserving()
+    }
+
+    /// Reklam satırı görünürlüğünü port'tan çeker (SS-114): ön-yükler (VIP no-op) + `availability()`; port yoksa no-op.
+    private func refreshAdAvailability() async {
+        guard let rewardedAdUnlock else { return }
+        await rewardedAdUnlock.preload()
+        guard !isDisposed else { return }
+        await applyAdAvailability(rewardedAdUnlock.availability())
+    }
+
+    /// Karar → durum + `config.adEnabled` (`hidden` → satır render edilmez; aksi → görünür etkin/devre dışı).
+    private func applyAdAvailability(_ availability: RewardedAdUnlockAvailability) {
+        adAvailability = availability
+        config = UnlockOptionsConfig(
+            coinEnabled: config.coinEnabled,
+            adEnabled: availability.isVisible,
+            vipEnabled: config.vipEnabled
+        )
     }
 
     /// İki canlı akış (bakiye + entitlement) AYRI görevlerde gözlenir; her akış görev DIŞINDA
@@ -229,6 +261,56 @@ public final class UnlockSheetModel {
             ]
         )
         delegate?.unlockSheetRequestsVIP()
+    }
+
+    /// Reklam-ile-aç satırı (06 §6.2 #4 / §9.3). 30 sn tamamlanınca server SSV kilidi açar → `completeUnlock` (coin
+    /// unlock ile AYNI akış → reklam sonrası KESİNTİSİZ oynatma). Erken kapatma/fill-yok/hata/red → ödül YOK.
+    public func watchAd() async {
+        guard let rewardedAdUnlock, !isWatchingAd, !resolved, adAvailability.isActionable else { return }
+        isWatchingAd = true
+        adWatchError = nil
+        let result = await rewardedAdUnlock.watchAdToUnlock(episodeID: episodeID)
+        isWatchingAd = false
+        // await sırasında entitlement gözlemi kilidi çözmüş olabilir → sonucu yok say (coin akışıyla simetrik).
+        guard !resolved else { return }
+        switch result {
+        case let .unlocked(remainingToday):
+            trackUnlockAd(remainingToday: remainingToday) // kanonik funnel (08 §3.4 unlock_ad); WalletKit sahipli
+            completeUnlock()
+        case .dismissedEarly:
+            break // ödül YOK, hak düşmez, satır olduğu gibi (sessiz — kullanıcı seçimi).
+        case .noFill, .failed:
+            adWatchError = .temporarilyUnavailable
+        case let .capReached(resetsAt):
+            applyAdAvailability(.capReached(resetsAt: resetsAt, dailyCap: capDailyCap()))
+        case .rewardRejected:
+            adWatchError = .rewardRejected
+        }
+    }
+
+    /// `unlock_ad` (08 §3.4): `ad_unlocks_used_today` = cap − server kalan hak (ikisi de biliniyorsa), `daily_cap` config'ten.
+    private func trackUnlockAd(remainingToday: Int?) {
+        var parameters: [String: AnalyticsValue] = [
+            "series_id": .string(seriesID.rawValue),
+            "episode_id": .string(episodeID.rawValue)
+        ]
+        let cap = capDailyCap()
+        if let cap, let remainingToday {
+            parameters["ad_unlocks_used_today"] = .int(max(0, cap - remainingToday))
+        }
+        if let cap {
+            parameters["daily_cap"] = .int(cap)
+        }
+        analytics.track("unlock_ad", parameters: parameters)
+    }
+
+    /// capReached'e geçerken "Yarın M yeni hak" için mevcut karardaki `dailyCap`'i korur (429 cap taşımaz).
+    private func capDailyCap() -> Int? {
+        switch adAvailability {
+        case let .available(_, dailyCap): dailyCap
+        case let .capReached(_, dailyCap): dailyCap
+        case .hidden: nil
+        }
     }
 
     /// Otomatik-unlock toggle (06 §6.4). Dizi bazlı; server'a yazılır.

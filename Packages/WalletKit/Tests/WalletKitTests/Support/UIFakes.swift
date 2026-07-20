@@ -146,6 +146,59 @@ final class FakeWalletPurchasing: WalletPurchasing, @unchecked Sendable {
     }
 }
 
+// MARK: - RewardedAdUnlocking fake (SS-114)
+
+/// UnlockSheet reklam-ile-aç portu fake'i: programlanabilir availability/watch sonucu + çağrı kayıtları.
+/// Gerçek RewardsKit `RewardedAdService` App adaptöründe bağlanır; WalletKit testleri bu fake ile izole.
+final class FakeRewardedAdUnlocking: RewardedAdUnlocking, @unchecked Sendable {
+    private let lock = NSLock()
+    private var _availability: RewardedAdUnlockAvailability
+    private var _watchResult: RewardedAdUnlockResult
+    private(set) var preloadCount = 0
+    private(set) var availabilityCount = 0
+    private(set) var watchedEpisodes: [EpisodeID] = []
+
+    /// Eşzamanlılık kancası: `watchAdToUnlock`'ı beklet (askıya al) — resolved-guard yarış testi için.
+    var watchGate: (@Sendable () async -> Void)?
+
+    init(
+        availability: RewardedAdUnlockAvailability = .hidden,
+        watchResult: RewardedAdUnlockResult = .unlocked(remainingToday: nil)
+    ) {
+        _availability = availability
+        _watchResult = watchResult
+    }
+
+    func setAvailability(_ availability: RewardedAdUnlockAvailability) {
+        lock.withLock { _availability = availability }
+    }
+
+    func setWatchResult(_ result: RewardedAdUnlockResult) {
+        lock.withLock { _watchResult = result }
+    }
+
+    func preload() async {
+        lock.withLock { preloadCount += 1 }
+    }
+
+    func availability() async -> RewardedAdUnlockAvailability {
+        lock.withLock { availabilityCount += 1 }
+        return lock.withLock { _availability }
+    }
+
+    func watchAdToUnlock(episodeID: EpisodeID) async -> RewardedAdUnlockResult {
+        lock.withLock { watchedEpisodes.append(episodeID) }
+        if let watchGate {
+            await watchGate()
+        }
+        return lock.withLock { _watchResult }
+    }
+
+    var watchCount: Int {
+        lock.withLock { watchedEpisodes.count }
+    }
+}
+
 // MARK: - StorefrontLoading fake
 
 final class FakeStorefrontLoader: StorefrontLoading, @unchecked Sendable {

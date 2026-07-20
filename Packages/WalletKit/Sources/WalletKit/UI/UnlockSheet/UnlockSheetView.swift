@@ -152,18 +152,77 @@ public struct UnlockSheetView: View {
         .accessibilityElement(children: .combine)
     }
 
-    // MARK: Reklam satırı (Faz 2 — bayrak açıksa)
+    // MARK: Reklam satırı (06 §6.2 #4 — SS-114; görünürlük/durum server+config-otoriter port'tan)
 
+    /// Satır yalnız port `available`/`capReached` verince orderedOptions'a girer (`hidden` → çizilmez).
+    /// `available` → dokununca `watchAd()` (reklam → server SSV → kilit + kesintisiz oynatma). `capReached`
+    /// → görünür ama devre dışı ("Yarın yeni hak", 06 §9.2). fill-yok/hata → inline "birazdan tekrar dene".
     private var adRow: some View {
-        DSCard(padding: DSSpacing.m) {
-            HStack {
-                Image(systemName: "play.rectangle.fill")
-                    .foregroundStyle(DSColors.textSecondary)
-                Text("Reklam izle, bölümü aç")
-                    .font(DSTypography.body)
-                    .foregroundStyle(DSColors.textPrimary)
-                Spacer()
+        VStack(alignment: .leading, spacing: DSSpacing.xs) {
+            Button {
+                Task { await model.watchAd() }
+            } label: {
+                DSCard(padding: DSSpacing.m) {
+                    HStack(spacing: DSSpacing.m) {
+                        Image(systemName: "play.rectangle.fill")
+                            .foregroundStyle(isAdActionable ? DSColors.accent : DSColors.textTertiary)
+                        VStack(alignment: .leading, spacing: DSSpacing.xxs) {
+                            Text(adRowTitle)
+                                .font(DSTypography.body)
+                                .foregroundStyle(isAdActionable ? DSColors.textPrimary : DSColors.textTertiary)
+                            if let subtitle = adRowSubtitle {
+                                Text(subtitle)
+                                    .font(DSTypography.caption)
+                                    .foregroundStyle(DSColors.textTertiary)
+                            }
+                        }
+                        Spacer()
+                        if model.isWatchingAd {
+                            ProgressView()
+                        }
+                    }
+                }
             }
+            .buttonStyle(.plain)
+            .disabled(!isAdActionable)
+
+            if let adWatchError = model.adWatchError {
+                Text(adErrorText(adWatchError))
+                    .font(DSTypography.caption)
+                    .foregroundStyle(DSColors.warning)
+            }
+        }
+    }
+
+    private var isAdActionable: Bool {
+        model.adAvailability.isActionable && !model.isWatchingAd
+    }
+
+    private var adRowTitle: LocalizedStringKey {
+        switch model.adAvailability {
+        case .available:
+            "Reklam izle, bölümü aç"
+        case let .capReached(_, dailyCap):
+            if let dailyCap {
+                "Yarın \(dailyCap) yeni hak"
+            } else {
+                "Yarın yeni hakların olacak"
+            }
+        case .hidden:
+            "" // satır render edilmez (orderedOptions'ta yok)
+        }
+    }
+
+    /// "Bugün N/M hak kaldı" — yalnız server kalan hak + cap biliniyorsa (istemci saymaz).
+    private var adRowSubtitle: LocalizedStringKey? {
+        guard let indicator = model.adAvailability.remainingIndicator else { return nil }
+        return "Bugün \(indicator.remaining)/\(indicator.dailyCap) hak kaldı"
+    }
+
+    private func adErrorText(_ error: AdWatchError) -> LocalizedStringKey {
+        switch error {
+        case .temporarilyUnavailable: "Şu an reklam yok, birazdan tekrar dene"
+        case .rewardRejected: "Ödül doğrulanamadı, tekrar dene"
         }
     }
 
