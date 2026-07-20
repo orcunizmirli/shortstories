@@ -29,8 +29,12 @@
 | `X-Device-Id` | istek | `identifierForVendor` tabanlı kalıcı UUID; misafir hesabı eşlemesi ve fraud sinyali |
 | `Accept-Language` | istek | Örn. `en-US`, `tr-TR` — feed/metin lokalizasyonu |
 | `Idempotency-Key` | istek | Yan etkili POST'larda zorunlu, UUID v4 (§9) |
+| `X-Device-Integrity` | istek | **Yalnız authed isteklerde** (SS-100, F2). Cihaz bütünlüğü danışma bayrağı: `clean` \| `suspected`. Best-effort jailbreak/tamper heuristiği (bkz. `AppFoundation/Fraud`); bypass edilebilir → **KESİN değil, karar backend'de**. PII/ham yol TAŞIMAZ; yalnız kaba bayrak. |
+| `X-Earn-Velocity-Flag` | istek | **Yalnız authed isteklerde ve sinyal varken** (SS-100, F2). Anormal-kazanç danışma bayrağı: `normal` \| `elevated`. İstemci-taraflı rate-limit İPUCU (WalletKit türetir); istemci bloklamaz, **karar backend'de** (double-entry/audit — 09 R6). Ham sayaç/zaman damgası TAŞIMAZ. |
 | `X-Request-Id` | yanıt | Her yanıtta; hata raporlarında ve `AnalyticsKit` loglarında taşınır |
 | `Cache-Control`, `ETag` | yanıt | §7.2 |
+
+> **Fraud sinyalleri (SS-100, F2) — DEFANSİF/danışma sözleşmesi.** `X-Device-Integrity` ve `X-Earn-Velocity-Flag` yalnız `requiresAuth` (cüzdan/kazanç dahil) isteklere eklenir (`FraudSignalInterceptor`; kalıp: `AuthInterceptor`/`TimezoneInterceptor`). Her ikisi de BEST-EFFORT danışma bayrağıdır: istemci ASLA karar vermez ve isteği bloklamaz — jailbreak/tamper ve anormal-kazanç kararını backend, kendi sunucu-taraflı sinyalleriyle (cihaz kimliği geçmişi, receipt tutarlılığı, kazanç muhasebesi) birleştirerek verir (§1 kural 2 "server otoritatiftir"). Header'lara PII/secret/ham sayaç KONMAZ; cihaz kimliği zaten `X-Device-Id`'dedir.
 
 ---
 
