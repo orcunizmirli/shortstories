@@ -55,6 +55,12 @@ final class AppComposition {
     /// Ağ koşulu monitörü (SS-026) — player veri-tasarrufu/bitrate kararları.
     let networkCondition: NWNetworkConditionProvider
 
+    /// SS-024 remote config portu (`RemoteConfigProviding` — canlı `RemoteConfigClient`). Splash'ta
+    /// `loadForColdStart()` ile /auth/guest + /feed'e PARALEL çekilir (05 §13.1). BU launch cache'li
+    /// config'i kullanır (freeze-per-launch, 03 §11); taze fetch cache + flag snapshot'ı bir SONRAKİ
+    /// launch'a yazar. Force-update (`minSupportedVersion`) ve A/B atamaları buradan okunur.
+    let remoteConfig: any RemoteConfigProviding
+
     /// APNs cihaz token'ı kayıt servisi (SS-140) — `POST /devices` (idempotent). Onboarding izni +
     /// her açılış (izin varsa) token'ı buraya akıtır; `PushService` sarar.
     let deviceTokenRegistrar: any DeviceTokenRegistering
@@ -75,7 +81,8 @@ final class AppComposition {
 
     // MARK: - A/B deney istemcisi (SS-154) — deney boyutu tüm analitik event'lerine düşer
 
-    /// Canlı A/B deney istemcisi (08 §7.1). F1: boş katalog → atama pasif/kontrol (exposure yok).
+    /// Canlı A/B deney istemcisi (08 §7.1). Katalog + server atamaları cache'li `RemoteConfig`'ten
+    /// beslenir (SS-024, freeze-per-launch); atama yoksa boş katalog → pasif/kontrol (exposure yok).
     let experimentClient: ExperimentClient
 
     /// `ab_variants` boyutunu HER feature event'ine ekleyen dekoratör; servisler/fabrikalar bunu
@@ -93,11 +100,13 @@ final class AppComposition {
 
         persistence = try PersistenceStore()
 
-        // SS-154: A/B deney grafiği — persistence SONRASI, analitik-kullanan servislerden ÖNCE kurulur
-        // (`decoratedAnalytics` hazır olsun). Kurulum + F1 sınırı TODO'ları `makeExperimentGraph`'ta.
-        let experiments = Self.makeExperimentGraph(analytics: dependencies.analytics, secureStore: dependencies.secureStore)
-        experimentClient = experiments.client
-        decoratedAnalytics = experiments.decorated
+        // SS-024 + SS-154: remote config istemcisi + A/B deney grafiği TEK fabrikada kurulur (ayrıntı
+        // AppComposition+RemoteConfig'te). Cache'li config bu launch'ın atamalarını besler (freeze-per-launch);
+        // analitik-kullanan servislerden ÖNCE (`decoratedAnalytics` onları saracak — §7.3 BASE istisnası hariç).
+        let config = Self.makeConfigGraph(dependencies: dependencies)
+        remoteConfig = config.remoteConfig
+        experimentClient = config.client
+        decoratedAnalytics = config.decorated
 
         catalog = CatalogAPI(client: apiClient)
         search = SearchAPI(client: apiClient)
@@ -148,19 +157,6 @@ final class AppComposition {
             log: dependencies.logger,
             appAccountToken: { token }
         )
-    }
-
-    /// SS-154 deney grafiği: userID = deviceID (Keychain kalıcı → sticky atama). F1: boş katalog + boş
-    /// `previouslyExposed` (default) → atama pasif, exposure yok. `ab_variants` dekoratörü BASE'i sarar
-    /// (§7.3 exposure BASE'e gider). TODO(F1): previouslyExposed persist (scenePhase bg) + katalog (SS-024).
-    private static func makeExperimentGraph(
-        analytics: any AnalyticsTracking,
-        secureStore: any SecureStoring
-    ) -> (client: ExperimentClient, decorated: ExperimentDimensionTracker) {
-        let deviceID = (try? secureStore.string(forKey: .deviceID)) ?? ""
-        let client = ExperimentClient(catalog: ExperimentCatalog(experiments: []), analytics: analytics, userID: deviceID)
-        // `abVariants` closure `@Sendable` (`ExperimentClient` `@unchecked Sendable`, kilitli okuma).
-        return (client, ExperimentDimensionTracker(base: analytics, abVariants: { client.abVariantsParameter() }))
     }
 
     // MARK: - Port adaptörleri (canlı — Faz 2 sekme view'ları bu fabrikaları kullanır)

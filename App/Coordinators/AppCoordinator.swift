@@ -54,9 +54,15 @@ final class AppCoordinator {
         dependencies: any Dependencies,
         composition: AppComposition
     ) async {
-        // SS-021: anonim misafir oturumu (zaten varsa no-op). API client timeout'lu → asılı kalmaz;
-        // hata sessiz (feed kendi durumunu gösterir).
-        _ = try? await dependencies.session.bootstrapGuestSessionIfNeeded()
+        // SS-024: remote config fetch'i guest ile PARALEL BAŞLAT (05 §13.1: guest/feed/config aynı anda).
+        // Sonucu BEKLENMEZ: freeze-per-launch (03 §11) — deney grafiği + flag'ler zaten bu launch'ın
+        // cache'inden kuruldu; taze fetch next-launch cache'ine yazar → Splash config'e BLOKLANMAZ.
+        // Graceful (throw yutulur); `Task {}` yapısal-olmayan → preload dönse de arka planda tamamlanır.
+        Task { await refreshRemoteConfig(composition) }
+
+        // SS-021: misafir oturumu KRİTİK yol (feed imzalı URL için token'a muhtaç) → beklenir. API client
+        // timeout'lu → asılı kalmaz; hata sessiz (feed kendi durumunu gösterir).
+        await bootstrapGuestSession(dependencies)
 
         // TODO(SS-060/SS-062/SS-042): ilk feed sayfası + ilk video prefetch tetiği. App feed yükleme
         //   dilimi (SS-062) `PlayerFeedViewModel.feedState`e ilk sayfayı seed edip PrefetchController'ı
@@ -71,6 +77,17 @@ final class AppCoordinator {
             // SS-092: cüzdan/entitlement otoritatif tazeleme.
             await composition.walletStore.refresh()
         }
+    }
+
+    /// SS-021: anonim misafir oturumu (zaten varsa no-op). Hata sessiz — feed kendi durumunu gösterir.
+    private static func bootstrapGuestSession(_ dependencies: any Dependencies) async {
+        _ = try? await dependencies.session.bootstrapGuestSessionIfNeeded()
+    }
+
+    /// SS-024: soğuk açılış remote config yenilemesi (`loadForColdStart` — taze cache'te ağ yok). Graceful;
+    /// sonuç bu oturumu değiştirmez (freeze-per-launch), yalnız bir sonraki launch cache'ini tazeler.
+    private static func refreshRemoteConfig(_ composition: AppComposition) async {
+        _ = await composition.refreshRemoteConfig()
     }
 
     // MARK: - Deep link (SS-142)
