@@ -218,17 +218,6 @@ final class AppComposition {
         FavoritesServiceGateway(service: favoritesService)
     }
 
-    /// ProfileKit hesap-bağlama servisi → `APIClient` + canlı `SessionManager` (linkSession hook'u
-    /// oturumu `.linked`e yükseltir + Keychain'e yazar).
-    var accountLinkingService: any AccountLinkingServicing {
-        APIAccountLinkingService(client: dependencies.apiClient, session: dependencies.session)
-    }
-
-    /// ProfileKit hesap-silme + veri-indirme servisi → `APIClient`.
-    var accountDeletionService: any AccountDeletionServicing {
-        APIAccountDeletionService(client: dependencies.apiClient)
-    }
-
     /// PlayerKit oynatma-tercihi portu (veri tasarrufu) → `PreferencesStoring`.
     var playerDataSaverProvider: any PlayerKit.PlaybackPreferencesProviding {
         PreferencesDataSaverProvider(preferences: dependencies.preferences)
@@ -318,13 +307,19 @@ final class AppComposition {
         )
     }
 
-    /// Hesap bağlama modeli — canlı `AppleSignInService` (sunum çıpası App'ten) + backend bağlama.
+    /// Hesap bağlama modeli — canlı `AppleSignInService` (App Store 4.8 zorunlu) + SAĞLAYICI-BAĞIMSIZ
+    /// backend bağlama. Google/e-posta portları SHIPPED mock'larla enjekte edilir (port sözleşmesi
+    /// sabit; adaptör hazır olunca yalnız burası değişir); Google SDK/OAuth ProfileKit'e SIZMAZ.
+    /// TODO: [SS-132 F2] mock'lar → canlı `GoogleSignInService` (`GIDSignIn`+OAuth client-ID) /
+    ///   `EmailLinkService` (`/auth/email/start→verify→password` + kod-giriş UI) prep sonrası.
     func makeHesapBaglamaModel(
         anchor: @escaping @MainActor () -> ASPresentationAnchor,
         delegate: (any HesapBaglamaDelegate)?
     ) -> HesapBaglamaModel {
         HesapBaglamaModel(
             appleSignIn: AppleSignInService(anchor: anchor),
+            googleSignIn: MockGoogleSignInProvider(),
+            emailLink: MockEmailLinkProvider(),
             linking: accountLinkingService,
             analytics: decoratedAnalytics,
             delegate: delegate

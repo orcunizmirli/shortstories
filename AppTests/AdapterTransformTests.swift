@@ -44,6 +44,67 @@ final class AdapterTransformTests: XCTestCase {
         XCTAssertTrue(info.isAvailable)
     }
 
+    // MARK: - Hesap bağlama istek gövdesi (sağlayıcı-bağımsız, POST /auth/link)
+
+    func testLinkRequestBodyApple() {
+        // Apple: provider "apple" + identityToken kalıbı; verificationToken TAŞINMAZ.
+        let body = AuthLinkRequestBody.make(from: .apple(AppleCredential(
+            identityToken: "apple.jwt",
+            authorizationCode: "auth_a",
+            userIdentifier: "apple_user",
+            email: "a@x.com",
+            fullName: "A B"
+        )))
+        XCTAssertEqual(body.provider, "apple")
+        XCTAssertEqual(body.identityToken, "apple.jwt")
+        XCTAssertNil(body.verificationToken)
+        XCTAssertEqual(body.authorizationCode, "auth_a")
+        XCTAssertEqual(body.userIdentifier, "apple_user")
+        XCTAssertEqual(body.email, "a@x.com")
+        XCTAssertEqual(body.fullName, "A B")
+    }
+
+    func testLinkRequestBodyGoogle() {
+        // Google: provider "google" + identityToken (idToken); Apple-özel alanlar (userIdentifier/fullName) nil.
+        let body = AuthLinkRequestBody.make(from: .google(GoogleCredential(
+            idToken: "google.idtoken",
+            authorizationCode: "auth_g",
+            email: "g@x.com"
+        )))
+        XCTAssertEqual(body.provider, "google")
+        XCTAssertEqual(body.identityToken, "google.idtoken")
+        XCTAssertNil(body.verificationToken)
+        XCTAssertEqual(body.authorizationCode, "auth_g")
+        XCTAssertNil(body.userIdentifier)
+        XCTAssertEqual(body.email, "g@x.com")
+        XCTAssertNil(body.fullName)
+    }
+
+    func testLinkRequestBodyEmailUsesVerificationTokenNotIdentityToken() {
+        // E-posta identityToken kalıbına UYMAZ (05 §4.2.1): opak verificationToken; identityToken nil.
+        let body = AuthLinkRequestBody.make(from: .email(EmailCredential(
+            email: "u@x.com",
+            verificationToken: "opaque.verify.token"
+        )))
+        XCTAssertEqual(body.provider, "email")
+        XCTAssertNil(body.identityToken)
+        XCTAssertEqual(body.verificationToken, "opaque.verify.token")
+        XCTAssertNil(body.authorizationCode)
+        XCTAssertNil(body.userIdentifier)
+        XCTAssertEqual(body.email, "u@x.com")
+        XCTAssertNil(body.fullName)
+    }
+
+    func testLinkRequestBodyProviderMatchesCredentialProvider() {
+        // provider alanı tek kaynaktan (credential.provider.rawValue) türer.
+        let apple = LinkCredential.apple(AppleCredential(identityToken: "t", userIdentifier: "u"))
+        let google = LinkCredential.google(GoogleCredential(idToken: "t"))
+        let email = LinkCredential.email(EmailCredential(email: "e@x.com", verificationToken: "t"))
+        XCTAssertEqual(AuthLinkRequestBody.make(from: apple).provider, AuthProvider.apple.rawValue)
+        XCTAssertEqual(AuthLinkRequestBody.make(from: google).provider, AuthProvider.google.rawValue)
+        XCTAssertEqual(AuthLinkRequestBody.make(from: email).provider, AuthProvider.email.rawValue)
+    }
+
     // MARK: - Hesap bağlama conflict eşlemesi
 
     func testLinkConflictMapping() {
