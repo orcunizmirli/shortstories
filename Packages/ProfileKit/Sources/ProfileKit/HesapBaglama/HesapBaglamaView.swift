@@ -2,11 +2,14 @@ import DesignSystem
 import SwiftUI
 
 /// Hesap bağlama ekranı (SS-132) — ince SwiftUI katmanı: tüm karar `HesapBaglamaModel` durum
-/// makinesinde. Misafir → Sign in with Apple. Dark-first, DS token; ham renk yok. Apple butonu
-/// modeli tetikler (ham `ASAuthorization` View'a SIZMAZ — akış port arkasında). Çakışma (409)
-/// birleştirme diyaloğu; iptal sessiz, hata "Tekrar Dene".
+/// makinesinde. Misafir → Apple (F1) / Google / e-posta (F2) bağlama; hepsi sağlayıcı-bağımsız TEK
+/// akıştan geçer. Dark-first, DS token; ham renk yok. Butonlar modeli tetikler (ham `ASAuthorization`/
+/// Google/e-posta girdisi akış portları arkasında). Çakışma (409) birleştirme diyaloğu; iptal sessiz,
+/// hata "Tekrar Dene". App Store 4.8: Sign in with Apple birincil ve KORUNUR.
 public struct HesapBaglamaView: View {
     @State private var model: HesapBaglamaModel
+    @State private var email = ""
+    @State private var password = ""
 
     public init(model: HesapBaglamaModel) {
         _model = State(wrappedValue: model)
@@ -23,7 +26,7 @@ public struct HesapBaglamaView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(DSColors.background)
         .confirmationDialog(
-            "Bu Apple kimliği başka bir hesaba bağlı",
+            "Bu kimlik başka bir hesaba bağlı",
             isPresented: conflictDialogBinding,
             titleVisibility: .visible
         ) {
@@ -98,15 +101,19 @@ public struct HesapBaglamaView: View {
     private func errorMessage(_ error: HesapBaglamaError) -> LocalizedStringKey {
         switch error {
         case .appleUnavailable: "Apple ile giriş tamamlanamadı. Lütfen tekrar dene."
+        case .googleUnavailable: "Google ile giriş tamamlanamadı. Lütfen tekrar dene."
+        case .emailUnavailable: "E-posta ile bağlama tamamlanamadı. Lütfen tekrar dene."
         case .linkFailed: "Hesabın bağlanamadı. Bağlantını kontrol edip tekrar dene."
         }
     }
 
-    // MARK: - Aksiyonlar
+    // MARK: - Aksiyonlar (Apple birincil; Google + e-posta yanında)
 
     private var actions: some View {
         VStack(spacing: DSSpacing.m) {
             appleButton
+            googleButton
+            emailSection
             Button("Şimdi Değil") { model.dismiss() }
                 .font(DSTypography.body)
                 .foregroundStyle(DSColors.textSecondary)
@@ -115,25 +122,62 @@ public struct HesapBaglamaView: View {
     }
 
     /// Sign in with Apple butonu — Apple-imzalı DS bileşeni (HIG beyaz stil; ham renk DS'te).
-    /// Modeli tetikler; ham `ASAuthorization` buraya SIZMAZ. İşlemde (`model.isBusy`) spinner +
-    /// devre dışı; ayrıca yeniden-başlatılamaz durumlarda (`canStartLinking`) devre dışı.
+    /// Modeli tetikler; ham `ASAuthorization` buraya SIZMAZ. İlgili akış uçuşta (`inFlightProvider ==
+    /// .apple`) spinner; yeniden-başlatılamaz durumlarda (`canStartLinking`) devre dışı.
     private var appleButton: some View {
-        DSAppleSignInButton("Apple ile Devam Et", isLoading: model.isBusy) {
-            // Yalnız yeniden-başlatılabilir durumlardan tetiklenir (model kapısıyla birebir): uçuşta,
-            // çakışma kararı beklerken ve başarı sonrası NO-OP (çift didLink / çakışma kaybı yok).
-            guard canStartLinking else { return }
-            if isTerminal {
-                model.reset() // .cancelled/.failed → temizle, sonra yeni akış
-            }
+        DSAppleSignInButton("Apple ile Devam Et", isLoading: model.inFlightProvider == .apple) {
+            // Model kapısı (`canRestart`) tetiği ayrıca korur: uçuşta / çakışma / başarı NO-OP.
             model.startAppleLinking()
         }
         .disabled(!canStartLinking)
     }
 
+    /// Google ile bağlama (F2) — DS ikincil buton (ham renk DS'te). Google SDK View'a SIZMAZ (port).
+    private var googleButton: some View {
+        DSButton("Google ile Devam Et", style: .secondary, isLoading: model.inFlightProvider == .google) {
+            model.startGoogleLinking()
+        }
+        .disabled(!canStartLinking)
+    }
+
+    /// E-posta ile bağlama (F2) — e-posta + parola girdisi; OTP doğrulama alt akışı port arkasında
+    /// (05 §4.2.1). Ham parola modelde tutulmaz (yalnız porta iletilir).
+    private var emailSection: some View {
+        VStack(spacing: DSSpacing.s) {
+            emailField
+            passwordField
+            DSButton("E-posta ile Devam Et", style: .secondary, isLoading: model.inFlightProvider == .email) {
+                model.startEmailLinking(email: email, password: password)
+            }
+            .disabled(!canStartLinking || !isEmailFormValid)
+        }
+    }
+
+    private var emailField: some View {
+        TextField("E-posta", text: $email)
+            .textContentType(.emailAddress)
+            .keyboardType(.emailAddress)
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
+            .font(DSTypography.body)
+            .foregroundStyle(DSColors.textPrimary)
+            .padding(DSSpacing.m)
+            .background(DSColors.surface, in: RoundedRectangle(cornerRadius: DSRadius.card))
+    }
+
+    private var passwordField: some View {
+        SecureField("Parola", text: $password)
+            .textContentType(.password)
+            .font(DSTypography.body)
+            .foregroundStyle(DSColors.textPrimary)
+            .padding(DSSpacing.m)
+            .background(DSColors.surface, in: RoundedRectangle(cornerRadius: DSRadius.card))
+    }
+
     // MARK: - Türetimler
 
     /// Model `canRestart` kapısının View aynası: yeni bağlama yalnız idle/benign-iptal/hata'dan
-    /// başlar; uçuşta, çakışma kararı beklerken ve başarı sonrası buton devre dışı.
+    /// başlar; uçuşta, çakışma kararı beklerken ve başarı sonrası butonlar devre dışı.
     private var canStartLinking: Bool {
         switch model.state {
         case .idle, .cancelled, .failed: true
@@ -141,11 +185,9 @@ public struct HesapBaglamaView: View {
         }
     }
 
-    private var isTerminal: Bool {
-        switch model.state {
-        case .cancelled, .failed: true
-        case .idle, .linking, .conflict, .switching, .linked: false
-        }
+    /// E-posta butonu yalnız iki alan da dolu iken etkin (boş istek porta gitmez).
+    private var isEmailFormValid: Bool {
+        !email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !password.isEmpty
     }
 
     private var conflictMessage: String {

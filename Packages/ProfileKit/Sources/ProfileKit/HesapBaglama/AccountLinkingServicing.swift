@@ -1,10 +1,11 @@
 /// Misafir→bağlı hesap yükseltme sonucu (05 §4.2 `POST /auth/link`). Başarıda sunucu `userId`'yi
 /// KORUR (aynı hesaba kimlik eklenir) → coin bakiyesi, kilitli bölümler, VIP, Listem SUNUCU-otoriter
 /// korunur, client hiçbir varlığı kaybetmez (ONB-06 KC1 / §3.3). Çakışmada 409 birleştirme kararı.
+/// Sağlayıcı-bağımsız: Apple/Google/e-posta hepsi aynı sonucu üretir.
 public enum AccountLinkOutcome: Sendable, Equatable {
     /// Bağlandı — güncel hesap özeti (oturum bağlıya yükseldi; `userId` değişmedi).
     case linked(AccountSummary)
-    /// 409 `ACCOUNT_ALREADY_LINKED` — bu Apple kimliği başka hesaba bağlı; kullanıcı karar verir.
+    /// 409 `ACCOUNT_ALREADY_LINKED` — bu kimlik başka hesaba bağlı; kullanıcı karar verir.
     case conflict(AccountLinkConflict)
 }
 
@@ -35,10 +36,21 @@ public struct AccountLinkConflict: Sendable, Equatable {
 /// Beklenen iki sonuç (`linked`/`conflict`) DEĞER olarak döner; yalnız GERÇEK hatalar (ağ, 5xx,
 /// beklenmedik yanıt) `throw` eder → model `.failed`'e düşer.
 public protocol AccountLinkingServicing: Sendable {
-    /// `POST /auth/link` — Apple kimliğini misafir hesaba bağlar (`userId` korunur, sunucu merge).
-    func link(_ credential: AppleCredential) async throws -> AccountLinkOutcome
+    /// `POST /auth/link` — SAĞLAYICI-BAĞIMSIZ kimlik bağlama (`userId` korunur, sunucu merge). İstek
+    /// gövdesinin `provider` alanını `credential.provider`'dan türetir (Apple/Google `identityToken`;
+    /// e-posta opak `verificationToken`, 05 §4.2/§4.2.1) → Apple/Google/e-posta TEK yoldan geçer.
+    func link(_ credential: LinkCredential) async throws -> AccountLinkOutcome
 
     /// 409 sonrası "mevcut hesabıma geç" → `POST /auth/switch` + `switchToken`. Geçişte yerel veri
     /// kuralı §3.3 (App: `pendingUpload` flush → store sıfırla → sunucudan çek). Bağlı özet döner.
+    /// Sağlayıcı-bağımsız: çakışma yükü hangi kimlikten doğduysa `switchToken` onu taşır.
     func switchToExistingAccount(_ conflict: AccountLinkConflict) async throws -> AccountSummary
+}
+
+public extension AccountLinkingServicing {
+    /// Geriye-uyumlu Apple kolaylığı (F1 çağrı yüzeyi KORUNUR — additive). Sağlayıcı-bağımsız
+    /// `link(_:)`e `LinkCredential.apple` olarak sarar; App/çağıran Apple'ı doğrudan bağlayabilir.
+    func link(_ credential: AppleCredential) async throws -> AccountLinkOutcome {
+        try await link(.apple(credential))
+    }
 }

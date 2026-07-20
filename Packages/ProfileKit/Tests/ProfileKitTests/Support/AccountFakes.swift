@@ -11,6 +11,14 @@ extension AppleCredential {
     static let stub = AppleCredential(identityToken: "jwt.header.sig", userIdentifier: "apple-user-1")
 }
 
+extension GoogleCredential {
+    static let stub = GoogleCredential(idToken: "google.id.token", authorizationCode: "g-auth-code")
+}
+
+extension EmailCredential {
+    static let stub = EmailCredential(email: "user@example.com", verificationToken: "vtok_1")
+}
+
 // MARK: - Sign in with Apple portu fake'i (gerçek AuthenticationServices YOK)
 
 final class FakeAppleSignIn: AppleSignInProviding, @unchecked Sendable {
@@ -38,7 +46,71 @@ final class FakeAppleSignIn: AppleSignInProviding, @unchecked Sendable {
     }
 }
 
-// MARK: - Hesap bağlama backend portu fake'i
+// MARK: - Google Sign-In portu fake'i (gerçek Google SDK YOK)
+
+final class FakeGoogleSignIn: GoogleSignInProviding, @unchecked Sendable {
+    private let lock = NSLock()
+    private var result: Result<GoogleCredential, Error>
+    private var calls = 0
+
+    init(_ result: Result<GoogleCredential, Error> = .success(.stub)) {
+        self.result = result
+    }
+
+    func setResult(_ newValue: Result<GoogleCredential, Error>) {
+        lock.withLock { result = newValue }
+    }
+
+    var callCount: Int {
+        lock.withLock { calls }
+    }
+
+    func signIn() async throws -> GoogleCredential {
+        try lock.withLock {
+            calls += 1
+            return try result.get()
+        }
+    }
+}
+
+// MARK: - E-posta bağlama portu fake'i (gerçek /auth/email/* YOK)
+
+final class FakeEmailLink: EmailLinkProviding, @unchecked Sendable {
+    private let lock = NSLock()
+    private var result: Result<EmailCredential, Error>
+    private var calls = 0
+    private var lastInput: (email: String, password: String)?
+
+    init(_ result: Result<EmailCredential, Error> = .success(.stub)) {
+        self.result = result
+    }
+
+    func setResult(_ newValue: Result<EmailCredential, Error>) {
+        lock.withLock { result = newValue }
+    }
+
+    var callCount: Int {
+        lock.withLock { calls }
+    }
+
+    var lastEmail: String? {
+        lock.withLock { lastInput?.email }
+    }
+
+    var lastPassword: String? {
+        lock.withLock { lastInput?.password }
+    }
+
+    func linkCredential(email: String, password: String) async throws -> EmailCredential {
+        try lock.withLock {
+            calls += 1
+            lastInput = (email, password)
+            return try result.get()
+        }
+    }
+}
+
+// MARK: - Hesap bağlama backend portu fake'i (sağlayıcı-bağımsız)
 
 final class FakeAccountLinking: AccountLinkingServicing, @unchecked Sendable {
     private let lock = NSLock()
@@ -46,6 +118,7 @@ final class FakeAccountLinking: AccountLinkingServicing, @unchecked Sendable {
     private var switchResult: Result<AccountSummary, Error>
     private var linkCalls = 0
     private var switchCalls = 0
+    private var linkedProviders: [AuthProvider] = []
 
     static let linkedApple = AccountSummary(kind: .linked(provider: .apple))
 
@@ -73,9 +146,16 @@ final class FakeAccountLinking: AccountLinkingServicing, @unchecked Sendable {
         lock.withLock { switchCalls }
     }
 
-    func link(_: AppleCredential) async throws -> AccountLinkOutcome {
+    /// `link` çağrılarında taşınan sağlayıcılar (sırayla) — sağlayıcı-bağımsız yolun doğru `provider`
+    /// alanını taşıdığını doğrular.
+    var linkedProviderSequence: [AuthProvider] {
+        lock.withLock { linkedProviders }
+    }
+
+    func link(_ credential: LinkCredential) async throws -> AccountLinkOutcome {
         try lock.withLock {
             linkCalls += 1
+            linkedProviders.append(credential.provider)
             return try linkResult.get()
         }
     }

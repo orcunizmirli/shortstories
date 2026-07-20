@@ -8,11 +8,20 @@ import Testing
 struct HesapBaglamaModelTests {
     private func makeModel(
         apple: FakeAppleSignIn = FakeAppleSignIn(),
+        google: FakeGoogleSignIn = FakeGoogleSignIn(),
+        email: FakeEmailLink = FakeEmailLink(),
         linking: FakeAccountLinking = FakeAccountLinking(),
         analytics: MockAnalytics = MockAnalytics(),
         delegate: HesapBaglamaDelegateSpy
     ) -> HesapBaglamaModel {
-        HesapBaglamaModel(appleSignIn: apple, linking: linking, analytics: analytics, delegate: delegate)
+        HesapBaglamaModel(
+            appleSignIn: apple,
+            googleSignIn: google,
+            emailLink: email,
+            linking: linking,
+            analytics: analytics,
+            delegate: delegate
+        )
     }
 
     private func names(_ analytics: MockAnalytics) -> [String] {
