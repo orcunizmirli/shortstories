@@ -191,13 +191,23 @@ public final class ListemModel {
     /// Seçili favorileri kaldırır (çoklu silme). Optimistik (yerel anında); sunucu senkronu
     /// arka planda. Kaldırma sonrası liste yeniden yüklenir ve düzenleme modu kapanır.
     public func removeSelected() async {
-        // TODO: (WP-F1-G review, ertelendi) seçilenler tek tek `setFavorite(false)` ile silinir
-        // (N ayrı yerel yazma). `FavoritesService`/repository'ye batch kaldırma API'si eklenip
-        // tek serileştirilmiş yazmaya indirgenebilir — ayrı iş kalemi.
+        // Çoklu silme TEK batch yazmada (WP-F1-G ertelenen opt): N ayrı `setFavorite(false)`
+        // yerine tek `removeFavorites(_:)` — repository N kaydı tek serileştirilmiş yerel yazmada
+        // işaretler (optimistik), sunucu senkronu arka planda. Telafi/needsResync deseni serviste
+        // korunur. Kaldırma sonrası liste yeniden yüklenir ve düzenleme modu kapanır.
         let targets = selectedForRemoval
         guard !targets.isEmpty else { return }
-        for seriesID in targets {
-            await remove(seriesID)
+        do {
+            try await favoritesService.removeFavorites(targets)
+            // Her kaldırma için ayrı analitik olayı (tekil kaldırma ile tutarlı huni).
+            for seriesID in targets {
+                analytics.track(
+                    "favorite_remove",
+                    parameters: ["series_id": .string(seriesID.rawValue), "source": .string("listem")]
+                )
+            }
+        } catch {
+            // Yerel batch yazma başarısız (nadir) — sessizce yut; sonraki yüklemede tutarlı kalır.
         }
         endEditing()
         await loadFavorites()

@@ -159,6 +159,100 @@ struct FavoritesServiceTests {
         #expect(try await service.pendingSyncCount() == 0)
     }
 
+    // MARK: - Batch kaldırma (WP-F1-G ertelenen opt: N kaldırma → tek serileştirilmiş yazma)
+
+    /// N favori TEK batch repository çağrısıyla (tekil `removeFavorite` HİÇ çağrılmadan) optimistik
+    /// kaldırılır; hepsi görünmez olur ve `pendingRemove` olarak kuyruğa girer.
+    @Test func removeFavoritesRemovesAllInSingleRepositoryCall() async throws {
+        let counting = try CountingFavoritesRepository(base: makeRepo())
+        let service = makeService(repo: counting)
+        try await service.setFavorite(true, seriesID: SeriesID("s-1"), at: Date(timeIntervalSince1970: 1000))
+        try await service.setFavorite(true, seriesID: SeriesID("s-2"), at: Date(timeIntervalSince1970: 2000))
+        try await service.setFavorite(true, seriesID: SeriesID("s-3"), at: Date(timeIntervalSince1970: 3000))
+        try await service.synchronize() // synced
+
+        try await service.removeFavorites([SeriesID("s-1"), SeriesID("s-2"), SeriesID("s-3")])
+
+        #expect(counting.removeFavoritesCalls == 1)
+        #expect(counting.removeFavoriteCalls == 0)
+        #expect(try await service.favorites().isEmpty)
+        let pending = try await service.pendingSyncCount()
+        #expect(pending == 3)
+    }
+
+    /// Boş küme no-op: repository'ye hiç yazma gitmez, kuyruk değişmez.
+    @Test func removeFavoritesEmptySetIsNoOp() async throws {
+        let counting = try CountingFavoritesRepository(base: makeRepo())
+        let service = makeService(repo: counting)
+        try await service.setFavorite(true, seriesID: SeriesID("s-1"), at: Date(timeIntervalSince1970: 1000))
+
+        try await service.removeFavorites([])
+
+        #expect(counting.removeFavoritesCalls == 0)
+        #expect(try await service.isFavorite(SeriesID("s-1")))
+        #expect(try await service.pendingSyncCount() == 1)
+    }
+
+    /// `needsResync` doğru: batch kaldırmadan sonra `synchronize()` HER kayıt için DELETE gönderir
+    /// ve kuyruğu boşaltır.
+    @Test func removeFavoritesThenSyncDeletesEachOnServer() async throws {
+        let remoting = FakeFavoritesRemoting()
+        let service = try makeService(repo: makeRepo(), remoting: remoting)
+        try await service.setFavorite(true, seriesID: SeriesID("s-1"), at: Date(timeIntervalSince1970: 1000))
+        try await service.setFavorite(true, seriesID: SeriesID("s-2"), at: Date(timeIntervalSince1970: 2000))
+        try await service.synchronize() // synced
+
+        try await service.removeFavorites([SeriesID("s-1"), SeriesID("s-2")])
+        try await service.synchronize()
+
+        #expect(Set(remoting.deleteCalls) == [SeriesID("s-1"), SeriesID("s-2")])
+        #expect(try await service.pendingSyncCount() == 0)
+        #expect(try await service.favorites().isEmpty)
+    }
+
+    /// Kısmi başarısızlık izolasyonu: batch ile kaldırılan kayıtlardan biri (kalıcı 404) senkronda
+    /// başarısız olsa da DİĞERİ silinir; başarısız olan pending kalır (head-of-line blocking yok).
+    @Test func removeFavoritesPartialSyncFailureIsIsolated() async throws {
+        let repo = try makeRepo()
+        let remoting = FakeFavoritesRemoting()
+        let service = makeService(repo: repo, remoting: remoting)
+        try await service.setFavorite(true, seriesID: SeriesID("s-blocked"), at: Date(timeIntervalSince1970: 1000))
+        try await service.setFavorite(true, seriesID: SeriesID("s-ok"), at: Date(timeIntervalSince1970: 2000))
+        try await service.synchronize() // synced
+        remoting.setError(for: SeriesID("s-blocked"), .content(.notFound))
+
+        try await service.removeFavorites([SeriesID("s-blocked"), SeriesID("s-ok")])
+        try await service.synchronize()
+
+        #expect(remoting.deleteCalls == [SeriesID("s-ok")])
+        // s-blocked hâlâ pendingRemove (izole), s-ok kalıcı silindi.
+        let pending = try await repo.pendingSync()
+        #expect(pending.map(\.seriesID) == [SeriesID("s-blocked")])
+        #expect(pending.map(\.state) == [.pendingRemove])
+        #expect(try await service.favorites().isEmpty)
+    }
+
+    /// Telafi deseni KORUNUR: PUT uçarken batch `removeFavorites` araya girerse silme niyeti
+    /// kaybolmaz — telafi DELETE ile sunucudaki hayalet favori temizlenir (tekil remove ile aynı).
+    @Test func removeFavoritesDuringInFlightAddIssuesCompensatingDelete() async throws {
+        let repo = try makeRepo()
+        let remoting = FakeFavoritesRemoting()
+        let service = makeService(repo: repo, remoting: remoting)
+        try await service.setFavorite(true, seriesID: SeriesID("s-1"), at: Date(timeIntervalSince1970: 1000))
+        remoting.setOnPut { series in
+            if series == SeriesID("s-1") {
+                try? await service.removeFavorites([SeriesID("s-1")])
+            }
+        }
+
+        try await service.synchronize()
+
+        #expect(remoting.putCalls == [SeriesID("s-1")])
+        #expect(remoting.deleteCalls == [SeriesID("s-1")])
+        #expect(try await service.isFavorite(SeriesID("s-1")) == false)
+        #expect(try await service.pendingSyncCount() == 0)
+    }
+
     /// Bulgu #5: eşzamanlı iki toggle atomik olmalı (TOCTOU yok). Net-sıfır: biri açar, diğeri
     /// kapar. Kırık yol her ikisini de bayat okuyup net-tek etki (favori kalır) üretir.
     @Test func concurrentTogglesAreAtomicNetZero() async throws {

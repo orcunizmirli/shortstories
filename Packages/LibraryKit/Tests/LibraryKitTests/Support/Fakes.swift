@@ -206,6 +206,72 @@ final class GatedFavoritesRepository: FavoritesRepository, @unchecked Sendable {
     }
 }
 
+// MARK: - Çağrı sayan repository decorator'ı (batch tek-yazma sözleşmesi)
+
+/// Gerçek store'u saran, `removeFavorites` (batch) ile `removeFavorite` (tekil) çağrılarını sayan
+/// decorator. "N kaldırma → TEK batch çağrısı" sözleşmesini doğrular: batch yol tek `removeFavorites`
+/// üretmeli, tekil `removeFavorite` HİÇ çağrılmamalı.
+final class CountingFavoritesRepository: FavoritesRepository, @unchecked Sendable {
+    private let base: any FavoritesRepository
+    private let lock = NSLock()
+    private var _removeFavoritesCalls = 0
+    private var _removeFavoriteCalls = 0
+
+    init(base: any FavoritesRepository) {
+        self.base = base
+    }
+
+    var removeFavoritesCalls: Int {
+        lock.withLock { _removeFavoritesCalls }
+    }
+
+    var removeFavoriteCalls: Int {
+        lock.withLock { _removeFavoriteCalls }
+    }
+
+    func isFavorite(_ seriesID: SeriesID) async throws -> Bool {
+        try await base.isFavorite(seriesID)
+    }
+
+    func favorites() async throws -> [FavoriteRecord] {
+        try await base.favorites()
+    }
+
+    func addFavorite(_ seriesID: SeriesID, at date: Date) async throws {
+        try await base.addFavorite(seriesID, at: date)
+    }
+
+    func removeFavorite(_ seriesID: SeriesID) async throws {
+        lock.withLock { _removeFavoriteCalls += 1 }
+        try await base.removeFavorite(seriesID)
+    }
+
+    func removeFavorites(_ seriesIDs: Set<SeriesID>) async throws {
+        lock.withLock { _removeFavoritesCalls += 1 }
+        try await base.removeFavorites(seriesIDs)
+    }
+
+    func toggleFavorite(_ seriesID: SeriesID, at date: Date) async throws -> Bool {
+        try await base.toggleFavorite(seriesID, at: date)
+    }
+
+    func pendingSync() async throws -> [PendingFavoriteSync] {
+        try await base.pendingSync()
+    }
+
+    func confirmAdd(_ seriesID: SeriesID) async throws {
+        try await base.confirmAdd(seriesID)
+    }
+
+    func confirmRemoval(_ seriesID: SeriesID) async throws {
+        try await base.confirmRemoval(seriesID)
+    }
+
+    func deleteAll() async throws {
+        try await base.deleteAll()
+    }
+}
+
 // MARK: - Katalog JOIN fake'i
 
 final class FakeLibraryCatalog: LibraryCatalogReading, @unchecked Sendable {

@@ -61,6 +61,21 @@ public actor FavoritesService {
         }
     }
 
+    /// Birden çok favoriyi TEK toplu işlemde kaldırır (Listem çoklu silme, 02 §4.12). Repository
+    /// N kaydı TEK serileştirilmiş yerel yazmada işaretler (optimistik, anında görünür); sunucu
+    /// senkronu `synchronize()`'a bırakılır. Her kayıt için tekil `setFavorite(false)` ile AYNI
+    /// telafi/`needsResync` bookkeeping'i uygulanır (uçuştaki PUT araya girerse telafi DELETE →
+    /// coin/veri kaybı yok). Boş küme no-op.
+    public func removeFavorites(_ seriesIDs: Set<SeriesID>) async throws {
+        guard !seriesIDs.isEmpty else { return }
+        try await repository.removeFavorites(seriesIDs)
+        // Tek serileştirilmiş yazmadan SONRA, aktör-izole (askı noktasız) tek adımda her kayıt
+        // için telafi/dirty bayrağını güncelle — tekil remove ile birebir tutarlı.
+        for seriesID in seriesIDs {
+            noteLocalRemoval(seriesID)
+        }
+    }
+
     /// Mevcut durumu ters çevirir; yeni durumu döndürür (feed/DiziDetay kalp toggle'ı). Oku→yaz
     /// repository'de ATOMİK yürür (askı noktasız tek adım) — eşzamanlı iki toggle bayat okuyup
     /// net-tek etki üretemez (bulgu #5 TOCTOU koruması).
