@@ -68,7 +68,8 @@ extension AppComposition {
 
     // MARK: - WalletKit sheet'leri (çapraz — WalletFlowCoordinator sunar)
 
-    /// UnlockSheet modeli — canlı cüzdan (bakiye/entitlement yayınları + coin unlock).
+    /// UnlockSheet modeli — canlı cüzdan (bakiye/entitlement yayınları + coin unlock) + SS-114 reklam-ile-aç
+    /// portu (RewardsKit `RewardedAdService` köprüsü; bayrak/fill/cap/VIP/A-B satırı gizler/gösterir).
     func makeUnlockSheetModel(
         context: UnlockContext,
         delegate: (any UnlockSheetDelegate)?
@@ -76,8 +77,9 @@ extension AppComposition {
         UnlockSheetModel(
             context: context,
             wallet: walletStore,
-            analytics: dependencies.analytics,
-            delegate: delegate
+            analytics: decoratedAnalytics,
+            delegate: delegate,
+            rewardedAdUnlock: rewardedAdUnlock
         )
     }
 

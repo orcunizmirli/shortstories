@@ -54,6 +54,9 @@ enum AnalyticsEventRegistry {
 
         // Monetizasyon / cüzdan (06, 08 §3.4)
         "unlock_coin",
+        // SS-114 rewarded ad ile açma (08 §3.4 satır 198): WalletKit `UnlockSheetModel` emit eder;
+        // reklam mekaniği event'leri (rewarded_ad_*) RewardsKit sahiplidir (§3.5).
+        "unlock_ad",
         "unlock_sheet_dismissed",
         "unlock_insufficient_coins",
         "unlock_vip_upsell",
@@ -86,6 +89,12 @@ enum AnalyticsEventRegistry {
         "mission_progress",
         "mission_complete",
         "mission_claim",
+        // SS-113/114 rewarded ad mekaniği (08 §3.5 reklam bloğu): RewardsKit `RewardedAdService` emit eder
+        // (params: placement, ads_used_today, daily_cap). `unlock_ad` (WalletKit) satır seçimini, bunlar
+        // reklam yaşam döngüsünü ölçer. Registry'de OLMAZSA strictInDebug ilk 'Reklam izle'de assertionFailure.
+        "rewarded_ad_start",
+        "rewarded_ad_complete",
+        "rewarded_ad_fail",
 
         // Profil / ayarlar / hesap (08 §3.6)
         "profile_row_tapped",
