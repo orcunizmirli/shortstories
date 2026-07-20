@@ -15,6 +15,10 @@ public actor WalletStore: EntitlementChecking {
     private let log: any Logging
     private let makeIdempotencyKey: @Sendable () -> String
     private let now: @Sendable () -> Date
+    /// Kazanç-hızı danışma monitörü (SS-100). Earned-kese ARTIŞLARI buraya raporlanır; monitör
+    /// pencere-içi hızı türetir ve `FraudSignalInterceptor`'ı besler. `nil` = fraud sinyali bağlı
+    /// değil (F1/test). Yalnız GÖZLEM: bakiye/entitlement akışını ETKİLEMEZ.
+    private let earnVelocityRecorder: (any EarnVelocityRecording)?
 
     private var snapshot: WalletSnapshot
     private var hasServerSnapshot = false
@@ -32,13 +36,15 @@ public actor WalletStore: EntitlementChecking {
         analytics: any AnalyticsTracking,
         log: any Logging,
         now: @escaping @Sendable () -> Date = { Date() },
-        makeIdempotencyKey: @escaping @Sendable () -> String = { UUID().uuidString }
+        makeIdempotencyKey: @escaping @Sendable () -> String = { UUID().uuidString },
+        earnVelocityRecorder: (any EarnVelocityRecording)? = nil
     ) {
         self.remote = remote
         self.analytics = analytics
         self.log = log
         self.now = now
         self.makeIdempotencyKey = makeIdempotencyKey
+        self.earnVelocityRecorder = earnVelocityRecorder
         subscription = .none
         snapshot = WalletSnapshot(
             balance: .zero,
@@ -218,9 +224,22 @@ public actor WalletStore: EntitlementChecking {
             log.debug("stale wallet snapshot dropped (v\(incoming.version) < v\(snapshot.version))")
             return
         }
+        recordEarnVelocity(from: snapshot, to: incoming)
         snapshot = incoming
         hasServerSnapshot = true
         balanceBroadcast.send(incoming.balance)
+    }
+
+    /// Kazanç-hızı gözlemi (SS-100): iki SERVER snapshot arası earned-kese ARTIŞI bir kazanç
+    /// olayıdır (check-in/görev/rewarded-ad/vip-bonus kredisi). Danışma monitörüne raporlanır.
+    /// - İLK server snapshot'ında baseline YOK → kaydedilmez (hasServerSnapshot henüz false).
+    /// - Earned DÜŞÜŞÜ (unlock harcaması / iade) ve purchased-kese değişimi kazanç DEĞİLDİR.
+    /// Yalnız gözlem: bakiyeyi/versiyonu/kontrol akışını ETKİLEMEZ; recorder yoksa no-op.
+    private func recordEarnVelocity(from previous: WalletSnapshot, to incoming: WalletSnapshot) {
+        guard hasServerSnapshot, let earnVelocityRecorder else { return }
+        let earnedDelta = incoming.balance.earnedCoins - previous.balance.earnedCoins
+        guard earnedDelta > 0 else { return }
+        earnVelocityRecorder.recordEarn(coins: earnedDelta)
     }
 
     /// Monotonluk guard (applyWallet ile simetri; out-of-order koruması): server zaten bir subscription
