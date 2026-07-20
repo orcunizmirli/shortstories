@@ -15,10 +15,17 @@ Durum tarihi: 2026-07-20 · Referans: `09-yol-haritasi-tasklar.md`
   `RewardedAdAvailability` + `RewardedAdService` (server-otoriter, 30sn, cap, A/B) +
   `AdUnlockGateway` (POST /rewards/ad-unlock, §4.7 nested proof). UnlockSheet "reklam izle"
   satırı bağlı (SS-114). Şu an `MockRewardedAdProvider` enjekte.
-- **Gereken manuel prep:**
-  - Google AdMob hesabı + uygulama kaydı → **App ID** + **rewarded ad unit ID**.
-  - Google Mobile Ads SDK (SPM: `googleads-mobile-sdk`) `project.yml`'ye eklenir.
+- **Sağlanan prep:** AdMob **Yayıncı Kimliği** `pub-1147476807575834` (2026-07-20).
+- **HÂLÂ gereken (Yayıncı Kimliği tek başına yetmez):**
+  - **App ID** — `ca-app-pub-1147476807575834~XXXXXXXXXX` (AdMob konsol → Uygulamalar →
+    uygulama → App settings). SDK init'i BUNU ister; yoksa GADApplicationIdentifier
+    olmadan SDK crash eder. `Info.plist` `GADApplicationIdentifier`e yazılır.
+  - **Rewarded Ad Unit ID** — `ca-app-pub-1147476807575834/XXXXXXXXXX` (AdMob konsol →
+    Ad units → rewarded). `GADRewardedAd.load(withAdUnitID:)`.
   - Backend: **SSV** (Server-Side Verification) ucu `/rewards/ad-unlock` doğrulayıcısı.
+  - (Dev için: Google'ın resmi TEST birim ID'leri kullanılabilir — App ID
+    `ca-app-pub-3940256099942544~1458002511`, rewarded unit
+    `ca-app-pub-3940256099942544/1712485313` — release öncesi gerçekleriyle değiştirilir.)
 - **Prep gelince yapılacak:** `App/DI/Adapters/RewardedAdAdapters.swift` içinde gerçek
   `GADRewardedAd` adaptörü (`RewardedAdProviding` conformance) yazılıp `MockRewardedAdProvider`
   yerine enjekte edilir; App ID Info.plist'e (`GADApplicationIdentifier`).
