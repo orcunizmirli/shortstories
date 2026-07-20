@@ -16,6 +16,10 @@ enum RewardsAnalytics {
         static let missionProgress = "mission_progress"
         static let missionComplete = "mission_complete"
         static let missionClaim = "mission_claim"
+        // SS-113 rewarded ads (§3.5): start/complete/fail — RewardsKit sahipli. `complete` 2° zorunlu.
+        static let rewardedAdStart = "rewarded_ad_start"
+        static let rewardedAdComplete = "rewarded_ad_complete"
+        static let rewardedAdFail = "rewarded_ad_fail"
     }
 
     /// §3.5 parametre anahtarları (ortak parametreler §2.2 `track()` tarafından otomatik eklenir).
@@ -33,6 +37,10 @@ enum RewardsAnalytics {
         static let progressPct = "progress_pct"
         static let missionType = "mission_type"
         static let expiresAt = "expires_at"
+        // SS-113 rewarded ads (§3.5): yüzey + server-otoriter cap raporlaması.
+        static let placement = "placement"
+        static let adsUsedToday = "ads_used_today"
+        static let dailyCap = "daily_cap"
     }
 
     /// §3.5 `mission_type` değer taksonomisi — registry YALNIZ bu 4 tipi tanır. İstemci `RewardTask.Kind`
@@ -116,5 +124,42 @@ extension AnalyticsTracking {
             parameters[RewardsAnalytics.Param.expiresAt] = .int(RewardsAnalytics.epochMilliseconds(expiresAt))
         }
         track(RewardsAnalytics.Event.missionClaim, parameters: parameters)
+    }
+
+    // MARK: - SS-113 rewarded ads (§3.5)
+
+    /// rewarded_ad_start — reklam gösterimi başladığında (`RewardedAdService.watchAdToUnlock`).
+    func trackRewardedAdStart(placement: String, dailyCap: Int?) {
+        track(RewardsAnalytics.Event.rewardedAdStart, parameters: rewardedAdParameters(
+            placement: placement, adsUsedToday: nil, dailyCap: dailyCap
+        ))
+    }
+
+    /// rewarded_ad_complete (2°) — 30 sn tamamlanıp server SSV kilidi açtığında. `adsUsedToday` server'ın
+    /// verdiği KALAN HAK'tan türetilir (istemci saymaz).
+    func trackRewardedAdComplete(placement: String, adsUsedToday: Int?, dailyCap: Int?) {
+        track(RewardsAnalytics.Event.rewardedAdComplete, parameters: rewardedAdParameters(
+            placement: placement, adsUsedToday: adsUsedToday, dailyCap: dailyCap
+        ))
+    }
+
+    /// rewarded_ad_fail — doldurma yok / gösterim hatası / cap / SSV reddi (erken kapatma HARİÇ — kullanıcı seçimi).
+    func trackRewardedAdFail(placement: String, dailyCap: Int?) {
+        track(RewardsAnalytics.Event.rewardedAdFail, parameters: rewardedAdParameters(
+            placement: placement, adsUsedToday: nil, dailyCap: dailyCap
+        ))
+    }
+
+    /// Ortak rewarded ad parametreleri — opsiyonel alanlar (`ads_used_today`/`daily_cap`) yalnız
+    /// bilindiğinde eklenir (server bildirmediyse alan taşınmaz).
+    private func rewardedAdParameters(placement: String, adsUsedToday: Int?, dailyCap: Int?) -> [String: AnalyticsValue] {
+        var parameters: [String: AnalyticsValue] = [RewardsAnalytics.Param.placement: .string(placement)]
+        if let adsUsedToday {
+            parameters[RewardsAnalytics.Param.adsUsedToday] = .int(adsUsedToday)
+        }
+        if let dailyCap {
+            parameters[RewardsAnalytics.Param.dailyCap] = .int(dailyCap)
+        }
+        return parameters
     }
 }
