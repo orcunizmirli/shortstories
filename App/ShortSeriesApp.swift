@@ -1,6 +1,7 @@
 import AppFoundation
 import DesignSystem
 import SwiftUI
+import WalletKit
 
 /// Uygulama giriş noktası ve kompozisyon kökü (03 §5): canlı bağımlılıklar
 /// BİR KEZ burada kurulur, `AppCoordinator`/`TabCoordinator` hiyerarşisi buradan sürer.
@@ -14,13 +15,18 @@ struct ShortSeriesApp: App {
     @State private var coordinator: AppCoordinator
 
     init() {
-        let dependencies = LiveDependencies()
+        // SS-100 kazanç-hızı monitörü kompozisyon kökünde BİR KEZ kurulur; AYNI örnek hem
+        // `FraudSignalInterceptor`'a raporlayıcı (LiveDependencies) hem `WalletStore`'a recorder
+        // (AppComposition) olarak enjekte edilir → cüzdan earned-kese artışları interceptor'ın
+        // gördüğü kazanç-hızı sinyalini besler. Danışma; bakiye mutasyonu yok, karar backend'de.
+        let velocityMonitor = EarningVelocityMonitor()
+        let dependencies = LiveDependencies(velocityReporter: velocityMonitor)
         self.dependencies = dependencies
         // Canlı feature servisleri + port adaptörleri BİR KEZ burada kurulur (03 §5). Disk store
         // kurulamıyorsa uygulama çalışamaz (SwiftData zorunlu) → kompozisyon kökü hatası ölümcüldür.
         let composition: AppComposition
         do {
-            composition = try AppComposition(dependencies: dependencies)
+            composition = try AppComposition(dependencies: dependencies, earnVelocityRecorder: velocityMonitor)
         } catch {
             fatalError("Kompozisyon kökü kurulamadı (PersistenceStore): \(error)")
         }

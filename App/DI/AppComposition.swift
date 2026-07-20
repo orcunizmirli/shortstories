@@ -87,7 +87,7 @@ final class AppComposition {
         experimentClient
     }
 
-    init(dependencies: any Dependencies) throws {
+    init(dependencies: any Dependencies, earnVelocityRecorder: (any EarnVelocityRecording)? = nil) throws {
         self.dependencies = dependencies
         let apiClient = dependencies.apiClient
 
@@ -106,7 +106,9 @@ final class AppComposition {
         walletStore = WalletStore(
             remote: WalletRemoteClient(client: apiClient),
             analytics: decoratedAnalytics,
-            log: dependencies.logger
+            log: dependencies.logger,
+            // SS-100: earned-kese artışları kazanç-hızı monitörüne raporlanır (danışma; bakiye mutasyonu yok).
+            earnVelocityRecorder: earnVelocityRecorder
         )
         languagePreferences = LanguagePreferenceService(preferences: dependencies.preferences)
         favoritesService = FavoritesService(
@@ -156,11 +158,7 @@ final class AppComposition {
         secureStore: any SecureStoring
     ) -> (client: ExperimentClient, decorated: ExperimentDimensionTracker) {
         let deviceID = (try? secureStore.string(forKey: .deviceID)) ?? ""
-        let client = ExperimentClient(
-            catalog: ExperimentCatalog(experiments: []),
-            analytics: analytics,
-            userID: deviceID
-        )
+        let client = ExperimentClient(catalog: ExperimentCatalog(experiments: []), analytics: analytics, userID: deviceID)
         // `abVariants` closure `@Sendable` (`ExperimentClient` `@unchecked Sendable`, kilitli okuma).
         return (client, ExperimentDimensionTracker(base: analytics, abVariants: { client.abVariantsParameter() }))
     }

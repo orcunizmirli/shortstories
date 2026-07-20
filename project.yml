@@ -57,6 +57,11 @@ targets:
               - shortseries
         UIBackgroundModes:                        # SS-140: sessiz/arka plan push teslimi (content-available)
           - remote-notification
+        LSApplicationQueriesSchemes:              # SS-100: jailbreak paket-yöneticisi şema heuristiği
+          - cydia                                 # (BasicDeviceIntegrityProbe.canOpenURL — best-effort/danışma)
+          - sileo
+          - zbra
+          - filza
     entitlements:
       path: App/ShortSeriesApp.entitlements
       properties:
