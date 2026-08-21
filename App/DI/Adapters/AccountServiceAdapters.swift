@@ -40,17 +40,28 @@ struct LiveAccountSwitchDataCoordinator: AccountSwitchDataCoordinating {
     private let favorites: FavoritesService
     private let watchHistoryRepository: any WatchHistoryRepository
     private let favoritesRepository: any FavoritesRepository
+    /// Cüzdan state'ini (bakiye/VIP/açılmış-bölüm) SIFIRLAR — audit HIGH bulgusu: reset yalnız izleme
+    /// geçmişi + favori repo'larını silerse paylaşılan `WalletStore` singleton'ı önceki hesabın
+    /// bakiyesini/VIP'ini/açık bölümlerini yeni hesaba SIZDIRIR (§575 cross-account). `WalletStore.reset`
+    /// (kompozisyon kökünden enjekte; koordinatör WalletKit'e bağlanmaz).
+    private let resetWallet: @Sendable () async -> Void
+    /// Reset SONRASI yeni hesabın cüzdan snapshot'ını (bakiye/abonelik) sunucudan çeker (`WalletStore.refresh`).
+    private let refreshWallet: @Sendable () async -> Void
 
     init(
         continueWatching: ContinueWatchingService,
         favorites: FavoritesService,
         watchHistoryRepository: any WatchHistoryRepository,
-        favoritesRepository: any FavoritesRepository
+        favoritesRepository: any FavoritesRepository,
+        resetWallet: @escaping @Sendable () async -> Void,
+        refreshWallet: @escaping @Sendable () async -> Void
     ) {
         self.continueWatching = continueWatching
         self.favorites = favorites
         self.watchHistoryRepository = watchHistoryRepository
         self.favoritesRepository = favoritesRepository
+        self.resetWallet = resetWallet
+        self.refreshWallet = refreshWallet
     }
 
     func flushPendingGuestData() async {
@@ -64,12 +75,16 @@ struct LiveAccountSwitchDataCoordinator: AccountSwitchDataCoordinating {
         // ve sonraki senkron misafir pending'lerini yeni hesaba yükleyemez (hesaplar-arası kirlenme yok).
         try? await watchHistoryRepository.deleteAll()
         try? await favoritesRepository.deleteAll()
+        // Cüzdan da sıfırlanmalı: aksi halde bakiye/VIP/açılmış-bölüm state'i yeni hesaba sızar (§575).
+        await resetWallet()
     }
 
     func refetchForNewAccount() async {
         // reset SONRASI yeni hesap token'ıyla: sunucu durumu PULL edilir (push edilecek pending yok).
         try? await continueWatching.synchronize()
         try? await favorites.synchronize()
+        // Yeni hesabın otoritatif cüzdan snapshot'ını çek (reset sonrası boş state taze doldurulur).
+        await refreshWallet()
     }
 }
 

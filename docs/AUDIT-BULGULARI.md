@@ -17,7 +17,7 @@ Durum: ☐ açık · ☑ düzeltildi (commit ile) · ⊘ kabul-edildi/won't-fix 
   - Sheet'in entitlement gozlemcisi, WalletStore'un KENDI iyimser unlock yayinini disaridan-unlock zannedip performUnlock'un 402/409 sonuc islemesini olu-koda cevirir.
 - ☐ **[PlayerKit/wrong-state-on-transition]** Packages/PlayerKit/Sources/PlayerKit/Engine/PlaybackEngine.swift:179
   - Tamamlanmis (playedToEnd) bir bolume warm-hit ile geri donuldugunde `endedForCurrentLoad` latch'i sifirlanmadigindan yeniden aktivasyon aninda auto-advance ANINDA tekrar tetiklenir; kullanici o bolumde duramaz/yeniden izleyemez.
-- ☐ **[App/singleton-state-leak]** App/DI/AppComposition+Account.swift:25
+- ☑ **[App/singleton-state-leak]** App/DI/AppComposition+Account.swift:25 — DÜZELTİLDİ (WalletStore.reset() + koordinatör resetWallet/refreshWallet wiring; WalletKit 284 + App 212 test yeşil)
   - Hesap-değişiminde (switchToExistingAccount) yerel-store reset yalnız izleme-geçmişi + favori repository'lerini siler; paylaşılan WalletStore singleton'ı (bakiye/entitlement/unlockedEpisodes/version) ne resetlenir ne refresh edilir → §575 cross-account sızıntısı.
 
 ## MEDIUM (18)

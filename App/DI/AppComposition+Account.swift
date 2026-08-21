@@ -23,11 +23,16 @@ extension AppComposition {
     /// repository'leri. `makeX` fabrikaları tür başına AYNI örneği döndürür (bulgu #9) → reset,
     /// servislerin sardığı gerçek store'u siler.
     var accountSwitchDataCoordinator: any AccountSwitchDataCoordinating {
-        LiveAccountSwitchDataCoordinator(
+        // Paylaşılan WalletStore singleton'ı reset/refresh closure'larıyla geçilir (audit HIGH §575):
+        // hesap-değişiminde cüzdan da sıfırlanır → önceki hesabın bakiye/VIP/açık-bölüm state'i sızmaz.
+        let wallet = walletStore
+        return LiveAccountSwitchDataCoordinator(
             continueWatching: continueWatchingService,
             favorites: favoritesService,
             watchHistoryRepository: persistence.makeWatchHistoryRepository(),
-            favoritesRepository: persistence.makeFavoritesRepository()
+            favoritesRepository: persistence.makeFavoritesRepository(),
+            resetWallet: { await wallet.reset() },
+            refreshWallet: { await wallet.refresh() }
         )
     }
 

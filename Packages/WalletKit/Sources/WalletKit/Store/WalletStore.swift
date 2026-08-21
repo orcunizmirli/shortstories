@@ -46,13 +46,39 @@ public actor WalletStore: EntitlementChecking {
         self.makeIdempotencyKey = makeIdempotencyKey
         self.earnVelocityRecorder = earnVelocityRecorder
         subscription = .none
-        snapshot = WalletSnapshot(
+        snapshot = Self.initialSnapshot(now: now)
+    }
+
+    /// Boş/başlangıç cüzdan snapshot'ı (init + `reset` tek kaynaktan üretir — drift yok).
+    private static func initialSnapshot(now: () -> Date) -> WalletSnapshot {
+        WalletSnapshot(
             balance: .zero,
             earnedExpiringSoon: nil,
             firstTopUpEligible: false,
             updatedAt: now(),
             version: Int.min
         )
+    }
+
+    // MARK: - Hesap-değişimi (§575)
+
+    /// Hesap-değişiminde (SS-132/§575) yerel cüzdan state'ini SIFIRLAR — önceki hesabın
+    /// bakiye/abonelik/açılmış-bölüm state'i yeni hesaba SIZMAZ. Monoton version + subscription
+    /// guard'ları da sıfırlanır (`hasServerSnapshot`/`hasServerSubscription` = false): reset SONRASI
+    /// ilk `refresh()` yeni hesabın (muhtemelen düşük-version) snapshot'ını TAZE uygular — aksi halde
+    /// guard onu bayat sanıp düşürür ve eski bakiye yapışkan kalırdı. Temizlenen state gözlemcilere
+    /// yayınlanır: stale bakiye/VIP display'i (coin header, ProfilModel) anında düşer, refresh
+    /// başarısız olsa bile eski hesap verisi görünmez.
+    public func reset() {
+        snapshot = Self.initialSnapshot(now: now)
+        hasServerSnapshot = false
+        subscription = .none
+        hasServerSubscription = false
+        storeKitOptimisticVIP = false
+        unlockedEpisodes = []
+        pendingUnlock = nil
+        balanceBroadcast.send(snapshot.balance)
+        broadcastEntitlement()
     }
 
     // MARK: - Okumalar
