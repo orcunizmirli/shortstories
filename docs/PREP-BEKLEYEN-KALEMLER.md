@@ -11,24 +11,31 @@ Durum tarihi: 2026-07-20 · Referans: `09-yol-haritasi-tasklar.md`
 ---
 
 ## 1. AdMob rewarded ads — GERÇEK SDK (SS-113)
-- **Client durumu:** ✅ HAZIR. `RewardsKit/RewardedAds/` — `RewardedAdProviding` portu +
-  `RewardedAdAvailability` + `RewardedAdService` (server-otoriter, 30sn, cap, A/B) +
-  `AdUnlockGateway` (POST /rewards/ad-unlock, §4.7 nested proof). UnlockSheet "reklam izle"
-  satırı bağlı (SS-114). Şu an `MockRewardedAdProvider` enjekte.
+- **Client durumu:** ✅ GERÇEK ENTEGRASYON TAMAM (test ID'leriyle uçtan uca çalışır). GoogleMobileAds
+  SDK 11.13.0 App target'ında (`project.yml`); `App/DI/Adapters/RealRewardedAdProvider.swift`
+  gerçek `GADRewardedAd` adaptörü (`RewardedAdProviding` conformance — preload/present +
+  `GADFullScreenContentDelegate` + `userDidEarnRewardHandler` → CheckedContinuation →
+  `AdWatchOutcome`); `AdMobConfiguration.start()` (GADMobileAds init, `AppDelegate.didFinishLaunching`);
+  `Info.plist` GADApplicationIdentifier + 44 SKAdNetwork + NSUserTrackingUsageDescription. Wiring
+  canlı (`AppComposition.rewardedAdProvider = RealRewardedAdProvider()`, tek instance); **mock testte
+  kalır** (`RewardedAdWiringTests` kendi stub'ıyla). Server-otoriter korundu (istemci ödül vermez,
+  `proofPayload` boş, nonce SSV korelasyonu), VIP reklamsız (preload/availability/**watchAdToUnlock**
+  hepsi VIP kapısı). Review 4 bug düzeltildi: reentrancy guard, **topmost-VC sunum** (UnlockSheet modal
+  → taban root'tan present `.failed` verirdi), preload in-flight guard, watchAdToUnlock VIP gate.
 - **Sağlanan prep:** AdMob **Yayıncı Kimliği** `pub-1147476807575834` (2026-07-20).
-- **HÂLÂ gereken (Yayıncı Kimliği tek başına yetmez):**
-  - **App ID** — `ca-app-pub-1147476807575834~XXXXXXXXXX` (AdMob konsol → Uygulamalar →
-    uygulama → App settings). SDK init'i BUNU ister; yoksa GADApplicationIdentifier
-    olmadan SDK crash eder. `Info.plist` `GADApplicationIdentifier`e yazılır.
-  - **Rewarded Ad Unit ID** — `ca-app-pub-1147476807575834/XXXXXXXXXX` (AdMob konsol →
-    Ad units → rewarded). `GADRewardedAd.load(withAdUnitID:)`.
-  - Backend: **SSV** (Server-Side Verification) ucu `/rewards/ad-unlock` doğrulayıcısı.
-  - (Dev için: Google'ın resmi TEST birim ID'leri kullanılabilir — App ID
-    `ca-app-pub-3940256099942544~1458002511`, rewarded unit
-    `ca-app-pub-3940256099942544/1712485313` — release öncesi gerçekleriyle değiştirilir.)
-- **Prep gelince yapılacak:** `App/DI/Adapters/RewardedAdAdapters.swift` içinde gerçek
-  `GADRewardedAd` adaptörü (`RewardedAdProviding` conformance) yazılıp `MockRewardedAdProvider`
-  yerine enjekte edilir; App ID Info.plist'e (`GADApplicationIdentifier`).
+- **Şu an TEST ID kullanılıyor** (release öncesi değişecek — kod `AdMobConfiguration` + Info.plist tek
+  yerde): App ID `ca-app-pub-3940256099942544~1458002511`, rewarded unit
+  `ca-app-pub-3940256099942544/1712485313`.
+- **HÂLÂ gereken (release öncesi manuel — Yayıncı Kimliği tek başına yetmez):**
+  - **Gerçek App ID** — `ca-app-pub-1147476807575834~XXXXXXXXXX` (AdMob konsol → Uygulamalar →
+    App settings). `AdMobConfiguration.applicationIdentifier` + `Info.plist GADApplicationIdentifier`
+    (İKİSİ EŞLEŞMELİ) test App ID'yle değişecek.
+  - **Gerçek Rewarded Ad Unit ID** — `ca-app-pub-1147476807575834/XXXXXXXXXX` →
+    `AdMobConfiguration.rewardedAdUnitID`.
+  - Backend: **SSV** (Server-Side Verification) ucu — Google S2S imzalı callback'i `custom_data`
+    (=customRewardString=nonce) ile `/rewards/ad-unlock` POST'undaki nonce'a korele edip unlock yazar.
+  - `RealRewardedAdProvider.userIdentifier()` şu an cihaz `identifierForVendor` — SS-021 backend
+    userId gelince gerçek kullanıcı kimliğiyle değişecek (SSV `user_id` / kullanıcı-bazlı cap).
 
 ## 2. Google/e-posta hesap bağlama — GERÇEK SDK (SS-132)
 - **Client durumu:** ✅ HAZIR. ProfileKit provider-agnostic linking (`LinkCredential` .apple/

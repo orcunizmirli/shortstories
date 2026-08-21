@@ -61,6 +61,11 @@ struct RewardedAdUnlockingAdapter: WalletKit.RewardedAdUnlocking {
     }
 
     func watchAdToUnlock(episodeID: EpisodeID) async -> WalletKit.RewardedAdUnlockResult {
+        // Savunma-derinliği: kullanıcı reklam ön-yüklendikten SONRA VIP olduysa (entitlement flip + önbelleğe
+        // alınmış availability) canlı VIP'i yeniden yokla → VIP'e reklam GÖSTERİLMEZ (06 §9.5 reklamsızlık).
+        // preload() ve availability() aynı kapıyı uygular; izle→unlock yolu da uygulamalı (aksi halde artık
+        // VIP olan kullanıcıya önceden yüklenmiş reklam sunulabilir). Reklam yok → `.noFill` (güvenli no-op).
+        guard await isVIP() == false else { return .noFill }
         let result = await service.watchAdToUnlock(
             target: .episode(id: episodeID.rawValue),
             placement: .unlockSheet,
@@ -211,24 +216,4 @@ private struct AdUnlockRequestBody: Encodable, Sendable {
 private struct AdUnlockResponseWire: Decodable, Sendable {
     let remainingToday: Int?
     let wallet: WalletBalanceWire?
-}
-
-// MARK: - Yer tutucu reklam sağlayıcısı (AdMob prep TODO)
-
-/// AdMob `AdMobRewardedAdController` bağlanana dek güvenli yer tutucu (SS-113 prep). Doldurma YOK →
-/// `availability` her zaman `.hidden` (bayrak açık olsa bile reklam satırı görünmez); gösterim `.noFill`.
-///
-/// TODO(SS-113 prep): `RewardsKit/AdBridge` altında gerçek `GADRewardedAd` adaptörü (06 §9.3/§9.4:
-/// SSV `serverSideVerificationOptions`, App-ID + AdMob SDK paketi + consent SS-156). Bu porta uyar; DI'da
-/// bu yer tutucu onunla değiştirilir — başka modül dokunmaz (sağlayıcı-agnostik sözleşme).
-struct PlaceholderRewardedAdProvider: RewardedAdProviding {
-    func preload() async {}
-
-    func isAdAvailable() async -> Bool {
-        false // AdMob bağlanana dek envanter yok → satır gizli kalır (feature bayrağı açık olsa bile).
-    }
-
-    func showAd() async -> AdWatchOutcome {
-        .noFill
-    }
 }

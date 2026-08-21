@@ -22,12 +22,13 @@ extension AppComposition {
         )
     }
 
-    /// RewardsKit izle→unlock orkestrasyonu: yer tutucu AdMob sağlayıcısı (net TODO) + canlı ad-unlock
-    /// gateway (POST /rewards/ad-unlock) + A/B kolu; `decoratedAnalytics` (ab_variants boyutu) enjekte edilir.
-    /// TODO(SS-113 prep): tek paylaşılan/preload-sürekli instance (AdMob envanteri sheet'ler arası korunmalı).
+    /// RewardsKit izle→unlock orkestrasyonu: GERÇEK AdMob sağlayıcısı (SS-113, tek paylaşılan instance —
+    /// AdMob envanteri sheet'ler arası korunur) + canlı ad-unlock gateway (POST /rewards/ad-unlock) + A/B
+    /// kolu; `decoratedAnalytics` (ab_variants boyutu) enjekte edilir. Test yolu bu fabrikayı KULLANMAZ
+    /// (`RewardedAdWiringTests` servisi kendi stub sağlayıcısıyla doğrudan kurar → SDK CI'da yoklanmaz).
     private func makeRewardedAdService() -> RewardsKit.RewardedAdService {
         RewardedAdService(
-            provider: PlaceholderRewardedAdProvider(),
+            provider: rewardedAdProvider,
             gateway: APIAdUnlockGateway(client: dependencies.apiClient),
             analytics: decoratedAnalytics,
             variant: rewardedAdVariant

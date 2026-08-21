@@ -35,6 +35,10 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         // `content.categoryIdentifier`e yazdığıyla AYNIDIR (`RichPushCategory`) → butonlar eşleşir.
         // İzinden bağımsızdır (kayıt, bildirim gösterildiğinde aksiyonların çözülebilmesi içindir).
         UNUserNotificationCenter.current().setNotificationCategories(Self.richPushCategories())
+        // SS-113: GoogleMobileAds SDK'sını BİR KEZ başlat (rewarded reklam). `GADApplicationIdentifier`
+        // (Info.plist test App ID) olmadan CRASH eder → Info.plist'te tanımlı. VIP'e reklam ön-yüklenmez;
+        // preload ayrı akışta (yüzey açılmadan önce) tetiklenir — burada yalnız SDK init.
+        AdMobConfiguration.start()
         return true
     }
 

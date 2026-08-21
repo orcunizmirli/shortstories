@@ -93,6 +93,21 @@ final class RewardedAdWiringTests: XCTestCase {
         XCTAssertEqual(availability, .hidden)
     }
 
+    // MARK: - VIP reklamsızlık: izle→unlock yolu da kapıyı geçmeli (savunma-derinliği)
+
+    /// Kullanıcı reklam ön-yüklendikten SONRA VIP olursa (entitlement flip), UnlockSheet'te önbelleğe
+    /// alınmış availability ile "reklam izle"ye basabilir. `watchAdToUnlock` canlı VIP'i yeniden
+    /// yoklamalı: reklam SDK'sı GÖSTERİLMEZ, sonuç `.noFill` (06 §9.5 — VIP'e reklam yok).
+    func testVIPWatchAdDoesNotShowAdAndReturnsNoFill() async {
+        let provider = StubRewardedAdProvider(fill: true, outcome: .completed(sampleProof))
+        let adapter = makeAdapter(provider: provider, gateway: StubAdUnlockGateway(.success(sampleOutcome)), isVIP: true)
+
+        let result = await adapter.watchAdToUnlock(episodeID: EpisodeID("ep_vip"))
+
+        XCTAssertEqual(result, .noFill) // VIP'e reklam gösterilmez
+        XCTAssertEqual(provider.showCount, 0) // reklam SDK'sı yoklanmaz
+    }
+
     // MARK: - İzle→unlock (server-otoriter)
 
     func testWatchAdUnlocksAndPassesRemainingToday() async {

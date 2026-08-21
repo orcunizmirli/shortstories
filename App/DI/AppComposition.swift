@@ -189,6 +189,12 @@ final class AppComposition {
     /// RewardsKit son-görülen streak kalıcılığı → UserDefaults.
     let lastSeenStreakStore: any LastSeenStreakStoring = UserDefaultsLastSeenStreakStore()
 
+    /// SS-113 GERÇEK AdMob rewarded-ad sağlayıcısı — TEK paylaşılan instance (ön-yüklenen reklam
+    /// sheet'ler arası korunur; her `makeRewardedAdService` çağrısında yeniden yaratılmaz). CANLI app
+    /// yolu bunu enjekte eder; TEST yolu (`RewardedAdWiringTests`) kendi mock/stub'ını enjekte eder →
+    /// AdMob SDK birim-test edilmez (ad server bağımlı). VIP'e `showAd` hiç çağrılmaz (availability gizli).
+    let rewardedAdProvider: any RewardedAdProviding = RealRewardedAdProvider()
+
     /// LibraryKit Listem JOIN portu → ContentKit katalog + AppFoundation katalog cache (offline-önce).
     /// Bölüm-ID → dizi çözümü izleme geçmişi tek kaynağından (`ContinueWatchingService`) gelir.
     var libraryCatalogReading: any LibraryCatalogReading {
