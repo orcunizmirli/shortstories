@@ -46,7 +46,7 @@ Durum: ☐ açık · ☑ düzeltildi (commit ile) · ⊘ kabul-edildi/won't-fix 
   - pendingDeletedIDs mezar-tası temizligi yalnız İLK sayfaya (cursor:nil) bakar; sonraki sayfalardaki silinmis id'lerin mezar-tası erkenden düser ve öge diriler (kısmi reset).
 - ☐ **[App/wrong-port-binding]** App/DI/AppComposition+FeatureModels.swift:96
   - KesfetModel(29)/AramaModel(44)/DiziDetayModel(64)/CoinShopModel(96)/VIPSubscriptionModel(111) fabrikaları BASE `dependencies.analytics` alır; oysa dokümante edilen tasarım (ExperimentDimensionTracker + AppComposition.swift:88-90) 'feature model'leri decoratedAnalytics'i dependencies.analytics YERİNE alır; tek istisna ExperimentClient.analytics' der.
-- ☐ **[ContentKit/decode-robustness]** Packages/ContentKit/Sources/ContentKit/API/Wire/DiscoverWire.swift:14
+- ☑ **[ContentKit/decode-robustness]** Packages/ContentKit/Sources/ContentKit/API/Wire/DiscoverWire.swift:14 — DÜZELTİLDİ (LossyArray eleman-bazlı decode: DiscoverWire+CollectionWire+PageWire; ContentKit 61 test yeşil)
   - Malformed banner or nested series element throws the entire /discover decode, blanking Keşfet — the documented banner/collection isolation only covers absent/null fields, not present-but-invalid elements.
 - ☑ **[DiscoverKit/concurrency-race]** Packages/DiscoverKit/Sources/DiscoverKit/Arama/AramaModel.swift:100 — DÜZELTİLDİ (queryChanged resultsTask iptal + searchGeneration bump; DiscoverKit 130 test yeşil)
   - queryChanged edits the search field but neither cancels the in-flight resultsTask (performSearch) nor bumps searchGeneration, so a late-returning search from an abandoned query overrides the browsing/suggesting phase the user is now in.
@@ -81,7 +81,7 @@ Durum: ☐ açık · ☑ düzeltildi (commit ile) · ⊘ kabul-edildi/won't-fix 
   - switchToExistingAccount falls back to provider `.apple` when the /auth/switch response omits `provider`, mislabeling the switched-to account when it is Google or email.
 - ☐ **[App/deeplink-fidelity]** /Users/orcunizmirli/projects/shortseries/App/Coordinators/TabCoordinator.swift:110
   - `.home` (ve `.profile`) deep-link/push rotaları yalnız sekme değiştirir; hedef sekmenin NavigationStack'ini köke sıfırlamaz → kullanıcı beklenen sekme kökü yerine önceden push edilmiş bayat detay ekranında kalır.
-- ☐ **[ContentKit/decode-robustness]** Packages/ContentKit/Sources/ContentKit/API/Wire/FeedWire.swift:22
+- ☑ **[ContentKit/decode-robustness]** Packages/ContentKit/Sources/ContentKit/API/Wire/FeedWire.swift:22 — DÜZELTİLDİ (aynı kök: PageWire.items lossy)
   - A malformed required field inside one nested episode/series throws the whole feed page before compactMap runs, so the documented per-item resilience does not protect against bad required data — the entire page is lost with no retry.
 - ☐ **[LibraryKit/history-sync-stale]** Packages/LibraryKit/Sources/LibraryKit/Listem/ListemModel.swift:153
   - Devam Et'te gizlenen bölüm, kullanıcı onu yeniden izleyip taze ilerleme kaydetse bile oturum boyunca kalıcı olarak gizli kalır; hiddenEpisodeIDs hiç temizlenmez.

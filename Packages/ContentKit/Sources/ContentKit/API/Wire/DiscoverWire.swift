@@ -7,12 +7,13 @@ struct DiscoverWire: Decodable, Sendable {
     let banners: [BannerWire]
     let collections: [CollectionWire]
 
-    /// Alan yok ya da `null` → boş liste (05 §12 kural 4 ruhu): banner'sız bir yanıt,
-    /// koleksiyonlar geçerliyken Keşfet'i decode hatasıyla düşürmemeli (ve tersi).
+    /// Alan yok ya da `null` → boş liste (05 §12 kural 4 ruhu). AYRICA present-but-invalid bir eleman
+    /// TÜM diziyi düşürmesin (audit MEDIUM): lossy eleman-bazlı decode → bozuk banner/koleksiyon atlanır,
+    /// kalanı Keşfet'te görünür (bir bozuk backend elemanı tüm ekranı boşaltamaz).
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        banners = try container.decodeIfPresent([BannerWire].self, forKey: .banners) ?? []
-        collections = try container.decodeIfPresent([CollectionWire].self, forKey: .collections) ?? []
+        banners = try container.decodeLossyArray(BannerWire.self, forKey: .banners)
+        collections = try container.decodeLossyArray(CollectionWire.self, forKey: .collections)
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -46,6 +47,21 @@ struct CollectionWire: Decodable, Sendable {
     let title: String
     let seriesList: [SeriesWire]
     let nextCursor: String?
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        kind = try container.decode(Collection.Kind.self, forKey: .kind)
+        title = try container.decode(String.self, forKey: .title)
+        // Bozuk (present-but-invalid) bir series TÜM koleksiyonu düşürmesin (audit MEDIUM: nested
+        // series izolasyonu) — lossy eleman-bazlı decode, bozuk series atlanır, kalan liste görünür.
+        seriesList = try container.decodeLossyArray(SeriesWire.self, forKey: .seriesList)
+        nextCursor = try container.decodeIfPresent(String.self, forKey: .nextCursor)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, kind, title, seriesList, nextCursor
+    }
 
     func toDomain() -> Collection {
         Collection(
