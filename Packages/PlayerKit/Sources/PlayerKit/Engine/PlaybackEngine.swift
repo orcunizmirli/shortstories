@@ -87,6 +87,15 @@ actor PlaybackEngine {
         await backend.load(url: url, bufferPolicy: bufferPolicy, generation: loadGeneration)
     }
 
+    /// Warm-slot YENİDEN KULLANIMINDA (04 §3.3) çağrılır: item + engine korunur (cold start yok) ama
+    /// önceki yüklemenin "bitti" latch'i (`endedForCurrentLoad`) TEMİZLENİR. reuseWarmSlot prepare/reset
+    /// ÇAĞIRMADIĞINDAN bu latch aksi halde true kalır; tamamlanmış bir bölüme geri dönüldüğünde yeni
+    /// `playedToEndEvents` aboneliği bayat bitişi replay eder → auto-advance ANINDA yanlış tetiklenir
+    /// (audit HIGH: kullanıcı bitmiş bölümde duramaz, sürekli ileri fırlatılır).
+    func clearEndedLatch() {
+        endedForCurrentLoad = false
+    }
+
     /// Item'ı bırakır, player'ı korur (04 §3.3 drain kuralı).
     func reset() async {
         generation &+= 1

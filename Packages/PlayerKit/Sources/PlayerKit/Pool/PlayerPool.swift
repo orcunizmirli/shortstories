@@ -316,12 +316,9 @@ extension PlayerPool {
         }
     }
 
-    /// Warm-hit yolu: aynı engine yeniden kullanılır (cold start yok — 04 §3.3).
-    /// - İmzalı URL bayatsa (04 §6.4 kural 4) taze authorize + yeniden hazırlama —
-    ///   süresi geçmiş yetkiyle oynatma BAŞLATILMAZ.
-    /// - Slot sağlığı: engine `.failed` ise auth taze olsa bile taze yetkiyle YENİDEN
-    ///   hazırlanır — ölü engine'e lease dönmez, "Tekrar dene" gerçekten dener.
-    /// - `resumePosition` verilmişse hazır item'da o konuma seek edilir (04 §12.2).
+    /// Warm-hit yolu: aynı engine yeniden kullanılır (cold start yok — 04 §3.3). İmzalı URL bayatsa (04
+    /// §6.4 kural 4) veya engine `.failed` ise taze yetkiyle YENİDEN hazırlanır (süresi geçmiş yetkiyle
+    /// oynatma başlatılmaz, ölü engine'e lease dönmez); aksi halde `resumePosition` verilmişse seek (04 §12.2).
     private func reuseWarmSlot(
         _ slotIndex: Int,
         episode: Episode,
@@ -332,6 +329,9 @@ extension PlayerPool {
         slots[slotIndex].role = role
         slots[slotIndex].feedIndex = feedIndex
         let engine = slots[slotIndex].engine
+        // Warm-reuse "bitti" latch'ini temizle: tamamlanmış bölüme dönüşte bayat playedToEnd auto-advance'i
+        // yanlış tetiklemesin (audit HIGH) — sağlıklı yol prepare çağırmaz, latch aksi halde true kalırdı.
+        await engine.clearEndedLatch()
         // Aktivasyon anında ağ koşulu değişmiş olabilir; tavan yeniden uygulanır (04 §6.3).
         await engine.setPeakBitRateCap(currentPeakBitRateCap())
         var engineFailed = false

@@ -201,6 +201,27 @@ struct PlaybackEngineTests {
         #expect(spuriousEnd == false)
     }
 
+    @Test func warmReuseLatchTemizlemeBayatBitisiOnler() async {
+        // Audit HIGH (2/11/12): tamamlanmış bölüme warm-slot reuse ile geri dönüldüğünde (prepare/reset
+        // ÇAĞRILMADAN) endedForCurrentLoad latch'i temizlenmezse yeni playedToEnd aboneliği bayat bitişi
+        // replay eder → auto-advance ANINDA yanlış tetiklenir. clearEndedLatch latch'i sıfırlamalı.
+        let (engine, backend) = makeEngine()
+        await engine.prepare(episodeID: episodeID, url: url, bufferPolicy: .active)
+        backend.emit(.firstFrameReady)
+        _ = await awaitState(.readyAtFirstFrame, on: engine)
+        await engine.play()
+        _ = await awaitState(.playing, on: engine)
+        backend.emit(.playedToEnd)
+        _ = await awaitState(.paused, on: engine)
+
+        // Warm-reuse reaktivasyonu: item/engine korunur, YALNIZ latch temizlenir (prepare/reset yok).
+        await engine.clearEndedLatch()
+
+        // Latch temiz → yeni abone bayat bitişi ALMAZ (auto-advance yanlış tetiklenmez).
+        let spuriousEnd = await withTimeoutReturningTrueIfEventArrives(engine: engine, seconds: 0.2)
+        #expect(spuriousEnd == false)
+    }
+
     private func withTimeoutReturningTrueIfEventArrives(
         engine: PlaybackEngine,
         seconds: Double

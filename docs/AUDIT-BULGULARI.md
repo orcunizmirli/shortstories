@@ -15,7 +15,7 @@ Durum: ☐ açık · ☑ düzeltildi (commit ile) · ⊘ kabul-edildi/won't-fix 
 
 - ☑ **[WalletKit/unlock-integrity]** Packages/WalletKit/Sources/WalletKit/UI/UnlockSheet/UnlockSheetModel.swift:232 — DÜZELTİLDİ (Option A: WalletStore iyimser yayın lastUnlocked taşımaz, yalnız onaylı unlock taşır; WalletKit 287 test + gerçek-store entegrasyon testi yeşil)
   - Sheet'in entitlement gozlemcisi, WalletStore'un KENDI iyimser unlock yayinini disaridan-unlock zannedip performUnlock'un 402/409 sonuc islemesini olu-koda cevirir.
-- ☐ **[PlayerKit/wrong-state-on-transition]** Packages/PlayerKit/Sources/PlayerKit/Engine/PlaybackEngine.swift:179
+- ☑ **[PlayerKit/wrong-state-on-transition]** Packages/PlayerKit/Sources/PlayerKit/Engine/PlaybackEngine.swift:179 — DÜZELTİLDİ (clearEndedLatch + reuseWarmSlot wiring; PlayerKit 237 test yeşil)
   - Tamamlanmis (playedToEnd) bir bolume warm-hit ile geri donuldugunde `endedForCurrentLoad` latch'i sifirlanmadigindan yeniden aktivasyon aninda auto-advance ANINDA tekrar tetiklenir; kullanici o bolumde duramaz/yeniden izleyemez.
 - ☑ **[App/singleton-state-leak]** App/DI/AppComposition+Account.swift:25 — DÜZELTİLDİ (WalletStore.reset() + koordinatör resetWallet/refreshWallet wiring; WalletKit 284 + App 212 test yeşil)
   - Hesap-değişiminde (switchToExistingAccount) yerel-store reset yalnız izleme-geçmişi + favori repository'lerini siler; paylaşılan WalletStore singleton'ı (bakiye/entitlement/unlockedEpisodes/version) ne resetlenir ne refresh edilir → §575 cross-account sızıntısı.
@@ -36,9 +36,9 @@ Durum: ☐ açık · ☑ düzeltildi (commit ile) · ⊘ kabul-edildi/won't-fix 
   - awaitedBalance reconciliation guard clears ONLY on exact equality; a coalescing/newer balance stream value that skips the awaited number permanently freezes the coin header and swallows every subsequent live update.
 - ☐ **[PlayerKit/resume-position-lost]** Packages/PlayerKit/Sources/PlayerKit/Pool/PlayerPool.swift:342
   - Henuz yuklenmekte olan (first-frame gelmemis) warm slot aktife terfi ederken reuseWarmSlot resumePosition'i dogrudan backend'e seek eder; item hazir olmadigindan seek yutulur ve pendingResumePosition ayarlanmadigindan ilk kare gelince tekrar seek edilmez -> devam konumu kaybolur, bolum bastan oynar.
-- ☐ **[PlayerKit/state]** Packages/PlayerKit/Sources/PlayerKit/Pool/PlayerPool.swift:341
+- ☑ **[PlayerKit/state]** Packages/PlayerKit/Sources/PlayerKit/Pool/PlayerPool.swift:341 — DÜZELTİLDİ (aynı kök: warm-reuse latch clear)
   - Warm-slot reuse (healthy path) never re-prepares/resets the engine, so a just-completed episode keeps `endedForCurrentLoad = true`; re-subscribing replays playedToEnd and instantly re-fires auto-advance.
-- ☐ **[PlayerKit/concurrency]** Packages/PlayerKit/Sources/PlayerKit/Engine/PlaybackEngine.swift:179
+- ☑ **[PlayerKit/concurrency]** Packages/PlayerKit/Sources/PlayerKit/Engine/PlaybackEngine.swift:179 — DÜZELTİLDİ (aynı kök: warm-reuse latch clear)
   - playedToEndEvents() latch (endedForCurrentLoad) replays a stale 'ended' event to every new subscriber, but the latch is only reset in prepare()/reset() — not on a warm-slot reuse. Because FeedPlaybackDirector re-subscribes on each activation, returning to a previously-finished, warm-reused episode fires a spurious auto-advance.
 - ☐ **[ProfileKit/data-isolation]** Packages/ProfileKit/Sources/ProfileKit/Profil/ProfilModel.swift:108
   - observeSession updates `account` from the session stream but never resets `wallet`, so the previous account's coin balance / VIP status stays displayed after a session-expiry (or guest/account transition) that emits no wallet-stream event.
