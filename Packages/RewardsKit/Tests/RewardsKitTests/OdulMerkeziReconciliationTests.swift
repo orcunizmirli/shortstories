@@ -83,6 +83,36 @@ struct OdulMerkeziReconciliationTests {
         #expect(applied)
     }
 
+    @Test func newerBalanceStreamValueClearsGuardAndApplies() async {
+        // Audit MEDIUM: awaited (claim değeri) HİÇ yeniden yayılmazsa (409 read broadcast tetiklemez /
+        // version-guard snapshot'ı düşürür) EXACT-MATCH guard kalıcı DONUYORDU: awaited'i ATLAYAN yeni
+        // otoriter değer (görev/VIP/ad kredisi → daha YÜKSEK) düşürülüp başlık sonraki tüm güncellemeleri
+        // yutuyordu. `>=` guard bunu uygular ve guard'ı temizler (bayat-ALT değer yine düşürülür).
+        let claimed = CheckInState.mock(cycleDay: 3, todayClaimed: true, streakDays: 3)
+        let wallet = FakeRewardsWallet(300)
+        let service = FakeCheckInService(
+            status: .success(.mock(cycleDay: 3, todayClaimed: false, streakDays: 3)),
+            claim: .success(.mock(coins: 20, coinBalance: 320, checkin: claimed))
+        )
+        let model = makeModel(service: service, wallet: wallet)
+        model.onAppear()
+        await model.pendingWork()
+        let observer = Task { await model.observeUpdates() }
+        defer { observer.cancel() }
+        _ = await eventually { model.coinBalance == 300 }
+
+        await model.claimToday()
+        #expect(model.coinBalance == 320) // awaited = 320
+
+        // awaited (320) HİÇ yayılmaz; doğrudan DAHA YÜKSEK bir değer (350: görev/VIP/ad kredisi) gelir.
+        wallet.set(350)
+        let applied = await eventually { model.coinBalance == 350 }
+        #expect(applied) // exact-match donmadan uygulanır
+
+        wallet.set(400) // guard temizlendi → sonraki değer de uygulanır
+        #expect(await eventually { model.coinBalance == 400 })
+    }
+
     // MARK: - Fix 2: 409 ALREADY_CLAIMED bakiye tazeler (otoriter cüzdandan)
 
     @Test func alreadyClaimed409ReconcilesBalanceFromWallet() async {

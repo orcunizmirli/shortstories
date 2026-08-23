@@ -245,13 +245,15 @@ public final class OdulMerkeziModel {
     }
 
     private func applyBalance(_ balance: Int) {
-        // Fix 1: claim/409 sonrası beklenen OTORİTER bakiye varken BAYAT akış değeri onu EZMESİN. Akış
-        // otoriter değere yakaladığında guard temizlenir → canlı güncelleme (harcama/bonus) devam eder.
+        // Fix 1 + audit MEDIUM: claim/409 sonrası beklenen OTORİTER bakiye varken yalnız BAYAT (awaited'in
+        // ALTINDAKI, claim öncesi in-flight) akış değeri onu EZMESİN. Akış otoriter değere YETİŞİNCE ya da
+        // AŞINCA (eşzamanlı yeni kredi: görev/VIP/ad) guard temizlenir → canlı güncelleme devam eder.
+        // EXACT-match guard, awaited hiç yeniden yayılmazsa (409 read broadcast tetiklemez / version-guard
+        // snapshot'ı düşürür) kalıcı DONUYORDU: awaited'i atlayan yeni değer düşürülüp başlık sonraki tüm
+        // güncellemeleri yutuyordu. `>=` bunu önler (bayat-ALT değer yine düşürülür).
         if let awaited = awaitedBalance {
-            if balance == awaited {
-                awaitedBalance = nil
-            }
-            return
+            guard balance >= awaited else { return }
+            awaitedBalance = nil
         }
         coinBalance = balance
     }
