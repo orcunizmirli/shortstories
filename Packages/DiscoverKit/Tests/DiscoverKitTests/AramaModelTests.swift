@@ -294,4 +294,24 @@ struct AramaModelTests {
         #expect(model.results.map(\.id.rawValue) == ["srs_cd00002"]) // karışma yok
         #expect(!model.canLoadMore) // cursor "cd"nin (nil); "ab" cursor'u sızmadı
     }
+
+    /// performSearch askıdayken kullanıcı alanı düzenlerse (queryChanged → browse), terk edilmiş
+    /// sorgunun geç dönen sonucu kullanıcının şimdi bulunduğu browse fazını EZMEMELİ (audit MEDIUM).
+    @Test func queryChangedInvalidatesInFlightSearch() async {
+        let search = GatedSearch(gatedKeys: [GatedSearch.key("ab", nil)])
+        search.setResult(.success(Page(items: [series("srs_ab00001")], nextCursor: nil, ttlSec: nil)), query: "ab")
+        let model = makeRaceModel(search: search)
+
+        async let ab: Void = model.performSearch(query: "ab") // askıya alınır (phase=.results, isLoading)
+        await search.gate.arrivals(GatedSearch.key("ab", nil), 1)
+
+        model.queryChanged("") // kullanıcı alanı temizledi → browse; uçuştaki "ab" GEÇERSİZ olmalı
+        #expect(model.phase == .browsing)
+
+        search.gate.open(GatedSearch.key("ab", nil)) // terk edilmiş "ab" geç döner
+        await ab
+
+        #expect(model.phase == .browsing) // geç sonuç fazı EZMEDİ
+        #expect(model.results.isEmpty) // terk edilmiş sonuç yazılmadı
+    }
 }

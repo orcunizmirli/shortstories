@@ -99,6 +99,12 @@ public final class AramaModel {
     /// öneri. Her tuş askıdaki öneriyi iptal eder (yalnız en güncel sorgu render edilir).
     public func queryChanged(_ raw: String) {
         queryText = raw
+        // Kullanıcı alanı düzenledi → UÇUŞTAKİ sonuç aramasını GEÇERSİZ KIL: terk edilmiş bir sorgunun
+        // geç dönen performSearch'ü (token hâlâ geçerliydi çünkü queryChanged searchGeneration'ı bump
+        // etmiyordu) kullanıcının şimdi bulunduğu browse/suggest fazını EZMESİN (audit MEDIUM).
+        resultsTask?.cancel()
+        resultsTask = nil
+        searchGeneration += 1
         switch machine.onInput(raw) {
         case .browse:
             debounceTask?.cancel()

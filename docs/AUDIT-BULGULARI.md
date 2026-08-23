@@ -48,7 +48,7 @@ Durum: ☐ açık · ☑ düzeltildi (commit ile) · ⊘ kabul-edildi/won't-fix 
   - KesfetModel(29)/AramaModel(44)/DiziDetayModel(64)/CoinShopModel(96)/VIPSubscriptionModel(111) fabrikaları BASE `dependencies.analytics` alır; oysa dokümante edilen tasarım (ExperimentDimensionTracker + AppComposition.swift:88-90) 'feature model'leri decoratedAnalytics'i dependencies.analytics YERİNE alır; tek istisna ExperimentClient.analytics' der.
 - ☐ **[ContentKit/decode-robustness]** Packages/ContentKit/Sources/ContentKit/API/Wire/DiscoverWire.swift:14
   - Malformed banner or nested series element throws the entire /discover decode, blanking Keşfet — the documented banner/collection isolation only covers absent/null fields, not present-but-invalid elements.
-- ☐ **[DiscoverKit/concurrency-race]** Packages/DiscoverKit/Sources/DiscoverKit/Arama/AramaModel.swift:100
+- ☑ **[DiscoverKit/concurrency-race]** Packages/DiscoverKit/Sources/DiscoverKit/Arama/AramaModel.swift:100 — DÜZELTİLDİ (queryChanged resultsTask iptal + searchGeneration bump; DiscoverKit 130 test yeşil)
   - queryChanged edits the search field but neither cancels the in-flight resultsTask (performSearch) nor bumps searchGeneration, so a late-returning search from an abandoned query overrides the browsing/suggesting phase the user is now in.
 - ☐ **[LibraryKit/favorite-sync-loss]** Packages/LibraryKit/Sources/LibraryKit/Favorites/FavoritesService.swift:214
   - Telafi DELETE durumu (compensatingDeletes) yalnız bellekte tutulur ve kalıcı bir yerel kayda dayanmaz; telafi kesintiye uğrarsa sunucuda hayalet favori kalıcı olarak sızar.
