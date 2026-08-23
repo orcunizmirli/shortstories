@@ -137,7 +137,11 @@ struct EntitlementTests {
 
         _ = await store.unlock(episodeID: EpisodeID("ep_42"), expectedPrice: 60)
 
-        let snapshot = await iterator.next()
-        #expect(snapshot?.lastUnlockedEpisode == EpisodeID("ep_42"))
+        // İyimser yayın (server ONAYI ÖNCESİ) lastUnlocked TAŞIMAZ (sheet erken kapanmasın, audit HIGH);
+        // ONAYLANMIŞ unlock ikinci yayında lastUnlocked taşır.
+        let optimistic = await iterator.next()
+        #expect(optimistic?.lastUnlockedEpisode == nil)
+        let confirmed = await iterator.next()
+        #expect(confirmed?.lastUnlockedEpisode == EpisodeID("ep_42"))
     }
 }

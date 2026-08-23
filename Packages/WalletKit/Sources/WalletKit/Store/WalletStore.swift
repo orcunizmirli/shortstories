@@ -175,11 +175,13 @@ public actor WalletStore: EntitlementChecking {
         pendingUnlock = episodeID
         defer { pendingUnlock = nil }
 
-        // (a) İyimser entitlement: bölümü açık işaretle. Bakiyeye DOKUNULMAZ, yayınlanmaz —
-        // balanceBroadcast'e lokal-düşülmüş ara değer ASLA düşmez.
+        // (a) İyimser entitlement: bölümü açık işaretle (hasAccess açılır → PlayerKit ön-kontrolü geçer).
+        // Bakiyeye DOKUNULMAZ, yayınlanmaz. `lastUnlocked` YAYINLANMAZ: o "ONAYLANMIŞ unlock" sinyalidir
+        // (UnlockSheet bununla kapanır); iyimser (server ONAYI ÖNCESİ) yayın onu taşırsa sheet server
+        // reddinden önce kapanır ve red-işleme (insufficient/priceChanged) ölü-kod olur (audit HIGH).
         let wasUnlocked = unlockedEpisodes.contains(episodeID)
         if !wasUnlocked {
-            markUnlocked(episodeID)
+            optimisticallyMarkUnlocked(episodeID)
         }
 
         let key = makeIdempotencyKey()
@@ -209,7 +211,7 @@ public actor WalletStore: EntitlementChecking {
         case let .unlocked(record, wallet, transactions):
             // (b) Server-otoritatif snapshot bakiyeyi SET eder (lokal çıkarma YOK); kilit kalıcı.
             applyWallet(wallet)
-            markUnlocked(record.episodeID)
+            confirmUnlocked(record.episodeID)
             // Kanonik ödeme funnel success adımı (08 §3.4/§5.2 `unlock_coin`): cüzdan düşümü
             // backend'de onaylandığında (idempotent işlem tamam) atılır. Funnel event'i YALNIZ
             // burada (backend onay noktası) atılır; UI kendi funnel event'ini atmaz (çift-atım yok).
@@ -325,11 +327,22 @@ public actor WalletStore: EntitlementChecking {
             .reduce(0) { $0 - $1.amount }
     }
 
-    private func markUnlocked(_ episodeID: EpisodeID) {
+    /// İYİMSER kilit (server ONAYI ÖNCESİ): `hasAccess`'i açar + entitlement yayınlar ama `lastUnlocked`
+    /// YAYMAZ. `lastUnlocked` "onaylanmış unlock" (sheet kapanır) sinyali olduğundan iyimser yayında
+    /// taşınmaz — aksi halde UnlockSheet server reddinden önce kapanır (audit HIGH; red-işleme ölü-kod).
+    private func optimisticallyMarkUnlocked(_ episodeID: EpisodeID) {
         let (inserted, _) = unlockedEpisodes.insert(episodeID)
         if inserted {
-            broadcastEntitlement(lastUnlocked: episodeID)
+            broadcastEntitlement()
         }
+    }
+
+    /// ONAYLANMIŞ kilit (server success): sette olduğundan emin olur ve `lastUnlocked` YAYAR — UnlockSheet
+    /// gözlemcisi bununla `completeUnlock` eder. İyimser adım zaten eklemişse insert no-op'tur; yayın yine
+    /// yapılır (onay sinyali). İlk kez açılıyorsa (idempotent re-unlock / wasUnlocked) da doğru çalışır.
+    private func confirmUnlocked(_ episodeID: EpisodeID) {
+        unlockedEpisodes.insert(episodeID)
+        broadcastEntitlement(lastUnlocked: episodeID)
     }
 
     private func broadcastEntitlement(lastUnlocked: EpisodeID? = nil) {

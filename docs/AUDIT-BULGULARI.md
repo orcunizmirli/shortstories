@@ -13,7 +13,7 @@ Durum: ☐ açık · ☑ düzeltildi (commit ile) · ⊘ kabul-edildi/won't-fix 
 
 ## HIGH (3)
 
-- ☐ **[WalletKit/unlock-integrity]** Packages/WalletKit/Sources/WalletKit/UI/UnlockSheet/UnlockSheetModel.swift:232
+- ☑ **[WalletKit/unlock-integrity]** Packages/WalletKit/Sources/WalletKit/UI/UnlockSheet/UnlockSheetModel.swift:232 — DÜZELTİLDİ (Option A: WalletStore iyimser yayın lastUnlocked taşımaz, yalnız onaylı unlock taşır; WalletKit 287 test + gerçek-store entegrasyon testi yeşil)
   - Sheet'in entitlement gozlemcisi, WalletStore'un KENDI iyimser unlock yayinini disaridan-unlock zannedip performUnlock'un 402/409 sonuc islemesini olu-koda cevirir.
 - ☐ **[PlayerKit/wrong-state-on-transition]** Packages/PlayerKit/Sources/PlayerKit/Engine/PlaybackEngine.swift:179
   - Tamamlanmis (playedToEnd) bir bolume warm-hit ile geri donuldugunde `endedForCurrentLoad` latch'i sifirlanmadigindan yeniden aktivasyon aninda auto-advance ANINDA tekrar tetiklenir; kullanici o bolumde duramaz/yeniden izleyemez.
@@ -22,7 +22,7 @@ Durum: ☐ açık · ☑ düzeltildi (commit ile) · ⊘ kabul-edildi/won't-fix 
 
 ## MEDIUM (18)
 
-- ☐ **[WalletKit/entitlement-flip-race]** Packages/WalletKit/Sources/WalletKit/UI/UnlockSheet/UnlockSheetModel.swift:232
+- ☑ **[WalletKit/entitlement-flip-race]** Packages/WalletKit/Sources/WalletKit/UI/UnlockSheet/UnlockSheetModel.swift:232 — DÜZELTİLDİ (aynı kök: HIGH unlock-integrity Option A fix'i bunu da kapatır)
   - Optimistik coin-unlock'ın kendi `markUnlocked` yayını (lastUnlockedEpisode == episodeID) sheet'in entitlement gözlemcisini server yanıtından ÖNCE `completeUnlock()`'a sürükler; server unlock'u reddedince rollback olur ama sheet zaten 'açıldı' der ve red bastırılır.
 - ☐ **[AppFoundation/session-invalidation-race]** Packages/AppFoundation/Sources/AppFoundation/Session/SessionManager.swift:255
   - SessionStateBroadcaster.stream() delivers its initial snapshot OUTSIDE the lock, so a concurrent yield() can be observed before the (now stale) replay — a new subscriber can end on a stale state, undoing session invalidation.
