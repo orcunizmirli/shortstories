@@ -40,7 +40,7 @@ Durum: ☐ açık · ☑ düzeltildi (commit ile) · ⊘ kabul-edildi/won't-fix 
   - Warm-slot reuse (healthy path) never re-prepares/resets the engine, so a just-completed episode keeps `endedForCurrentLoad = true`; re-subscribing replays playedToEnd and instantly re-fires auto-advance.
 - ☑ **[PlayerKit/concurrency]** Packages/PlayerKit/Sources/PlayerKit/Engine/PlaybackEngine.swift:179 — DÜZELTİLDİ (aynı kök: warm-reuse latch clear)
   - playedToEndEvents() latch (endedForCurrentLoad) replays a stale 'ended' event to every new subscriber, but the latch is only reset in prepare()/reset() — not on a warm-slot reuse. Because FeedPlaybackDirector re-subscribes on each activation, returning to a previously-finished, warm-reused episode fires a spurious auto-advance.
-- ☐ **[ProfileKit/data-isolation]** Packages/ProfileKit/Sources/ProfileKit/Profil/ProfilModel.swift:108
+- ☑ **[ProfileKit/data-isolation]** Packages/ProfileKit/Sources/ProfileKit/Profil/ProfilModel.swift:108 — DÜZELTİLDİ (observeSession sessionExpired'de wallet=.empty; account-switch zaten HIGH-1 broadcast'iyle; ProfileKit 160 test yeşil)
   - observeSession updates `account` from the session stream but never resets `wallet`, so the previous account's coin balance / VIP status stays displayed after a session-expiry (or guest/account transition) that emits no wallet-stream event.
 - ☐ **[ProfileKit/reset-partial]** Packages/ProfileKit/Sources/ProfileKit/BildirimMerkezi/NotificationCenterModel.swift:114
   - pendingDeletedIDs mezar-tası temizligi yalnız İLK sayfaya (cursor:nil) bakar; sonraki sayfalardaki silinmis id'lerin mezar-tası erkenden düser ve öge diriler (kısmi reset).

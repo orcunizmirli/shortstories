@@ -108,6 +108,13 @@ public final class ProfilModel {
     private func observeSession() async {
         for await state in session.stateUpdates {
             account = AccountSummary.make(from: state)
+            // Oturum düştüğünde (sessionExpired) cüzdan display'i BAYAT kalmasın: logout bir CÜZDAN olayı
+            // DEĞİL (WalletStore reset edilmez → summaryUpdates emit etmez) → önceki hesabın coin/VIP'i
+            // "yeniden giriş" ekranında kalırdı (SS-132 sınıfı stale-display sızıntısı). Hesap-değişimi
+            // zaten WalletStore.reset broadcast'iyle temizlenir; bu yalnız session-death boşluğunu kapatır.
+            if case .sessionExpired = account.kind {
+                wallet = .empty
+            }
         }
     }
 

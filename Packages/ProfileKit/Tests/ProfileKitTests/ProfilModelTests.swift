@@ -139,6 +139,25 @@ struct ProfilModelTests {
         #expect(updated)
     }
 
+    @Test func sessionExpiredClearsStaleWalletDisplay() async {
+        // Audit MEDIUM (SS-132 sınıfı stale-display): session düştüğünde (loggedOut → sessionExpired)
+        // logout bir cüzdan olayı DEĞİL (WalletStore reset edilmez, stream emit etmez) → önceki hesabın
+        // coin/VIP display'i Profil'de kalırdı (kullanıcıya "yeniden giriş" derken 500 coin + VIP satırı).
+        let wallet = FakeWalletSummary(WalletSummary(coinBalance: 500, isVIP: true, vipRenewalDate: Date()))
+        let session = MockSession(state: .linked(userID: "u1", provider: .google))
+        let model = makeModel(session: session, wallet: wallet, delegate: ProfileDelegateSpy())
+        model.onAppear()
+        await model.pendingWork()
+        #expect(model.wallet.coinBalance == 500) // bağlı hesap: dolu cüzdan
+
+        let observer = Task { await model.observeUpdates() }
+        defer { observer.cancel() }
+        session.send(.loggedOut(previousUserID: "u1", provider: .google)) // session düştü
+
+        let cleared = await eventually { model.wallet.coinBalance == 0 && !model.wallet.isVIP }
+        #expect(cleared) // bayat coin/VIP display'i temizlendi
+    }
+
     @Test func sessionLiveUpdateReflected() async {
         let session = MockSession(state: .guest(userID: "g1"))
         let model = makeModel(session: session, delegate: ProfileDelegateSpy())
