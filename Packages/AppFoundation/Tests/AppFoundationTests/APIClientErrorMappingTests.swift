@@ -303,13 +303,23 @@ struct RetryAfterHeaderParsingTests {
     }
 
     @Test func degerUstSinirlaKirpilir() {
-        #expect(APIClient.retryAfterDelay(fromHeaderValue: "9999") == APIClient.maxRetryAfterDelay)
-        #expect(APIClient.maxRetryAfterDelay == .seconds(30))
+        #expect(APIClient.retryAfterDelay(fromHeaderValue: "9999") == .seconds(30))
+        #expect(APIClient.maxRetryAfterSeconds == 30)
     }
 
     @Test func gecersizVeNegatifDegerNilDoner() {
         #expect(APIClient.retryAfterDelay(fromHeaderValue: nil) == nil)
         #expect(APIClient.retryAfterDelay(fromHeaderValue: "yarin") == nil)
         #expect(APIClient.retryAfterDelay(fromHeaderValue: "-1") == nil)
+    }
+
+    @Test func sonsuzVeAsiriBuyukDegerCokmezSinirliDoner() {
+        // Audit MEDIUM (crash/DoS): `Retry-After: inf`/`1e400` `Duration.seconds()`'ta trap ederdi
+        // (30 sn üst sınır construct'tan SONRA uygulanıyordu). isFinite guard + sayısal clamp önce.
+        #expect(APIClient.retryAfterDelay(fromHeaderValue: "inf") == nil) // non-finite → normal backoff
+        #expect(APIClient.retryAfterDelay(fromHeaderValue: "infinity") == nil)
+        #expect(APIClient.retryAfterDelay(fromHeaderValue: "1e400") == nil) // overflow → inf → nil
+        #expect(APIClient.retryAfterDelay(fromHeaderValue: "nan") == nil)
+        #expect(APIClient.retryAfterDelay(fromHeaderValue: "1e300") == .seconds(30)) // aşırı ama sonlu → clamp
     }
 }

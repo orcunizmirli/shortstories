@@ -36,6 +36,26 @@ private final class FakeRefreshFailureHandler: RefreshFailureHandling {
     }
 }
 
+/// `.refreshToken` okumasında geçici Keychain hatası (`keychainUnavailable`) fırlatan stub; diğer
+/// anahtarlar `MockSecureStore`'a devredilir. performRefresh'in geçici-hata↔yok-token ayrımını test eder.
+private final class RefreshTokenReadFailingStore: SecureStoring, @unchecked Sendable {
+    private let backing = MockSecureStore()
+    func data(forKey key: SecureStoreKey) throws -> Data? {
+        if key == .refreshToken {
+            throw AppError.storage(.keychainUnavailable)
+        }
+        return try backing.data(forKey: key)
+    }
+
+    func setData(_ data: Data, forKey key: SecureStoreKey) throws {
+        try backing.setData(data, forKey: key)
+    }
+
+    func removeData(forKey key: SecureStoreKey) throws {
+        try backing.removeData(forKey: key)
+    }
+}
+
 @MainActor
 struct TokenRefreshCoordinatorTests {
     private let apiClient = MockAPIClient()
@@ -51,6 +71,25 @@ struct TokenRefreshCoordinatorTests {
             "/auth/refresh",
             returning: ["accessToken": "at_new", "refreshToken": "rt_new"]
         )
+    }
+
+    // MARK: - Geçici Keychain hatası (audit MEDIUM: yıkıcı logout DEĞİL)
+
+    @Test func geciciKeychainOkumaHatasiLogoutTetiklemezVeYuzer() async throws {
+        // `keychainUnavailable` (cihaz ilk kilit açılmadan / securityd glitch) yok-token DEĞİLDİR:
+        // geçerli refresh token'ı olan kullanıcı yıkıcı fallback'e (logout) SOKULMAMALI; hata yüzmeli.
+        let failing = RefreshTokenReadFailingStore()
+        let handler = FakeRefreshFailureHandler(tokenToReturn: "at_recovered")
+        let coordinator = TokenRefreshCoordinator(apiClient: apiClient, secureStore: failing, failureHandler: handler)
+
+        do {
+            _ = try await coordinator.refreshAccessToken()
+            Issue.record("geçici Keychain hatası fırlamalıydı, fallback'e gitmemeliydi")
+        } catch let error as AppError {
+            #expect(error == .storage(.keychainUnavailable)) // geçici hata YÜZER
+        }
+        let calls = await handler.callCount
+        #expect(calls == 0) // yıkıcı fallback (logout) TETİKLENMEZ
     }
 
     // MARK: - Başarılı refresh

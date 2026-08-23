@@ -72,7 +72,7 @@ public struct APIClient: APIClientProtocol {
                 hasRecoveredAuth = true
             } catch let signal as RetryAfterSignal {
                 // 429 + Retry-After (05 §10.2): retry hakkı varsa backoff YERİNE sunucunun
-                // verdiği süre beklenir (üst sınır `maxRetryAfterDelay`).
+                // verdiği süre beklenir (üst sınır `maxRetryAfterSeconds`).
                 guard isIdempotent(endpoint),
                       endpoint.retryPolicy.delay(afterAttempt: attempt, error: signal.underlying) != nil
                 else { throw signal.underlying }
@@ -252,18 +252,20 @@ public struct APIClient: APIClientProtocol {
 
     // MARK: - Retry-After (05 §10.2: "Retry-After header'ına uy")
 
-    /// Header'dan okunan bekleme süresinin üst sınırı — sunucu ne derse desin 30 sn'den
-    /// fazla beklenmez.
-    static let maxRetryAfterDelay: Duration = .seconds(30)
+    /// Header'dan okunan bekleme süresinin (saniye) üst sınırı — sunucu ne derse desin bundan fazla beklenmez.
+    static let maxRetryAfterSeconds: Double = 30
 
     /// Saniye biçimli `Retry-After` değerini ayrıştırır (HTTP-date biçimi desteklenmez —
-    /// ayrıştırılamayan değer `nil` döner ve normal backoff'a düşülür).
+    /// ayrıştırılamayan/geçersiz değer `nil` döner ve normal backoff'a düşülür).
     static func retryAfterDelay(fromHeaderValue value: String?) -> Duration? {
         guard let value,
               let seconds = TimeInterval(value.trimmingCharacters(in: .whitespaces)),
-              seconds >= 0
+              seconds.isFinite, seconds >= 0
         else { return nil }
-        return min(.seconds(seconds), maxRetryAfterDelay)
+        // `isFinite` inf/nan'ı eler (normal backoff'a düşülür). Sonsuz/aşırı-büyük değer
+        // `Duration.seconds()`'ta trap eder (float→Int128) → SAYISAL clamp Duration'a çevirmeden
+        // ÖNCE uygulanır (audit MEDIUM: `Retry-After: inf`/`1e400` ile deterministik istemci çökmesi).
+        return .seconds(min(seconds, maxRetryAfterSeconds))
     }
 
     static func appError(from urlError: URLError) -> AppError {

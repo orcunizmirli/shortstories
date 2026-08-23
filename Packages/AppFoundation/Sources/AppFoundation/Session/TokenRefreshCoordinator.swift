@@ -104,9 +104,13 @@ public actor TokenRefreshCoordinator: AuthTokenRefreshing {
     }
 
     private func performRefresh() async throws -> String {
-        guard let refreshToken = try? secureStore.string(forKey: .refreshToken),
-              !refreshToken.isEmpty
-        else {
+        // `try?` DEĞİL: geçici Keychain okuma hatası (cihaz ilk kilit açılmadan `afterFirstUnlock`
+        // altında / securityd glitch → `keychainUnavailable`) yok-token'dan AYIRT EDİLMELİ. `try?`
+        // ikisini de nil'e çeviriyor ve GEÇERLİ refresh token'ı olan kullanıcıyı yıkıcı fallback'e
+        // (kalıcı logout) sokuyordu (audit MEDIUM). Geçici hata FIRLATILIR (çağıran sonra tekrar dener);
+        // yalnız GENUINE yokluk (nil / errSecItemNotFound → throw etmez) fallback'e gider.
+        let storedToken = try secureStore.string(forKey: .refreshToken)
+        guard let refreshToken = storedToken, !refreshToken.isEmpty else {
             return try await recoverViaFallback()
         }
         do {
