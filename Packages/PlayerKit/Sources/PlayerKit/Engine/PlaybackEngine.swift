@@ -134,6 +134,19 @@ actor PlaybackEngine {
         await backend.seek(toSeconds: seconds)
     }
 
+    /// Warm-slot reuse'da devam konumuna seek (04 §12.2): item HAZIRSA (ilk kare gelmiş) hemen seek eder;
+    /// henüz `.loading` ise doğrudan seek YUTULACAĞINDAN `pendingResumePosition`'a yazar → `firstFrameReady`
+    /// olayında uygulanır. reuseWarmSlot doğrudan `seek` çağırıyordu; hazır olmayan warm item'da (yavaş ağ)
+    /// devam konumu kaybolup bölüm baştan oynardı (audit MEDIUM).
+    func resumeSeek(toSeconds seconds: Double) async {
+        switch machine.state {
+        case .readyAtFirstFrame, .playing, .paused, .stalled:
+            await backend.seek(toSeconds: seconds) // ilk kare var → hemen seek
+        case .loading, .idle, .failed:
+            pendingResumePosition = seconds // henüz hazır değil → firstFrameReady'de uygulanır
+        }
+    }
+
     /// Toleranslı seek (04 §8.1 çift-tap): keskin `.zero` yalnız `seek(toSeconds:)`
     /// (scrubber bırakışı/resume). Feed jest katmanı ±10 sn için bunu çağırır.
     func seekTolerant(toSeconds seconds: Double) async {

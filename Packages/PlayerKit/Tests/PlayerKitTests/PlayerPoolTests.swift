@@ -282,8 +282,9 @@ struct PlayerPoolTests {
 /// bitrate tavanı uygulaması (04 §6.3) ve prefetch iptal hijyeni (03 §7.3).
 struct PlayerPoolActivationPolicyTests {
     @Test func warmHitAktivasyondaResumePozisyonunaSeekEdilir() async throws {
-        // Devam Et + prefetch isabeti (04 §12.2): bölüm slot'ta hazır olsa da
-        // resumePosition verilmişse engine o konuma seek etmelidir.
+        // Devam Et + prefetch isabeti (04 §12.2): resumePosition verilmişse engine o konuma seek etmeli.
+        // Warm slot henüz .loading (prepareNext, first-frame gelmemiş) ise doğrudan seek YUTULACAĞINDAN
+        // ERTELENİR (audit MEDIUM: devam konumu kaybı) → firstFrameReady olayında uygulanır.
         let harness = makePool()
         let (pool, box) = (harness.pool, harness.box)
         let episode = Fixture.episode(id: "e2")
@@ -291,8 +292,10 @@ struct PlayerPoolActivationPolicyTests {
 
         _ = try await pool.activate(episode, atFeedIndex: 1, resumePosition: 27)
 
-        let seeked = box.backends.contains { $0.calls.contains(.seek(27)) }
-        #expect(seeked)
+        #expect(!box.backends.contains { $0.calls.contains(.seek(27)) }) // .loading iken doğrudan seek YOK
+        box.backends.forEach { $0.emit(.firstFrameReady) }
+        let seeked = await eventually { box.backends.contains { $0.calls.contains(.seek(27)) } }
+        #expect(seeked) // ilk kare gelince ertelenen seek uygulandı
     }
 
     @Test func suresiDolmusWarmItemTazeYetkiyleYenidenHazirlanir() async throws {

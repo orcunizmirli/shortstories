@@ -340,7 +340,7 @@ extension PlayerPool {
         }
         if !engineFailed, await authorization.hasUsableAuthorization(for: episode.id) {
             if let resumePosition {
-                await engine.seek(toSeconds: resumePosition)
+                await engine.resumeSeek(toSeconds: resumePosition) // hazır değilse erteler (audit: devam konumu kaybı)
             }
         } else {
             let fresh = try await authorization.freshAuthorization(for: episode.id)

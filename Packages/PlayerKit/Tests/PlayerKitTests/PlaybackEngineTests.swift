@@ -222,6 +222,30 @@ struct PlaybackEngineTests {
         #expect(spuriousEnd == false)
     }
 
+    @Test func resumeSeekLoadingItemdaFirstFrameeErtelenir() async {
+        // Audit MEDIUM: warm-reuse'da item .loading iken doğrudan seek YUTULUR + pendingResumePosition
+        // ayarlanmazsa firstFrameReady'de tekrar seek edilmez → devam konumu kaybolur. resumeSeek erteler.
+        let (engine, backend) = makeEngine()
+        await engine.prepare(episodeID: episodeID, url: url, bufferPolicy: .active) // .loading
+
+        await engine.resumeSeek(toSeconds: 42)
+        #expect(!backend.calls.contains(.seek(42))) // .loading iken doğrudan seek YOK
+
+        backend.emit(.firstFrameReady)
+        _ = await awaitState(.readyAtFirstFrame, on: engine)
+        #expect(backend.calls.contains(.seek(42))) // firstFrameReady pendingResumePosition'ı uyguladı
+    }
+
+    @Test func resumeSeekHazirItemdaHemenSeekEder() async {
+        let (engine, backend) = makeEngine()
+        await engine.prepare(episodeID: episodeID, url: url, bufferPolicy: .active)
+        backend.emit(.firstFrameReady)
+        _ = await awaitState(.readyAtFirstFrame, on: engine)
+
+        await engine.resumeSeek(toSeconds: 55)
+        #expect(backend.calls.contains(.seek(55))) // hazır → hemen seek
+    }
+
     private func withTimeoutReturningTrueIfEventArrives(
         engine: PlaybackEngine,
         seconds: Double
