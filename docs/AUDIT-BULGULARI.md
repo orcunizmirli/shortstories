@@ -50,11 +50,11 @@ Durum: ☐ açık · ☑ düzeltildi (commit ile) · ⊘ kabul-edildi/won't-fix 
   - Malformed banner or nested series element throws the entire /discover decode, blanking Keşfet — the documented banner/collection isolation only covers absent/null fields, not present-but-invalid elements.
 - ☑ **[DiscoverKit/concurrency-race]** Packages/DiscoverKit/Sources/DiscoverKit/Arama/AramaModel.swift:100 — DÜZELTİLDİ (queryChanged resultsTask iptal + searchGeneration bump; DiscoverKit 130 test yeşil)
   - queryChanged edits the search field but neither cancels the in-flight resultsTask (performSearch) nor bumps searchGeneration, so a late-returning search from an abandoned query overrides the browsing/suggesting phase the user is now in.
-- ☐ **[LibraryKit/favorite-sync-loss]** Packages/LibraryKit/Sources/LibraryKit/Favorites/FavoritesService.swift:214
+- ☐ **[LibraryKit/favorite-sync-loss]** Packages/LibraryKit/Sources/LibraryKit/Favorites/FavoritesService.swift:214 — PLAN (ertelendi, çok-katmanlı): compensating-delete intent'i DURABLE kalıcılaştır — ya SwiftData'da pendingRemove-fantom kayıt (mevcut sync işler, app-kill'e dayanıklı) ya da FavoritesService'e injectable CompensatingDeleteStore (UserDefaults). LOW'lardan sonra dönülecek.
   - Telafi DELETE durumu (compensatingDeletes) yalnız bellekte tutulur ve kalıcı bir yerel kayda dayanmaz; telafi kesintiye uğrarsa sunucuda hayalet favori kalıcı olarak sızar.
 - ☑ **[LibraryKit/concurrency-state]** Packages/LibraryKit/Sources/LibraryKit/Listem/ListemModel.swift:143 — DÜZELTİLDİ (loadFavorites generation guard; LibraryKit 60 test yeşil)
   - loadFavorites has no generation/cancellation guard; two overlapping loadFavorites can commit out of order and resurrect a just-removed favorite.
-- ☐ **[LibraryKit/tombstone-dedup]** Packages/LibraryKit/Sources/LibraryKit/Favorites/FavoritesService.swift:205
+- ☐ **[LibraryKit/tombstone-dedup]** Packages/LibraryKit/Sources/LibraryKit/Favorites/FavoritesService.swift:205 — PLAN (ertelendi, çok-katmanlı): compensating-delete intent'i DURABLE kalıcılaştır — ya SwiftData'da pendingRemove-fantom kayıt (mevcut sync işler, app-kill'e dayanıklı) ya da FavoritesService'e injectable CompensatingDeleteStore (UserDefaults). LOW'lardan sonra dönülecek.
   - Compensating-DELETE intent for an add that was removed mid-PUT is held only in the in-memory compensatingDeletes set and is never persisted; if flush is deferred (offline or app kill) the removal is lost and, because favorites sync has no server->local pull, a ghost favorite stays on the server permanently.
 - ☑ **[DiscoverKit/pagination-dedup]** Packages/DiscoverKit/Sources/DiscoverKit/Arama/AramaModel.swift:183 — DÜZELTİLDİ (loadMore SeriesID dedup + boş-sayfa paginasyon durdur; DiscoverKit 132 test yeşil)
   - loadMore sayfa birleştirmesi (results += page.items) hiçbir dedup yapmaz; cursor sayfalamada sayfa sınırında örtüşen dizi aynı SeriesID ile iki kez listeye girer.
@@ -63,7 +63,7 @@ Durum: ☐ açık · ☑ düzeltildi (commit ile) · ⊘ kabul-edildi/won't-fix 
 
 - ☐ **[AppFoundation/single-flight-gap]** Packages/AppFoundation/Sources/AppFoundation/Session/SessionManager.swift:212
   - handleRefreshFailure's guest re-bootstrap calls performGuestBootstrap() directly, bypassing the bootstrapTask single-flight guard used by bootstrapGuestSessionIfNeeded, so two concurrent POST /auth/guest can run.
-- ☐ **[RewardsKit/money-integrity]** Packages/RewardsKit/Sources/RewardsKit/OdulMerkezi/OdulMerkeziModel.swift:250
+- ☑ **[RewardsKit/money-integrity]** Packages/RewardsKit/Sources/RewardsKit/OdulMerkezi/OdulMerkeziModel.swift:250 — DÜZELTİLDİ (aynı kök: awaitedBalance exact-match→>= fix, commit 266e8fe)
   - applyBalance 'awaitedBalance' guard, exact-match ile temizlendigi icin, claim sonrasi araya giren gercek bir bakiye degisimi (baska cihazdan satin alma / VIP bonusu / ad-coin kredisi) beklenen degeri ATLARSA baslik kalici olarak BAYAT/yanlis bakiyede kilitlenir.
 - ☐ **[PlayerKit/playback-auth-recovery]** Packages/PlayerKit/Sources/PlayerKit/Engine/PlaybackEngine.swift:265
   - recoveryAttempts is reset only in prepare(), never after a successful signed-URL recovery, so a warm-retained/long-lived loaded item permanently loses its mandated 1 auto-retry after the first mid-play expiry.
@@ -95,10 +95,10 @@ Durum: ☐ açık · ☑ düzeltildi (commit ile) · ⊘ kabul-edildi/won't-fix 
   - load() iki AYRI await arasında (session.state → walletSummary.currentSummary()) hesap değişimine açıktır; hesap ve cüzdan farklı hesaplardan okunabilir (çapraz-hesap geçici tutarsızlık).
 - ☐ **[ContentKit/clock-skew]** Packages/ContentKit/Sources/ContentKit/Models/BannerCollection.swift:26
   - Banner.isActive gates purely on device clock (.now) with no server-time correction, so device clock skew shows expired promo banners or hides active ones.
-- ☐ **[DiscoverKit/pagination-termination]** Packages/DiscoverKit/Sources/DiscoverKit/Arama/AramaModel.swift:176
+- ☑ **[DiscoverKit/pagination-termination]** Packages/DiscoverKit/Sources/DiscoverKit/Arama/AramaModel.swift:176 — DÜZELTİLDİ (aynı kök: loadMore boş-sayfa nextCursor=nil, commit 75ea2e4)
   - loadMore, sunucu boş sayfa fakat non-nil nextCursor döndürdüğünde sonlanmaz; en-alt hücrede tekrar tetiklenip sınırsız boş-sayfa çekme döngüsü oluşturabilir.
 - ☐ **[LibraryKit/offline-list-consistency]** Packages/LibraryKit/Sources/LibraryKit/Listem/ListemModel.swift:152
   - loadContinue, hidden filtresini DB fetchLimit'ten SONRA uygular; gizlenen öğeler limiti tüketip listeyi mevcut öğeler varken bile kısaltır/erken boşaltır.
-- ☐ **[AnalyticsKit/size-truncation]** Packages/AnalyticsKit/Sources/AnalyticsKit/Experiment/ExperimentEvents.swift:22
+- ☑ **[AnalyticsKit/size-truncation]** Packages/AnalyticsKit/Sources/AnalyticsKit/Experiment/ExperimentEvents.swift:22 — DÜZELTİLDİ (ABVariants.format 100-char sınırı, tam-atama; AnalyticsKit 35 test yeşil)
   - ABVariants.format produces an unbounded comma-joined string with no length cap; as active experiments accumulate it exceeds Firebase/GA4's 100-char string-parameter limit and is silently truncated.
 

@@ -122,4 +122,16 @@ struct ABVariantsTests {
         #expect(ABVariants.format([:]).isEmpty)
         #expect(ABVariants.parameterKey == "ab_variants")
     }
+
+    @Test func formatYuzKarakterSinirinaKirpilirTamAtamalarla() {
+        // Audit LOW: Firebase/GA4 string-parametre sınırı 100 karakter — aşan sessizce DÜŞÜRÜLÜR.
+        // Çok deney biriktikçe sınırı aşmasın: yalnız TAM sığan atamalar (yarım variant yok) dahil edilir.
+        let many = Dictionary(uniqueKeysWithValues: (0 ..< 50).map { ("exp\($0)", "variant\($0)") })
+        let out = ABVariants.format(many)
+        #expect(out.count <= 100) // sınıra kırpıldı
+        #expect(!out.hasSuffix(",")) // son giriş tam (virgülle bitmez)
+        #expect(!out.hasSuffix(":")) // yarım "key:" yok
+        // Sınır içindeyse hiçbir şey kırpılmaz.
+        #expect(ABVariants.format(["a": "v1", "b": "control"]) == "a:v1,b:control")
+    }
 }

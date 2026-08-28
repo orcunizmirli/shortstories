@@ -17,12 +17,23 @@ public enum ABVariants {
     /// Ortak parametre anahtarı (`ab_variants`).
     public static let parameterKey = "ab_variants"
 
+    /// Firebase/GA4 string-parametre uzunluk sınırı (aşan değer sessizce düşürülür/kesilir).
+    static let maxLength = 100
+
     /// `experimentKey -> variantID` haritasını kanonik düzleştirilmiş string'e çevirir.
-    /// Deterministik: anahtara göre sıralı, `"a:v1,b:control"` biçimi.
+    /// Deterministik: anahtara göre sıralı, `"a:v1,b:control"` biçimi. 100 karakteri aşarsa (çok deney)
+    /// yalnız TAM sığan atamalar dahil edilir (yarım variant yok) — aksi halde tüm `ab_variants`
+    /// parametresi backend'de sessizce düşerdi (audit LOW).
     public static func format(_ assignments: [String: String]) -> String {
-        assignments
-            .sorted { $0.key < $1.key }
-            .map { "\($0.key):\($0.value)" }
-            .joined(separator: ",")
+        var result = ""
+        for (key, value) in assignments.sorted(by: { $0.key < $1.key }) {
+            let entry = "\(key):\(value)"
+            let candidate = result.isEmpty ? entry : "\(result),\(entry)"
+            if candidate.count > maxLength {
+                break
+            }
+            result = candidate
+        }
+        return result
     }
 }
