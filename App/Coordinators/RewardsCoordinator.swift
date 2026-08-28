@@ -28,4 +28,10 @@ extension RewardsCoordinator: RewardsDelegate {
     func rewardsOpensCoinStore() {
         walletFlow.presentCoinStore(source: .odulMerkezi)
     }
+
+    /// Başarılı check-in (streak günü) POZİTİF an'dır → App Store puanlama istemini değerlendir
+    /// (RTG-01; 00-genel-bakis.md §294). Kill-switch + terbiye/eşik/sıklık kararı composition/controller'da.
+    func rewardsDidClaimCheckIn(streakDay _: Int) {
+        composition.requestReviewIfEnabled(.streakDay)
+    }
 }

@@ -7,4 +7,13 @@
 public protocol RewardsDelegate: AnyObject {
     /// Bakiye kartı / "Coin Al" kısayolu → `CoinMagazasi` (02 §4.9 giriş noktası).
     func rewardsOpensCoinStore()
+
+    /// Günlük check-in başarıyla claim edildi (streak günü) — POZİTİF an (RTG-01 App Store puanlama
+    /// istemi; 00-genel-bakis.md §294). App koordinatörü bunu `ReviewPromptController`'a iletir.
+    /// `streakDay`: kazanılan döngü günü (1–7). Varsayılan boş → mevcut conformer'lar/testler kırılmaz.
+    func rewardsDidClaimCheckIn(streakDay: Int)
+}
+
+public extension RewardsDelegate {
+    func rewardsDidClaimCheckIn(streakDay _: Int) {}
 }

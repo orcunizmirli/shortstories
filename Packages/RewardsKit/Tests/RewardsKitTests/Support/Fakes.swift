@@ -171,9 +171,15 @@ final class FakeRewardClaiming: RewardClaiming, @unchecked Sendable {
 @MainActor
 final class RewardsDelegateSpy: RewardsDelegate {
     var coinStore = 0
+    /// Başarılı check-in claim'inde gelen streak-günleri (RTG-01 pozitif an).
+    private(set) var checkInClaims: [Int] = []
 
     func rewardsOpensCoinStore() {
         coinStore += 1
+    }
+
+    func rewardsDidClaimCheckIn(streakDay: Int) {
+        checkInClaims.append(streakDay)
     }
 }
 

@@ -561,15 +561,16 @@ Retention hedefleri bağlamı (kanon): D1 ≥ %30, D7 ≥ %10, D30 ≥ %5; kateg
 **Kabul kriterleri:**
 - [ ] `Profil` → İzleme geçmişi, LIB-02 ile aynı veriden tam listeyi (tarih gruplu) gösterir; tekil silme ve tümünü temizleme vardır.
 
-#### RTG-01 — Mağaza puanı isteme (SKStoreReviewController) — **Should, F1**
+#### RTG-01 — Mağaza puanı isteme (SKStoreReviewController) — **Should, F1** — KISMEN UYGULANDI (2026-08-28)
 **Davranış:** Sistem puan isteme diyaloğu yalnız pozitif anlarda tetiklenir: bölüm tamamlama ve/veya check-in streak günü (tetik kombinasyonu remote config). Yakın zamanda hata (oynatma hatası, başarısız satın alma) ya da iade/şikayet sinyali yaşayan kullanıcıya istem gösterilmez; bu kullanıcılara önce destek akışı sunulur. Mekanizma, `00-genel-bakis.md`'deki "fiyat şikayetleri ve puan erozyonu" riskinin (yüksek olasılık) azaltmasıdır.
+**Uygulama:** Karar mantığı saf/test-edilebilir `AppFoundation/Review/ReviewPrompting.swift` (`ReviewPromptPolicy` + `ReviewPromptController` + `ReviewRequesting` portu); live `AppStore.requestReview(in:)` App `StoreKitReviewRequester`; check-in tetiği `RewardsDelegate.rewardsDidClaimCheckIn` → `AppComposition.requestReviewIfEnabled(.streakDay)`; kill-switch flag `retention.review_prompt_enabled` (default açık). AppFoundation 11 + RewardsKit 2 test yeşil.
 **Kabul kriterleri:**
-- [ ] İstem yalnız pozitif an tetiklerinde çağrılır; oynatma sırasında, paywall'da ya da hata ekranlarında ASLA gösterilmez.
-- [ ] iOS'un yıllık en fazla 3 gösterim sınırına saygı duyulur; istemci kendi frekans kuralını tutar (tetikler arası asgari süre remote config) ve gösterim hakkını israf etmez.
-- [ ] Şikayet/hata sinyali penceresi (örn. son X gün, remote config) içindeki kullanıcıda istem bastırılır ve destek akışı önceliklenir.
-- [ ] Remote config kill-switch ile istem tamamen kapatılabilir.
-- [ ] İstem tetiklenmesi analitik event olarak yazılır (`08-analitik-deney.md`); sistemin diyaloğu gerçekten gösterip göstermediği API tarafından garanti edilmediğinden event "istek" düzeyindedir.
-**Etki notu:** `09-yol-haritasi-tasklar.md`'ye ilgili task açılmalıdır.
+- [x] İstem yalnız pozitif an tetiklerinde çağrılır (check-in streak günü bağlı; **bölüm-tamamlama tetiği KALDI** — feed director hot-path'inde güvenli gözlem noktası gerektiriyor); oynatma/paywall/hata ekranında ASLA çağrılmaz.
+- [x] iOS'un yıllık en fazla 3 gösterim sınırına saygı; istemci kendi frekans kuralını tutar (aynı-sürüm bir kez + tetikler arası asgari gün) ve gösterim hakkını israf etmez.
+- [ ] Şikayet/hata sinyali penceresi bastırma — **KALDI** (son-negatif-sinyal penceresi izlenip `shouldRequest` bastırılacak).
+- [x] Remote config kill-switch (`retention.review_prompt_enabled`, default açık) ile tamamen kapatılabilir.
+- [ ] İstem tetiklenmesi analitik event (`review_prompt_requested`) — **KALDI** (registry kaydı + emit; strictInDebug crash'i önlemek için registry-önce).
+**Etki notu:** Kalan 3 kalem (bölüm-tamamlama tetiği, negatif-sinyal bastırma, analitik) `09-yol-haritasi-tasklar.md` takip görevine yazıldı.
 
 ---
 

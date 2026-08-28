@@ -293,6 +293,9 @@ public final class OdulMerkeziModel {
                 coinReward: result.reward.coins,
                 isStreakBonus: result.reward.isStreakBonus
             )
+            // Başarılı check-in = POZİTİF an (RTG-01): App koordinatörü puanlama istemini burada
+            // değerlendirir. Yalnız GERÇEK claim'de (idempotent 409 ALREADY_CLAIMED yolunda DEĞİL).
+            delegate?.rewardsDidClaimCheckIn(streakDay: result.checkin.cycleDay)
         } catch let CheckInClaimError.alreadyClaimed(fresh) {
             // 409 ALREADY_CLAIMED: durumu sessizce senkronla, hata gösterme (idempotent tekrar). Kredi
             // ZATEN düşmüştür → başlığı otoriter cüzdandan tazele (Fix 2: bayat başlık kalmasın).
