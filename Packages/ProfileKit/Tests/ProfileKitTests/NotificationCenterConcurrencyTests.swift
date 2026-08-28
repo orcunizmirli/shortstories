@@ -123,6 +123,43 @@ struct NotificationCenterConcurrencyTests {
         #expect(model.loadState == .emptyLoaded)
     }
 
+    // MARK: - F6: erken biten BAYAT load'un defer'ı, uçuştaki taze load'un isLoading guard'ını sıfırlamaz
+
+    @Test func staleLoadCompletionDoesNotReleaseInFlightLoadGuard() async {
+        // İKİ eşzamanlı refresh: BAYAT olan (eski token) ÖNCE biter. Kusurlu `defer { isLoading = false }`
+        // bayat load bitince guard'ı sıfırlar → hâlâ uçuşta olan taze full-replace load sırasında loadMore
+        // araya sızıp bayat listeye sayfa ekler (aktör-reentrancy invariantı bozulur).
+        let gateway = GatedNotificationsGateway(gatedLabels: ["fetch#1", "fetch#2"])
+        gateway.setFirstPage(NotificationsPage(items: [note("a"), note("b")], nextCursor: "cur2"))
+        gateway.setPage(NotificationsPage(items: [note("c")], nextCursor: nil), forCursor: "cur2")
+        let model = make(gateway)
+
+        await model.load() // fetch#0 (ungated) → [a, b], nextCursor = cur2
+
+        // İki refresh uçuşta: staleLoad (token=2, fetch#1) ÖNCE, freshLoad (token=3, fetch#2) SONRA başlar.
+        gateway.setFirstPage(NotificationsPage(items: [note("x"), note("y")], nextCursor: nil))
+        let staleLoad = Task { await model.load() } // fetch#1 (gated)
+        await gateway.gate.arrivals("fetch#1")
+        let freshLoad = Task { await model.load() } // fetch#2 (gated) → loadGeneration = 3
+        await gateway.gate.arrivals("fetch#2")
+
+        // Bayat load ÖNCE biter (token=2 != loadGeneration=3 → guard'da erken döner, liste yazmaz).
+        gateway.gate.open("fetch#1")
+        await staleLoad.value
+
+        // Taze load HÂLÂ uçuşta. loadMore araya girer — full-replace load sürerken paginate ETMEMELİ.
+        let moreTask = Task { await model.loadMore() }
+        await moreTask.value
+
+        gateway.gate.open("fetch#2")
+        await freshLoad.value
+
+        // loadMore, bayat load'un defer'ı guard'ı sıfırladığı için sızıp cur2'yi çekmemeli.
+        #expect(!gateway.fetchedCursors.contains("cur2"))
+        // Taze load authoritative: nihai liste [x, y].
+        #expect(model.notifications.map(\.id.rawValue) == ["x", "y"])
+    }
+
     // MARK: - F5: başarıyla silinen öğe, bayat sunucu snapshot'lı load ile DİRİLMEMELİ
 
     @Test func successfullyDeletedItemNotResurrectedByStaleLoad() async {

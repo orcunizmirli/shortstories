@@ -89,7 +89,7 @@ Durum: ☐ açık · ☑ düzeltildi (commit ile) · ⊘ kabul-edildi/won't-fix 
   - loadContinue filters hiddenEpisodeIDs at line 153 (right after the first await) but writes continueItems only after two more awaits; a concurrent hideContinueItem in that window resurrects the hidden (tombstoned) item.
 - ☐ **[AppFoundation/torn-token-write]** Packages/AppFoundation/Sources/AppFoundation/Session/TokenRefreshCoordinator.swift:117
   - performRefresh writes accessToken and refreshToken as two separate, non-atomic Keychain setString calls with no rollback; a failure of the second leaves a new access token paired with the OLD (already-rotated-away) refresh token.
-- ☐ **[ProfileKit/concurrency-reentrancy]** Packages/ProfileKit/Sources/ProfileKit/BildirimMerkezi/NotificationCenterModel.swift:105
+- ☑ **[ProfileKit/concurrency-reentrancy]** Packages/ProfileKit/Sources/ProfileKit/BildirimMerkezi/NotificationCenterModel.swift:105 — DÜZELTİLDİ (defer token-guard: yalnız GÜNCEL load isLoading'i sıfırlar; F6 deterministik reentrancy testi RED→GREEN, ProfileKit suite yeşil)
   - Eşzamanlı iki load()'ta erken biten BAYAT load'un `defer { isLoading = false }`'ı, hâlâ uçuşta olan taze load sırasında paylaşılan isLoading guard'ını sıfırlar → loadMore tam-replace load'un içine sızar (aktör-reentrancy invariantı bozulur).
 - ☐ **[ProfileKit/reset-race]** Packages/ProfileKit/Sources/ProfileKit/Profil/ProfilModel.swift:83
   - load() iki AYRI await arasında (session.state → walletSummary.currentSummary()) hesap değişimine açıktır; hesap ve cüzdan farklı hesaplardan okunabilir (çapraz-hesap geçici tutarsızlık).

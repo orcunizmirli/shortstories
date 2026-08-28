@@ -102,7 +102,14 @@ public final class NotificationCenterModel {
         loadGeneration += 1
         let token = loadGeneration
         isLoading = true
-        defer { isLoading = false }
+        // Yalnız GÜNCEL load isLoading'i sıfırlar (audit LOW): eşzamanlı iki load'da erken biten BAYAT
+        // load'un defer'ı, hâlâ uçuşta olan taze load'un isLoading guard'ını sıfırlayıp loadMore'un tam-
+        // replace sırasında araya girmesine yol açıyordu.
+        defer {
+            if token == loadGeneration {
+                isLoading = false
+            }
+        }
         if notifications.isEmpty {
             loadState = .loading
         }
