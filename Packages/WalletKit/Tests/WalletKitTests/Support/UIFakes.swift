@@ -260,6 +260,8 @@ final class SpyUnlockSheetDelegate: UnlockSheetDelegate {
 final class SpyCoinShopDelegate: CoinShopDelegate {
     private(set) var purchaseCompletions = 0
     private(set) var dismissals = 0
+    /// GERÇEK satın alma hatası bildirimi sayısı (RTG-01 negatif sinyal; iptal buraya GELMEZ).
+    private(set) var purchaseFailures = 0
 
     func coinShopDidCompletePurchase() {
         purchaseCompletions += 1
@@ -267,6 +269,10 @@ final class SpyCoinShopDelegate: CoinShopDelegate {
 
     func coinShopRequestsDismiss() {
         dismissals += 1
+    }
+
+    func coinShopDidFailPurchase() {
+        purchaseFailures += 1
     }
 }
 

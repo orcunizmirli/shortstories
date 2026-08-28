@@ -567,10 +567,10 @@ Retention hedefleri bağlamı (kanon): D1 ≥ %30, D7 ≥ %10, D30 ≥ %5; kateg
 **Kabul kriterleri:**
 - [x] İstem yalnız pozitif an tetiklerinde çağrılır (check-in streak günü bağlı; **bölüm-tamamlama tetiği KALDI** — feed director hot-path'inde güvenli gözlem noktası gerektiriyor); oynatma/paywall/hata ekranında ASLA çağrılmaz.
 - [x] iOS'un yıllık en fazla 3 gösterim sınırına saygı; istemci kendi frekans kuralını tutar (aynı-sürüm bir kez + tetikler arası asgari gün) ve gösterim hakkını israf etmez.
-- [ ] Şikayet/hata sinyali penceresi bastırma — **KALDI** (son-negatif-sinyal penceresi izlenip `shouldRequest` bastırılacak).
+- [x] Şikayet/hata sinyali penceresi bastırma: `negativeSignalSuppressionDays` (14g) — GERÇEK satın alma hatası (`CoinShopDelegate.coinShopDidFailPurchase`, iptal HARİÇ) → `recordNegativeSignal` → pencere içinde istem bastırılır. (Oynatma-hatası kaynağı KALDI — feed hot-path güvenli gözlem noktası.)
 - [x] Remote config kill-switch (`retention.review_prompt_enabled`, default açık) ile tamamen kapatılabilir.
 - [x] İstem tetiklenmesi analitik event: `review_prompt_requested` (param `trigger`), yalnız GERÇEK talep edildiğinde; registry + docs/08 §3.5'e eklendi (strictInDebug crash yok).
-**Etki notu:** Kalan 2 kalem (bölüm-tamamlama tetiği — feed hot-path güvenli gözlem noktası; negatif-sinyal bastırma penceresi) `09-yol-haritasi-tasklar.md` takip görevine yazıldı.
+**Etki notu:** Kalan 2 KAYNAK-wiring kalemi (bölüm-tamamlama pozitif tetiği + oynatma-hatası negatif sinyali — ikisi de feed hot-path'inde güvenli gözlem noktası ister) `09-yol-haritasi-tasklar.md` takibine yazıldı. Mekanizma (policy+controller+kill-switch+analitik+satın-alma-hatası sinyali) TAM + test-edilebilir.
 
 ---
 

@@ -25,6 +25,15 @@ public protocol CoinShopDelegate: AnyObject {
     func coinShopDidCompletePurchase()
     /// Kullanıcı mağazayı kapattı.
     func coinShopRequestsDismiss()
+
+    /// GERÇEK satın alma hatası (StoreKit `.failed` / makbuz doğrulama) — NEGATİF sinyal (RTG-01
+    /// kriter 3): App bunu puanlama istemini bir süre bastırmak için kullanır. İPTAL (`.cancelled`)
+    /// bu değildir — çağrılmaz. Varsayılan boş → mevcut conformer'lar/testler kırılmaz.
+    func coinShopDidFailPurchase()
+}
+
+public extension CoinShopDelegate {
+    func coinShopDidFailPurchase() {}
 }
 
 /// CoinMagazasi ekran modeli (SS-094). @Observable/@MainActor. Katalog+StoreKit birleştirme
@@ -257,6 +266,8 @@ public final class CoinShopModel {
                 "stage": .string(stage)
             ]
         )
+        // GERÇEK hata (yalnız buradan; iptal ayrı yol) → NEGATİF sinyal (RTG-01 k3).
+        delegate?.coinShopDidFailPurchase()
     }
 }
 

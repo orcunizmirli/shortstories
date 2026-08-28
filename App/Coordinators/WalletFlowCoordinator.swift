@@ -145,6 +145,12 @@ extension WalletFlowCoordinator: CoinShopDelegate {
     func coinShopRequestsDismiss() {
         coinShopModel = nil
     }
+
+    /// GERÇEK satın alma hatası → NEGATİF sinyal: puanlama istemini bir süre bastır (RTG-01 k3;
+    /// şikayet sinyali verene önce destek). İptal buraya GELMEZ (WalletKit ayrımı).
+    func coinShopDidFailPurchase() {
+        composition.recordNegativeReviewSignal()
+    }
 }
 
 // MARK: - VIPSubscriptionDelegate (02 §4.8)

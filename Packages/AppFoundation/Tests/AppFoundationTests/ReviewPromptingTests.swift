@@ -21,45 +21,47 @@ struct ReviewPromptPolicyTests {
 
     @Test func esikAltiPozitifAnIstemez() {
         #expect(!policy.shouldRequest(
-            positiveMomentCount: 2, lastPromptAt: nil, lastPromptVersion: nil,
-            currentVersion: "1.0", now: now
+            positiveMomentCount: 2, state: ReviewPromptState(), currentVersion: "1.0", now: now
         ))
     }
 
     @Test func esikteVeHicIstenmemisIster() {
         #expect(policy.shouldRequest(
-            positiveMomentCount: 3, lastPromptAt: nil, lastPromptVersion: nil,
-            currentVersion: "1.0", now: now
+            positiveMomentCount: 3, state: ReviewPromptState(), currentVersion: "1.0", now: now
         ))
     }
 
     @Test func ayniSurumdeTekrarIstemez() {
-        #expect(!policy.shouldRequest(
-            positiveMomentCount: 10, lastPromptAt: now.addingTimeInterval(-400 * 86400),
-            lastPromptVersion: "1.0", currentVersion: "1.0", now: now
-        ))
+        let state = ReviewPromptState(lastPromptAt: now.addingTimeInterval(-400 * 86400), lastPromptVersion: "1.0")
+        #expect(!policy.shouldRequest(positiveMomentCount: 10, state: state, currentVersion: "1.0", now: now))
     }
 
     @Test func farkliSurumVeYeterliGunGecmisIster() {
-        #expect(policy.shouldRequest(
-            positiveMomentCount: 10, lastPromptAt: now.addingTimeInterval(-200 * 86400),
-            lastPromptVersion: "1.0", currentVersion: "1.1", now: now
-        ))
+        let state = ReviewPromptState(lastPromptAt: now.addingTimeInterval(-200 * 86400), lastPromptVersion: "1.0")
+        #expect(policy.shouldRequest(positiveMomentCount: 10, state: state, currentVersion: "1.1", now: now))
     }
 
     @Test func sonIstemdenBeriYeterliGunGecmediyseIstemez() {
-        #expect(!policy.shouldRequest(
-            positiveMomentCount: 10, lastPromptAt: now.addingTimeInterval(-30 * 86400),
-            lastPromptVersion: "1.0", currentVersion: "1.1", now: now
-        ))
+        let state = ReviewPromptState(lastPromptAt: now.addingTimeInterval(-30 * 86400), lastPromptVersion: "1.0")
+        #expect(!policy.shouldRequest(positiveMomentCount: 10, state: state, currentVersion: "1.1", now: now))
     }
 
     @Test func negatifElapsedSaatGeriAlindiIstemez() {
         // Cihaz saati geri alındı → lastPromptAt gelecekte → elapsed negatif < eşik → isteme.
-        #expect(!policy.shouldRequest(
-            positiveMomentCount: 10, lastPromptAt: now.addingTimeInterval(86400),
-            lastPromptVersion: "1.0", currentVersion: "1.1", now: now
-        ))
+        let state = ReviewPromptState(lastPromptAt: now.addingTimeInterval(86400), lastPromptVersion: "1.0")
+        #expect(!policy.shouldRequest(positiveMomentCount: 10, state: state, currentVersion: "1.1", now: now))
+    }
+
+    @Test func yakinNegatifSinyalPenceresiIcindeIstemez() {
+        // Şikayet/hata sinyali penceresi içinde (14 gün) istem bastırılır → önce destek akışı (RTG-01 k3).
+        let state = ReviewPromptState(lastNegativeSignalAt: now.addingTimeInterval(-3 * 86400))
+        #expect(!policy.shouldRequest(positiveMomentCount: 10, state: state, currentVersion: "1.0", now: now))
+    }
+
+    @Test func eskiNegatifSinyalPencereDisindaIster() {
+        // Negatif sinyal penceresi (14 gün) GEÇMİŞSE artık bastırılmaz.
+        let state = ReviewPromptState(lastNegativeSignalAt: now.addingTimeInterval(-30 * 86400))
+        #expect(policy.shouldRequest(positiveMomentCount: 10, state: state, currentVersion: "1.0", now: now))
     }
 }
 
@@ -96,6 +98,18 @@ struct ReviewPromptControllerTests {
         #expect(controller.recordPositiveMoment(.streakDay, now: base) == false) // 2 < 3
         #expect(controller.recordPositiveMoment(.episodeCompleted, now: base) == true) // 3 → talep edildi
         #expect(controller.recordPositiveMoment(.episodeCompleted, now: base) == false) // aynı sürüm guard
+    }
+
+    @Test func negatifSinyalSonrasiIstemBastirilir() {
+        // RTG-01 kriter 3: yakın zamanda negatif sinyal (oynatma hatası/başarısız satın alma) → eşik
+        // aşılsa bile istem bastırılır (kalıcı damga).
+        let requester = MockReviewRequester()
+        let controller = make(version: "1.0", prefs: MockPreferences(), requester: requester)
+        controller.recordNegativeSignal(now: base)
+        for _ in 0 ..< 5 {
+            controller.recordPositiveMoment(.episodeCompleted, now: base)
+        }
+        #expect(requester.requestCount == 0)
     }
 
     @Test func esigeUlasincaBirKezIster() {

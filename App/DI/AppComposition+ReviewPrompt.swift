@@ -59,4 +59,10 @@ extension AppComposition {
         case .streakDay: "streak_day"
         }
     }
+
+    /// Negatif sinyal (oynatma hatası / başarısız satın alma) kaydeder → sonraki bastırma penceresi
+    /// boyunca puanlama istemi gösterilmez (RTG-01 kriter 3; şikayet sinyali verene önce destek).
+    func recordNegativeReviewSignal() {
+        reviewPromptController.recordNegativeSignal()
+    }
 }
