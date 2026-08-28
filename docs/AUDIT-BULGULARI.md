@@ -24,7 +24,7 @@ Durum: ☐ açık · ☑ düzeltildi (commit ile) · ⊘ kabul-edildi/won't-fix 
 
 - ☑ **[WalletKit/entitlement-flip-race]** Packages/WalletKit/Sources/WalletKit/UI/UnlockSheet/UnlockSheetModel.swift:232 — DÜZELTİLDİ (aynı kök: HIGH unlock-integrity Option A fix'i bunu da kapatır)
   - Optimistik coin-unlock'ın kendi `markUnlocked` yayını (lastUnlockedEpisode == episodeID) sheet'in entitlement gözlemcisini server yanıtından ÖNCE `completeUnlock()`'a sürükler; server unlock'u reddedince rollback olur ama sheet zaten 'açıldı' der ve red bastırılır.
-- ☐ **[AppFoundation/session-invalidation-race]** Packages/AppFoundation/Sources/AppFoundation/Session/SessionManager.swift:255
+- ☑ **[AppFoundation/session-invalidation-race]** Packages/AppFoundation/Sources/AppFoundation/Session/SessionManager.swift:255 — DÜZELTİLDİ (stream ilk-snapshot + yield teslimatı kilit içinde/atomik; AppFoundation 288 test regresyon yeşil; iç-yarış deterministik test edilemez)
   - SessionStateBroadcaster.stream() delivers its initial snapshot OUTSIDE the lock, so a concurrent yield() can be observed before the (now stale) replay — a new subscriber can end on a stale state, undoing session invalidation.
 - ☑ **[AppFoundation/keychain-error-handling]** Packages/AppFoundation/Sources/AppFoundation/Session/TokenRefreshCoordinator.swift:107 — DÜZELTİLDİ (try? → try; geçici keychain hatası yüzer, yıkıcı logout yok)
   - performRefresh uses `try?` on the refresh-token keychain read, so a transient keychain failure (device locked before first unlock under afterFirstUnlockThisDeviceOnly, or a transient securityd/errSecMissingEntitlement glitch) is indistinguishable from an absent token and routes straight to the destructive recoverViaFallback path.

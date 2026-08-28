@@ -236,23 +236,27 @@ final class SessionStateBroadcaster: @unchecked Sendable {
     }
 
     func yield(_ state: SessionState) {
-        let subscribers = lock.withLock {
+        // Teslimat KİLİT İÇİNDE (audit MEDIUM): aksi halde `current` güncellemesi ile teslimat arasına
+        // yeni bir `stream()` aboneliği girip, o abonenin ilk-snapshot'ı (kilit dışında yield'lenen) BU
+        // yeni durumdan SONRA teslim olup bayat state'i son değer yapabiliyordu → oturum geçersizlemesi
+        // geri alınırdı. AsyncStream.yield non-blocking (buffer'a enqueue) → kilit altında güvenli.
+        lock.withLock {
             current = state
-            return Array(continuations.values)
-        }
-        for continuation in subscribers {
-            continuation.yield(state)
+            for continuation in continuations.values {
+                continuation.yield(state)
+            }
         }
     }
 
     func stream() -> AsyncStream<SessionState> {
         AsyncStream { continuation in
             let id = UUID()
-            let currentState = lock.withLock {
+            // Kayıt + `current` okuma + ilk-snapshot teslimi ATOMİK (kilit içinde): araya bir `yield()`
+            // giremez → abone hep tutarlı bir sırayla (mevcut durum, sonra sonraki yield'ler) alır.
+            lock.withLock {
                 continuations[id] = continuation
-                return current
+                continuation.yield(current)
             }
-            continuation.yield(currentState)
             continuation.onTermination = { [weak self] _ in
                 self?.removeContinuation(id)
             }
