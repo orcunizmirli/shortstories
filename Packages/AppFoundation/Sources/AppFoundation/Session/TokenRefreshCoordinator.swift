@@ -118,8 +118,16 @@ public actor TokenRefreshCoordinator: AuthTokenRefreshing {
                 refreshToken: refreshToken
             ))
             let response = try await apiClient.send(endpoint)
-            try secureStore.setString(response.accessToken, forKey: .accessToken)
+            // İki Keychain yazımı atomik değil (transaction yok). Refresh token (uzun-ömürlü kimlik)
+            // ÖNCE yazılır: ikinci (access) yazma koparsa Keychain'de (bayat access, YENİ refresh)
+            // kalır → sonraki 401 YENİ refresh'le kendini onarır (self-heal). Ters sıra (access önce)
+            // koparsa (YENİ access, ESKİ-rotasyonlanmış refresh) kalır — sessiz saatli bomba: access
+            // süresi dolunca geçersiz refresh'le kalıcı logout'a zorlar (audit LOW torn-write).
             try secureStore.setString(response.refreshToken, forKey: .refreshToken)
+            // Access yazımı best-effort: refresh zaten kalıcı + taze access elimizde. Bu yazma geçici
+            // olarak koparsa refresh'i BAŞARISIZ SAYMA (logout'a sokma) — bayat access sonraki 401'de
+            // self-heal olur; çağırana taze access'i döndür.
+            try? secureStore.setString(response.accessToken, forKey: .accessToken)
             return response.accessToken
         } catch let error as AppError {
             // Yalnız auth reddi düşüş akışını tetikler; ağ/sunucu hataları yüzer (05 §10.2).

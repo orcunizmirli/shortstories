@@ -92,6 +92,43 @@ struct TokenRefreshCoordinatorTests {
         #expect(calls == 0) // yıkıcı fallback (logout) TETİKLENMEZ
     }
 
+    // MARK: - Torn write (audit LOW): kısmi Keychain yazımı eşleşmeyen token çifti bırakmamalı
+
+    @Test func refreshTokenYazimiKoparsaYeniAccessEskiRefreshCiftiOlusmaz() async throws {
+        // access ve refresh yazımı atomik değil. Refresh-token yazımı koparsa Keychain'de
+        // (YENİ access, ESKİ rotasyonlanmış refresh) kalırsa access süresi dolunca geçersiz refresh'le
+        // sessizce logout'a zorlar (saatli bomba). Refresh ÖNCE yazıldığından bu koparsa ESKİ çift
+        // korunur (self-heal) → torn çift OLUŞMAZ.
+        let store = WriteFailingSecureStore(failWriteFor: .refreshToken)
+        try store.backing.setString("rt_old", forKey: .refreshToken)
+        try store.backing.setString("at_old", forKey: .accessToken)
+        try stubRefreshSuccess(on: apiClient)
+        store.arm()
+        let coordinator = TokenRefreshCoordinator(apiClient: apiClient, secureStore: store)
+
+        _ = try? await coordinator.refreshAccessToken() // refresh yazımı koptuğu için throw
+
+        let access = try store.backing.string(forKey: .accessToken)
+        let refresh = try store.backing.string(forKey: .refreshToken)
+        #expect(!(access == "at_new" && refresh == "rt_old")) // torn çift YASAK
+    }
+
+    @Test func accessTokenYazimiKoparsaRefreshKaliciDonerVeTazeAccessDoner() async throws {
+        // Refresh ÖNCE kalıcılaşır; access (best-effort) yazımı koparsa Keychain'de bayat access kalır
+        // ama sonraki 401 yeni refresh'le kendini onarır → çağırana yine taze access döner, logout YOK.
+        let store = WriteFailingSecureStore(failWriteFor: .accessToken)
+        try store.backing.setString("rt_old", forKey: .refreshToken)
+        try store.backing.setString("at_old", forKey: .accessToken)
+        try stubRefreshSuccess(on: apiClient)
+        store.arm()
+        let coordinator = TokenRefreshCoordinator(apiClient: apiClient, secureStore: store)
+
+        let token = try await coordinator.refreshAccessToken()
+
+        #expect(token == "at_new") // best-effort access yazım hatası refresh'i BOZMAZ
+        #expect(try store.backing.string(forKey: .refreshToken) == "rt_new") // refresh kalıcılaştı
+    }
+
     // MARK: - Başarılı refresh
 
     @Test func basariliRefreshYeniAccessTokenDondurur() async throws {

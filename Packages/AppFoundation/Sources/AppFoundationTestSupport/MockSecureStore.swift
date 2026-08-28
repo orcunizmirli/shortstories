@@ -59,3 +59,35 @@ public final class MockSecureStore: SecureStoring, @unchecked Sendable {
         }
     }
 }
+
+/// Belirli bir anahtara YAZMA'yı (`arm()` sonrası) `keychainUnavailable` ile koparan çift; diğer tüm
+/// işlemler `backing` MockSecureStore'a devredilir. İki-yazımın atomik-olmama (torn write) davranışını
+/// test eder: seed `backing` üstünden yapılır, sonra `arm()` ile hedef yazma koparılır.
+public final class WriteFailingSecureStore: SecureStoring, @unchecked Sendable {
+    public let backing = MockSecureStore()
+    private let failWriteFor: SecureStoreKey
+    private var armed = false
+
+    public init(failWriteFor key: SecureStoreKey) {
+        failWriteFor = key
+    }
+
+    public func arm() {
+        armed = true
+    }
+
+    public func data(forKey key: SecureStoreKey) throws -> Data? {
+        try backing.data(forKey: key)
+    }
+
+    public func setData(_ data: Data, forKey key: SecureStoreKey) throws {
+        if armed, key == failWriteFor {
+            throw AppError.storage(.keychainUnavailable)
+        }
+        try backing.setData(data, forKey: key)
+    }
+
+    public func removeData(forKey key: SecureStoreKey) throws {
+        try backing.removeData(forKey: key)
+    }
+}
