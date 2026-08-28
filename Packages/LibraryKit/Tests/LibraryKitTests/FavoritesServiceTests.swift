@@ -140,6 +140,37 @@ struct FavoritesServiceTests {
         #expect(try await service.pendingSyncCount() == 0)
     }
 
+    /// Audit MEDIUM (favorite-sync-loss): telafi-DELETE niyeti bellek-içiyken, DELETE gönderilmeden
+    /// UYGULAMA ÖLDÜRÜLÜRSE sunucuda hayalet favori kalıcı olurdu (yerel pendingAdd zaten silinmiş →
+    /// hiçbir senkron işlemi temizlemez). DURABLE depo ile niyet açılışlar arası korunur → sonraki
+    /// synchronize() flush eder. Paylaşılan `InMemoryCompensatingDeleteStore` relaunch'ı simüle eder.
+    @Test func compensatingDeleteSurvivesAppKillAndFlushesOnRelaunch() async throws {
+        let store = InMemoryCompensatingDeleteStore()
+
+        // Oturum A: PUT uçarken reentrant remove → telafi DELETE kuyruğa girer; sonra DELETE offline.
+        let remotingA = FakeFavoritesRemoting()
+        let serviceA = try FavoritesService(repository: makeRepo(), remoting: remotingA, compensatingDeleteStore: store)
+        try await serviceA.setFavorite(true, seriesID: SeriesID("s-1"), at: Date(timeIntervalSince1970: 1000))
+        remotingA.setOnPut { series in
+            guard series == SeriesID("s-1") else { return }
+            try? await serviceA.setFavorite(false, seriesID: SeriesID("s-1")) // reentrant remove → telafi
+            remotingA.setError(.network(.offline)) // sonraki DELETE offline → flush edilemez
+        }
+        try await serviceA.synchronize()
+
+        #expect(remotingA.putCalls == [SeriesID("s-1")]) // PUT gitti → sunucuda hayalet
+        #expect(remotingA.deleteCalls.isEmpty) // DELETE offline → gönderilemedi
+        #expect(store.load() == Set([SeriesID("s-1")])) // niyet KALICILAŞTI (app-kill'e dayanıklı)
+
+        // Uygulama öldürüldü (serviceA atılır). Oturum B: AYNI depo, DELETE artık çevrimiçi.
+        let remotingB = FakeFavoritesRemoting()
+        let serviceB = try FavoritesService(repository: makeRepo(), remoting: remotingB, compensatingDeleteStore: store)
+        try await serviceB.synchronize()
+
+        #expect(remotingB.deleteCalls == [SeriesID("s-1")]) // relaunch'ta hayalet temizlendi
+        #expect(store.load().isEmpty) // niyet tüketildi
+    }
+
     /// Bulgu #4: senkron sürerken snapshot'tan SONRA eklenen işlem AYNI çağrıda gönderilmeli
     /// (dirty/needsResync retry); yeni tetikleme beklemeden kuyruk açlığı olmamalı.
     @Test func favoriteAddedDuringSyncIsFlushedInSameCall() async throws {

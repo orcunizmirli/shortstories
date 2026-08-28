@@ -123,7 +123,9 @@ final class AppComposition {
         favoritesService = FavoritesService(
             repository: persistence.makeFavoritesRepository(),
             remoting: APIFavoritesRemoting(client: apiClient),
-            logger: dependencies.logger
+            logger: dependencies.logger,
+            // DURABLE telafi-DELETE deposu (audit MEDIUM favorite-sync-loss): hayalet-temizleme niyeti app-kill'e dayanıklı.
+            compensatingDeleteStore: PreferencesCompensatingDeleteStore(preferences: dependencies.preferences)
         )
         continueWatchingService = ContinueWatchingService(
             repository: persistence.makeWatchHistoryRepository(),

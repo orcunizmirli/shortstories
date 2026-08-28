@@ -24,16 +24,23 @@ public actor FavoritesService {
     /// bir kaldırma, sunucuda hayalet favori bırakır → telafi DELETE gerekir (bulgu #3).
     private var inFlightAdds: Set<SeriesID> = []
     /// PUT'u uçarken kaldırılan eklemeler: sunucu artık favoriyi tutuyor, DELETE ile temizlenmeli.
-    private var compensatingDeletes: Set<SeriesID> = []
+    /// DURABLE depodan yüklenir (app-kill'e dayanıklı; audit MEDIUM favorite-sync-loss).
+    private var compensatingDeletes: Set<SeriesID>
+    /// Telafi-DELETE niyetlerinin kalıcı deposu — bellek-içi küme app-kill'de kaybolmasın diye
+    /// her mutasyonda kalıcılaştırılır; init'te yüklenir. Varsayılan bellek-içi (kalıcı değil).
+    private let compensatingDeleteStore: any CompensatingDeleteStoring
 
     public init(
         repository: any FavoritesRepository,
         remoting: any FavoritesRemoting,
-        logger: (any Logging)? = nil
+        logger: (any Logging)? = nil,
+        compensatingDeleteStore: any CompensatingDeleteStoring = InMemoryCompensatingDeleteStore()
     ) {
         self.repository = repository
         self.remoting = remoting
         self.logger = logger
+        self.compensatingDeleteStore = compensatingDeleteStore
+        compensatingDeletes = compensatingDeleteStore.load()
     }
 
     // MARK: - Okuma
@@ -93,7 +100,7 @@ public actor FavoritesService {
     /// Yeni bir yerel EKLEME kaydedildiğinde: aynı diziye ait bekleyen telafi DELETE'i iptal et
     /// (kullanıcı yeniden ekledi) ve bir sonraki tur için dirty işaretle.
     private func noteLocalAdd(_ seriesID: SeriesID) {
-        compensatingDeletes.remove(seriesID)
+        clearCompensatingDelete(seriesID)
         needsResync = true
     }
 
@@ -102,9 +109,22 @@ public actor FavoritesService {
     /// bir sonraki tur için dirty işaretle.
     private func noteLocalRemoval(_ seriesID: SeriesID) {
         if inFlightAdds.contains(seriesID) {
-            compensatingDeletes.insert(seriesID)
+            addCompensatingDelete(seriesID)
         }
         needsResync = true
+    }
+
+    /// Telafi-DELETE niyetini ekler ve DURABLE depoya kalıcılaştırır (app-kill'e dayanıklı). Her
+    /// mutasyon anında persist → DELETE gönderilmeden uygulama ölse bile niyet sonraki açılışta yüklenir.
+    private func addCompensatingDelete(_ seriesID: SeriesID) {
+        compensatingDeletes.insert(seriesID)
+        compensatingDeleteStore.save(compensatingDeletes)
+    }
+
+    /// Telafi-DELETE niyetini kaldırır (yeniden-ekleme iptali / başarılı DELETE) ve depoyu günceller.
+    private func clearCompensatingDelete(_ seriesID: SeriesID) {
+        compensatingDeletes.remove(seriesID)
+        compensatingDeleteStore.save(compensatingDeletes)
     }
 
     // MARK: - Çevrimdışı kuyruk senkronu
@@ -208,7 +228,7 @@ public actor FavoritesService {
         for seriesID in Array(compensatingDeletes) {
             do {
                 try await remoting.deleteFavorite(seriesID)
-                compensatingDeletes.remove(seriesID)
+                clearCompensatingDelete(seriesID)
             } catch let error as AppError where error == .network(.offline) {
                 return
             } catch {
