@@ -17,6 +17,38 @@ final class AccountSwitchDataFlowTests: XCTestCase {
         return Data(#"{"session":\#(session),"provider":"\#(provider)"}"#.utf8)
     }
 
+    /// Top-level `provider` alanı OLMAYAN switch yanıtı (sözleşme donmadan sunucu atlayabilir).
+    private func makeSwitchResponseDataNoTopLevelProvider(userID: String) -> Data {
+        let session = #"{"userId":"\#(userID)","accessToken":"at","refreshToken":"rt","provider":"apple"}"#
+        return Data(#"{"session":\#(session)}"#.utf8)
+    }
+
+    func testSwitchWithoutTopLevelProviderUsesConflictProviderNotApple() async throws {
+        // /auth/switch yanıtı top-level `provider`'ı atlarsa switch, çakışmaya SEBEP olan kimliğin
+        // sağlayıcısını (conflict.provider) kullanmalı — keyfi `.apple` DEĞİL. Aksi halde Google/e-posta
+        // hesabı `.apple` etiketlenip oturum düşünce yanlış sağlayıcıyla yeniden-giriş isteniyordu.
+        let client = StubSwitchAPIClient()
+        client.stub("/auth/switch", data: makeSwitchResponseDataNoTopLevelProvider(userID: "existing-1"))
+        let session = StubSwitchSession(state: .guest(userID: "guest-1"))
+        let coordinator = SpyAccountSwitchDataCoordinator(session: session)
+        let adapter = APIAccountLinkingService(
+            client: client,
+            session: session,
+            switchDataCoordinator: coordinator
+        )
+
+        let conflict = AccountLinkConflict(
+            existingAccountMasked: "usr_**ef",
+            switchToken: "tok",
+            willDiscardGuestData: true,
+            provider: .google
+        )
+        let summary = try await adapter.switchToExistingAccount(conflict)
+
+        XCTAssertEqual(summary.kind, .linked(provider: .google)) // conflict.provider fallback (.apple değil)
+        XCTAssertEqual(session.linkSessionCalls, 1)
+    }
+
     func testSwitchFlushesBeforeThenResetsThenRefetchesAfterSwitch() async throws {
         let client = StubSwitchAPIClient()
         client.stub("/auth/switch", data: makeSwitchResponseData(userID: "existing-1", provider: "apple"))

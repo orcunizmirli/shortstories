@@ -1,3 +1,5 @@
+import AppFoundation
+
 /// Misafir→bağlı hesap yükseltme sonucu (05 §4.2 `POST /auth/link`). Başarıda sunucu `userId`'yi
 /// KORUR (aynı hesaba kimlik eklenir) → coin bakiyesi, kilitli bölümler, VIP, Listem SUNUCU-otoriter
 /// korunur, client hiçbir varlığı kaybetmez (ONB-06 KC1 / §3.3). Çakışmada 409 birleştirme kararı.
@@ -20,11 +22,22 @@ public struct AccountLinkConflict: Sendable, Equatable {
     /// Bu hesaba geçilirse misafirdeki yerel varlıkların kaybolup kaybolmayacağı (backend belirler).
     /// `true` ise UI açıkça uyarır (ONB-06 KC2: "misafir varlıkları kaybolacaksa açıkça uyarılır").
     public let willDiscardGuestData: Bool
+    /// Çakışmaya SEBEP olan kimliğin sağlayıcısı (kullanıcının bağlamaya çalıştığı `credential.provider`).
+    /// `409 ACCOUNT_ALREADY_LINKED` bu kimlik zaten başka hesaba bağlı olduğu için döner → mevcut hesap
+    /// bu sağlayıcıya KESİN sahiptir. `/auth/switch` yanıtı `provider`'ı atlarsa switch bunu güvenli
+    /// geriye-uyumlu değer olarak kullanır (keyfi `.apple` yerine — Google/e-posta yanlış etiketlenmez).
+    public let provider: AuthProvider
 
-    public init(existingAccountMasked: String, switchToken: String, willDiscardGuestData: Bool) {
+    public init(
+        existingAccountMasked: String,
+        switchToken: String,
+        willDiscardGuestData: Bool,
+        provider: AuthProvider = .apple
+    ) {
         self.existingAccountMasked = existingAccountMasked
         self.switchToken = switchToken
         self.willDiscardGuestData = willDiscardGuestData
+        self.provider = provider
     }
 }
 

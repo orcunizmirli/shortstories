@@ -113,11 +113,13 @@ final class AdapterTransformTests: XCTestCase {
                 existingAccountMasked: "a•••@x.com",
                 switchToken: "tok_123",
                 willDiscardGuestData: true
-            )
+            ),
+            provider: .google
         )
         XCTAssertEqual(conflict.existingAccountMasked, "a•••@x.com")
         XCTAssertEqual(conflict.switchToken, "tok_123")
         XCTAssertTrue(conflict.willDiscardGuestData)
+        XCTAssertEqual(conflict.provider, .google) // çakışmaya sebep olan kimliğin sağlayıcısı taşınır
     }
 
     // MARK: - İzleme ilerlemesi eşlemeleri

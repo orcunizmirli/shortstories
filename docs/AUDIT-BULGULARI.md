@@ -77,7 +77,7 @@ Durum: ☐ açık · ☑ düzeltildi (commit ile) · ⊘ kabul-edildi/won't-fix 
   - appAccountToken her composition/launch'ta `UUID()` ile TAZE üretilir (persist edilmez), ama alan dokümantasyonu (satır 79-80) 'F1: kurulum-kararlı UUID' der — StoreKit işlemine gömülen appAccountToken her açılışta değişir.
 - ☐ **[App/field-mapping]** App/DI/Adapters/RewardedAdAdapters.swift:217
   - AdUnlockResponseWire reads a top-level `remainingToday` field that the documented POST /rewards/ad-unlock 200 zarf does not contain, so the post-watch 'Bugün N/M kaldı' counter can never be populated.
-- ☐ **[App/field-mapping]** App/DI/Adapters/AccountServiceAdapters.swift:134
+- ☑ **[App/field-mapping]** App/DI/Adapters/AccountServiceAdapters.swift:134 — DÜZELTİLDİ (switch fallback keyfi `.apple` → conflict.provider; çakışmaya sebep olan kimliğin sağlayıcısı mevcut hesapta KESİN var; AccountLinkConflict provider taşır; App 215 + ProfileKit 162 test yeşil, RED→GREEN)
   - switchToExistingAccount falls back to provider `.apple` when the /auth/switch response omits `provider`, mislabeling the switched-to account when it is Google or email.
 - ☐ **[App/deeplink-fidelity]** /Users/orcunizmirli/projects/shortseries/App/Coordinators/TabCoordinator.swift:110
   - `.home` (ve `.profile`) deep-link/push rotaları yalnız sekme değiştirir; hedef sekmenin NavigationStack'ini köke sıfırlamaz → kullanıcı beklenen sekme kökü yerine önceden push edilmiş bayat detay ekranında kalır.
