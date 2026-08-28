@@ -52,7 +52,7 @@ Durum: ☐ açık · ☑ düzeltildi (commit ile) · ⊘ kabul-edildi/won't-fix 
   - queryChanged edits the search field but neither cancels the in-flight resultsTask (performSearch) nor bumps searchGeneration, so a late-returning search from an abandoned query overrides the browsing/suggesting phase the user is now in.
 - ☐ **[LibraryKit/favorite-sync-loss]** Packages/LibraryKit/Sources/LibraryKit/Favorites/FavoritesService.swift:214
   - Telafi DELETE durumu (compensatingDeletes) yalnız bellekte tutulur ve kalıcı bir yerel kayda dayanmaz; telafi kesintiye uğrarsa sunucuda hayalet favori kalıcı olarak sızar.
-- ☐ **[LibraryKit/concurrency-state]** Packages/LibraryKit/Sources/LibraryKit/Listem/ListemModel.swift:143
+- ☑ **[LibraryKit/concurrency-state]** Packages/LibraryKit/Sources/LibraryKit/Listem/ListemModel.swift:143 — DÜZELTİLDİ (loadFavorites generation guard; LibraryKit 60 test yeşil)
   - loadFavorites has no generation/cancellation guard; two overlapping loadFavorites can commit out of order and resurrect a just-removed favorite.
 - ☐ **[LibraryKit/tombstone-dedup]** Packages/LibraryKit/Sources/LibraryKit/Favorites/FavoritesService.swift:205
   - Compensating-DELETE intent for an add that was removed mid-PUT is held only in the in-memory compensatingDeletes set and is never persisted; if flush is deferred (offline or app kill) the removal is lost and, because favorites sync has no server->local pull, a ghost favorite stays on the server permanently.

@@ -46,6 +46,9 @@ public final class ListemModel {
     /// (`is_hidden`, §4.12); sunucu `is_hidden` alanı F2 kapsamı.
     private var hiddenEpisodeIDs: Set<EpisodeID> = []
     private var loadedSegments: Set<MyListSegment> = []
+    /// Favori yükleme jetonu (audit MEDIUM): örtüşen iki loadFavorites sıra-dışı commit edip yeni-silinmiş
+    /// bir favoriyi diriltmesin — eski yükleme await'ten dönünce jeton eskimişse commit'i düşürülür.
+    private var favoritesLoadGeneration = 0
     private var appeared = false
     private var loadTask: Task<Void, Never>?
 
@@ -135,11 +138,16 @@ public final class ListemModel {
     // MARK: - Yükleme (segment bazlı)
 
     private func loadFavorites() async {
+        favoritesLoadGeneration += 1
+        let generation = favoritesLoadGeneration
         if favorites.isEmpty {
             favoritesState = .loading
         }
         let records = await (try? favoritesService.favorites()) ?? []
         let infos = await catalog.seriesInfo(ids: records.map(\.seriesID))
+        // Üstü örtülen/eski yükleme yeni durumu EZMESİN: sonradan başlayan bir loadFavorites jetonu
+        // artırdıysa bu (eski) commit düşürülür → yeni-silinmiş favori bayat listeyle dirilmez (audit).
+        guard generation == favoritesLoadGeneration else { return }
         favorites = records.map { FavoriteItem.make(record: $0, info: infos[$0.seriesID]) }
         favoritesState = favorites.isEmpty ? .empty : .loaded
         loadedSegments.insert(.favorites)
