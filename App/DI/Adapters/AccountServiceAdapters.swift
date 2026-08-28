@@ -130,9 +130,8 @@ struct APIAccountLinkingService: AccountLinkingServicing {
             return .linked(AccountSummary(kind: .linked(provider: provider)))
         case .conflict:
             guard let conflict = wire.conflict else { throw AppError.auth(.linkingFailed) }
-            // Çakışmaya SEBEP olan kimliğin sağlayıcısı (`credential.provider`): 409 bu kimlik zaten
-            // başka hesaba bağlı olduğu için döndü → mevcut hesap bu sağlayıcıya KESİN sahip. switch,
-            // sunucu `provider`'ı atlarsa bunu güvenli fallback olarak kullanır.
+            // `credential.provider`: 409 bu kimlik zaten başka hesaba bağlı olduğu için döndü → mevcut
+            // hesap bu sağlayıcıya KESİN sahip; switch, sunucu `provider`'ı atlarsa fallback kullanır.
             return .conflict(Self.linkConflict(from: conflict, provider: credential.provider))
         }
     }
@@ -143,12 +142,9 @@ struct APIAccountLinkingService: AccountLinkingServicing {
         // kaybolmaz; yükleme başarısızsa pendingUpload kalır). 05 §3.3 sırasının ilk adımı.
         await switchDataCoordinator.flushPendingGuestData()
 
-        // (b) POST /auth/switch → oturumu `.linked`e yükselt (Keychain token ROTASYONU: sonraki
-        // istekler yeni hesap token'ıyla gider). GERÇEK hata burada throw ederse store SIFIRLANMAZ
-        // (yerel misafir verisi korunur — sıfır-kayıp). Geçilen hesabın sağlayıcısı SUNUCU-otoriter;
-        // alan yoksa keyfi `.apple` yerine çakışmaya SEBEP olan kimliğin sağlayıcısı (`conflict.provider`)
-        // kullanılır — 409 o kimlik zaten bu hesaba bağlı olduğu için döndü, yani hesap ona KESİN sahip
-        // (Google/e-posta yanlış etiketlenip yeniden-girişte yanlış sağlayıcı istenmez).
+        // (b) POST /auth/switch → `.linked`e yükselt (Keychain token ROTASYONU). GERÇEK hata throw
+        // ederse store SIFIRLANMAZ (misafir verisi korunur — sıfır-kayıp). Sağlayıcı SUNUCU-otoriter;
+        // alan yoksa `conflict.provider` (409: o kimlik zaten bu hesaba bağlı → hesap ona sahip; .apple değil).
         // TODO: [SS-132 F2] `/auth/switch` sözleşmesi donduğunda `provider` alanını zorunlu kıl.
         let wire = try await client.send(AuthSwitchEndpoint(switchToken: conflict.switchToken))
         let provider = wire.provider ?? conflict.provider
