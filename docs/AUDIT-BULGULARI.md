@@ -73,7 +73,7 @@ Durum: ☐ açık · ☑ düzeltildi (commit ile) · ⊘ kabul-edildi/won't-fix 
   - Signed-URL recovery unconditionally sets pendingPlay from the buffer policy, discarding a user pause issued during the recovery window; the active slot auto-resumes against the user's intent.
 - ☐ **[ProfileKit/linking-merge-desync]** Packages/ProfileKit/Sources/ProfileKit/Profil/ProfilModel.swift:108
   - observeSession() günceller yalnız `account`'u; hesap DEĞİŞİMİNDE (misafir→farklı bağlı hesap / conflict→switch) cüzdan yeniden çekilmez, iki bağımsız akış koordine edilmez.
-- ☐ **[App/config-misread]** App/DI/AppComposition.swift:150
+- ☑ **[App/config-misread]** App/DI/AppComposition.swift:150 — DÜZELTİLDİ (resolveAppAccountToken: preferences'ta persist; yoksa üret+yaz → kurulum-kararlı; App 214 test yeşil)
   - appAccountToken her composition/launch'ta `UUID()` ile TAZE üretilir (persist edilmez), ama alan dokümantasyonu (satır 79-80) 'F1: kurulum-kararlı UUID' der — StoreKit işlemine gömülen appAccountToken her açılışta değişir.
 - ☐ **[App/field-mapping]** App/DI/Adapters/RewardedAdAdapters.swift:217
   - AdUnlockResponseWire reads a top-level `remainingToday` field that the documented POST /rewards/ad-unlock 200 zarf does not contain, so the post-watch 'Bugün N/M kaldı' counter can never be populated.

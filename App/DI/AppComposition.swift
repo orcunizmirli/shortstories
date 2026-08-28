@@ -147,7 +147,10 @@ final class AppComposition {
         let products = StoreKitProductService(analytics: decoratedAnalytics)
         storeProducts = products
         coinStorefront = StorefrontLoader(remote: walletRemote, products: products)
-        let token = UUID()
+        // audit LOW: appAccountToken KURULUM-KARARLI olmalı (StoreKit işlem→hesap attribution). Fresh
+        // UUID() her launch'ta değişip aynı kurulumun satın-almalarını korele edilemez yapıyordu →
+        // preferences'ta persist et (yoksa üret+yaz).
+        let token = Self.resolveAppAccountToken(preferences: dependencies.preferences)
         appAccountToken = token
         walletPurchasing = PurchaseCoordinator(
             purchases: StoreKitPurchaseService(products: products),
