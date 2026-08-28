@@ -72,6 +72,16 @@ public final class SessionManager: SessionManaging {
             setState(restored)
             return restored
         }
+        return try await singleFlightGuestBootstrap()
+    }
+
+    /// Misafir bootstrap'ı TEK-UÇUŞLU yürütür (audit LOW): uçuştaki `bootstrapTask` varsa onu bekler,
+    /// yoksa oluşturur. `handleRefreshFailure` de bunu kullanır (doğrudan `performGuestBootstrap` yerine)
+    /// → eşzamanlı iki misafir kurulumu çift `POST /auth/guest` üretmez.
+    private func singleFlightGuestBootstrap() async throws -> SessionState {
+        if let bootstrapTask {
+            return try await bootstrapTask.value
+        }
         let task = Task { try await performGuestBootstrap() }
         bootstrapTask = task
         defer { bootstrapTask = nil }
@@ -209,7 +219,7 @@ extension SessionManager: RefreshFailureHandling {
             return nil
         }
         try? secureStore.removeData(forKey: .sessionSnapshot)
-        guard await (try? performGuestBootstrap()) != nil else {
+        guard await (try? singleFlightGuestBootstrap()) != nil else {
             return nil
         }
         return try? secureStore.string(forKey: .accessToken)

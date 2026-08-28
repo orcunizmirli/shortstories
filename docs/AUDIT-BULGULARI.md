@@ -61,7 +61,7 @@ Durum: ☐ açık · ☑ düzeltildi (commit ile) · ⊘ kabul-edildi/won't-fix 
 
 ## LOW (20)
 
-- ☐ **[AppFoundation/single-flight-gap]** Packages/AppFoundation/Sources/AppFoundation/Session/SessionManager.swift:212
+- ☑ **[AppFoundation/single-flight-gap]** Packages/AppFoundation/Sources/AppFoundation/Session/SessionManager.swift:212 — DÜZELTİLDİ (singleFlightGuestBootstrap helper; handleRefreshFailure de kullanır; AppFoundation 289 test yeşil)
   - handleRefreshFailure's guest re-bootstrap calls performGuestBootstrap() directly, bypassing the bootstrapTask single-flight guard used by bootstrapGuestSessionIfNeeded, so two concurrent POST /auth/guest can run.
 - ☑ **[RewardsKit/money-integrity]** Packages/RewardsKit/Sources/RewardsKit/OdulMerkezi/OdulMerkeziModel.swift:250 — DÜZELTİLDİ (aynı kök: awaitedBalance exact-match→>= fix, commit 266e8fe)
   - applyBalance 'awaitedBalance' guard, exact-match ile temizlendigi icin, claim sonrasi araya giren gercek bir bakiye degisimi (baska cihazdan satin alma / VIP bonusu / ad-coin kredisi) beklenen degeri ATLARSA baslik kalici olarak BAYAT/yanlis bakiyede kilitlenir.

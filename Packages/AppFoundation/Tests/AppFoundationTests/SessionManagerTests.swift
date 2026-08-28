@@ -11,6 +11,17 @@ private struct CancellingAPIClient: APIClientProtocol {
     }
 }
 
+/// `send`'i geciktirir (eşzamanlı iki bootstrap çağrısı gerçekten uçuşta örtüşsün → single-flight testi).
+private struct DelayingAPIClient: APIClientProtocol {
+    let inner: MockAPIClient
+    let delay: Duration
+
+    func send<E: Endpoint>(_ endpoint: E) async throws -> E.Response {
+        try? await Task.sleep(for: delay)
+        return try await inner.send(endpoint)
+    }
+}
+
 @MainActor
 struct SessionManagerTests {
     private let apiClient = MockAPIClient()
@@ -53,6 +64,27 @@ struct SessionManagerTests {
         #expect(state == .guest(userID: "usr_ab12cd"))
         #expect(manager.state == .guest(userID: "usr_ab12cd"))
         #expect(apiClient.receivedPaths == ["/auth/guest"])
+    }
+
+    @Test func handleRefreshFailureMisafirBootstrapTekUcusludur() async throws {
+        // Audit LOW: handleRefreshFailure performGuestBootstrap'ı DOĞRUDAN çağırıp bootstrapTask
+        // single-flight'ını atlıyordu → eşzamanlı bootstrapGuestSessionIfNeeded ile ÇİFT POST /auth/guest.
+        let inner = MockAPIClient()
+        try inner.stub("/auth/guest", returning: ["userId": "u", "accessToken": "at", "refreshToken": "rt"])
+        let store = MockSecureStore()
+        let mgr = SessionManager(
+            apiClient: DelayingAPIClient(inner: inner, delay: .milliseconds(40)),
+            secureStore: store,
+            clientInfo: SessionClientInfo(platform: "ios", appVersion: "1.0.0", locale: "en-US")
+        )
+
+        async let bootstrap: SessionState = mgr.bootstrapGuestSessionIfNeeded()
+        async let refresh: String? = mgr.handleRefreshFailure()
+        _ = try await bootstrap
+        _ = await refresh
+
+        // Tek-uçuşlu: iki eşzamanlı yol TEK bootstrap POST üretir.
+        #expect(inner.receivedPaths.filter { $0 == "/auth/guest" }.count == 1)
     }
 
     @Test func bootstrapTokenlariVeSnapshotiKeychaineYazar() async throws {
