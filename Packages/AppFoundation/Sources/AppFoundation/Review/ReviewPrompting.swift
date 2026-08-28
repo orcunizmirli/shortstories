@@ -90,8 +90,11 @@ public final class ReviewPromptController {
     }
 
     /// Pozitif bir an (bölüm bitirme / streak günü) kaydeder: sayacı artırır (kalıcı) ve politika
-    /// uygunsa sistem puanlama istemini talep edip son-istem damgasını yazar.
-    public func recordPositiveMoment(_ trigger: ReviewPromptTrigger, now: Date = Date()) {
+    /// uygunsa sistem puanlama istemini talep edip son-istem damgasını yazar. Sistem istemi GERÇEKTEN
+    /// talep edildiyse `true` döner → çağıran "istek" düzeyinde analitik (RTG-01 kriter 5) yazabilir
+    /// (Apple diyaloğu gerçekten gösterip göstermediğini garanti etmez; event yalnız TALEBİ kaydeder).
+    @discardableResult
+    public func recordPositiveMoment(_ trigger: ReviewPromptTrigger, now: Date = Date()) -> Bool {
         _ = trigger // her iki tetik de "pozitif an"dır; ayrım gelecekteki analitik/eşik içindir
         let newCount = preferences.value(for: Self.countKey) + 1
         preferences.set(newCount, for: Self.countKey)
@@ -108,11 +111,12 @@ public final class ReviewPromptController {
             currentVersion: currentAppVersion,
             now: now
         ) else {
-            return
+            return false
         }
 
         requester.requestReview()
         preferences.set(now.timeIntervalSince1970, for: Self.lastAtKey)
         preferences.set(currentAppVersion, for: Self.lastVersionKey)
+        return true
     }
 }

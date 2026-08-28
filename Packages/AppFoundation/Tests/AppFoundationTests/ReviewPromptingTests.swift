@@ -89,6 +89,15 @@ struct ReviewPromptControllerTests {
         #expect(requester.requestCount == 0) // 2 < 3
     }
 
+    @Test func donusDegeriTalepEdilipEdilmediginiYansitir() {
+        // RTG-01 kriter 5: çağıran, GERÇEK talep edildiğinde (true) "review_prompt_requested" yazar.
+        let controller = make(version: "1.0", prefs: MockPreferences(), requester: MockReviewRequester())
+        #expect(controller.recordPositiveMoment(.episodeCompleted, now: base) == false) // 1 < 3
+        #expect(controller.recordPositiveMoment(.streakDay, now: base) == false) // 2 < 3
+        #expect(controller.recordPositiveMoment(.episodeCompleted, now: base) == true) // 3 → talep edildi
+        #expect(controller.recordPositiveMoment(.episodeCompleted, now: base) == false) // aynı sürüm guard
+    }
+
     @Test func esigeUlasincaBirKezIster() {
         let requester = MockReviewRequester()
         let controller = make(version: "1.0", prefs: MockPreferences(), requester: requester)

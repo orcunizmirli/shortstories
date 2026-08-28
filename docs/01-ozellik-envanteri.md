@@ -569,8 +569,8 @@ Retention hedefleri bağlamı (kanon): D1 ≥ %30, D7 ≥ %10, D30 ≥ %5; kateg
 - [x] iOS'un yıllık en fazla 3 gösterim sınırına saygı; istemci kendi frekans kuralını tutar (aynı-sürüm bir kez + tetikler arası asgari gün) ve gösterim hakkını israf etmez.
 - [ ] Şikayet/hata sinyali penceresi bastırma — **KALDI** (son-negatif-sinyal penceresi izlenip `shouldRequest` bastırılacak).
 - [x] Remote config kill-switch (`retention.review_prompt_enabled`, default açık) ile tamamen kapatılabilir.
-- [ ] İstem tetiklenmesi analitik event (`review_prompt_requested`) — **KALDI** (registry kaydı + emit; strictInDebug crash'i önlemek için registry-önce).
-**Etki notu:** Kalan 3 kalem (bölüm-tamamlama tetiği, negatif-sinyal bastırma, analitik) `09-yol-haritasi-tasklar.md` takip görevine yazıldı.
+- [x] İstem tetiklenmesi analitik event: `review_prompt_requested` (param `trigger`), yalnız GERÇEK talep edildiğinde; registry + docs/08 §3.5'e eklendi (strictInDebug crash yok).
+**Etki notu:** Kalan 2 kalem (bölüm-tamamlama tetiği — feed hot-path güvenli gözlem noktası; negatif-sinyal bastırma penceresi) `09-yol-haritasi-tasklar.md` takip görevine yazıldı.
 
 ---
 

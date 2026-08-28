@@ -223,6 +223,7 @@ Kolonlar: event adı, kendine özgü parametreleri (ortak parametreler §2.2 har
 | `mission_complete` | `mission_id`, `mission_type: "watch_time"\|"favorite"\|"share"\|"push_optin"` | Görev tamamlandı durumuna geçtiğinde | `RewardsKit` | ✔ |
 | `mission_claim` | `mission_id`, `coin_reward`, `expires_at?` (earned coin son kullanma) | Ödül cüzdana yazıldığında | `RewardsKit` | ✔ |
 | `rewarded_ad_start` / `rewarded_ad_complete` / `rewarded_ad_fail` | `placement: "unlock_sheet"\|"odul_merkezi"`, `ads_used_today`, `daily_cap` | AdMob callback'leri (Faz 2) | `RewardsKit` | ✔ (complete) |
+| `review_prompt_requested` | `trigger: "episode_completed"\|"streak_day"` | Sistem puanlama istemi (RTG-01, §294) GERÇEKTEN talep edildiğinde; Apple diyaloğu gösterip göstermediğini garanti etmez → "istek" düzeyi event | `App` | ✔ |
 
 ### 3.6 Push ve bildirim
 

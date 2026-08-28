@@ -95,6 +95,10 @@ enum AnalyticsEventRegistry {
         "rewarded_ad_start",
         "rewarded_ad_complete",
         "rewarded_ad_fail",
+        // RTG-01 App Store puanlama istemi (00-genel-bakis.md §294): sistem istemi GERÇEKTEN talep
+        // edilince yazılır (param: trigger = episode_completed / streak_day). Apple diyaloğu gösterip
+        // göstermediğini garanti etmez → "istek" düzeyi event. Registry'de OLMAZSA strictInDebug crash.
+        "review_prompt_requested",
 
         // Profil / ayarlar / hesap (08 §3.6)
         "profile_row_tapped",

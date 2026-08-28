@@ -64,8 +64,13 @@ Durum tarihi: 2026-07-20 · Referans: `09-yol-haritasi-tasklar.md`
   sertifika gelince yeniden şekillenir).
 
 ## 4. TR/ES/PT lokalizasyon (SS-163–166)
-- **Client durumu:** ✅ Altyapı HAZIR (SS-160 String Catalog, EN kaynak; pseudo-locale build).
-- **Gereken manuel prep (SÜREÇ, kod değil):**
+- **Client durumu:** ⚠️ DÜZELTME (2026-08-28, kod-doğrulandı): **SS-160 String Catalog altyapısı commit'li kodda YOK.**
+  `.xcstrings`/`.strings`/`.stringsdict` hiçbiri, project.yml'de `knownRegions`/`developmentRegion`/localization
+  bloğu yok. UI `LocalizedStringKey` kullanıyor (doğru desen) ama katalog+knownRegions olmadan hiçbir dile
+  lokalize edilemez. Önceki "✅ Altyapı HAZIR" iddiası YANLIŞTI. **SS-160 (F0 task) gerçekten yapılmalı**:
+  `.xcstrings` katalog + `knownRegions`(+`developmentRegion`) + literal→key çıkarımı + base-dil (EN vs mevcut TR
+  literaller) kararı + pseudo-locale build. Büyük + base-dil kararı → docs/RAKIP-GAP-ANALIZI.md'de kullanıcı-kararı.
+- **Gereken manuel prep (SÜREÇ, kod değil — SS-160 altyapısı KURULDUKTAN sonra):**
   - SS-163: TMS/çeviri sağlayıcı seçimi + terim sözlüğü (coin/unlock/VIP/check-in...).
   - SS-164: string freeze ritmi + eksik-çeviri CI kontrolü.
   - SS-165: native reviewer dil QA + cihazda taşma turu.

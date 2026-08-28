@@ -41,6 +41,8 @@ final class AnalyticsRegistryGuardTests: XCTestCase {
         "mission_view", "mission_progress", "mission_complete", "mission_claim",
         // Rewarded ads (RewardsKit RewardedAdService — SS-113/114, 08 §3.5)
         "rewarded_ad_start", "rewarded_ad_complete", "rewarded_ad_fail",
+        // RTG-01 puanlama istemi (App AppComposition+ReviewPrompt)
+        "review_prompt_requested",
         // Profil / ayarlar / hesap (ProfileKit)
         "profile_row_tapped", "settings_changed", "push_disabled",
         "link_account_started", "link_account_success", "link_account_failed",

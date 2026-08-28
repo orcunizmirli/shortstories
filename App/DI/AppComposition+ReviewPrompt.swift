@@ -37,11 +37,26 @@ extension AppComposition {
     }
 
     /// TÜM pozitif-an tetik sitelerinin geçtiği tek giriş: remote kill-switch AÇIKsa controller'a iletir.
-    /// (Frekans/eşik/sürüm terbiyesi controller/policy'de; burada yalnız kill-switch kapısı.)
+    /// (Frekans/eşik/sürüm terbiyesi controller/policy'de; burada kill-switch kapısı + "istek" analitiği.)
+    /// Sistem istemi GERÇEKTEN talep edildiyse `review_prompt_requested` yazılır (RTG-01 kriter 5; Apple
+    /// diyaloğu gösterip göstermediğini garanti etmez → event yalnız TALEBİ kaydeder).
     func requestReviewIfEnabled(_ trigger: ReviewPromptTrigger) {
         guard dependencies.featureFlags.value(for: Self.reviewPromptEnabledFlag) else {
             return
         }
-        reviewPromptController.recordPositiveMoment(trigger)
+        guard reviewPromptController.recordPositiveMoment(trigger) else {
+            return
+        }
+        decoratedAnalytics.track(
+            "review_prompt_requested",
+            parameters: ["trigger": .string(Self.analyticsName(for: trigger))]
+        )
+    }
+
+    private static func analyticsName(for trigger: ReviewPromptTrigger) -> String {
+        switch trigger {
+        case .episodeCompleted: "episode_completed"
+        case .streakDay: "streak_day"
+        }
     }
 }
