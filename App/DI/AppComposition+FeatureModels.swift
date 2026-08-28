@@ -10,6 +10,10 @@ import WalletKit
 /// koordinatör geçirir, portlar burada seçilir (interface segregation).
 ///
 /// R1 istisnası: App kompozisyon köküdür ve tüm feature modüllerini import edebilir.
+///
+/// Analitik: feature model'ler `decoratedAnalytics` alır (ab_variants deney boyutu; §7.3 BASE istisnası
+/// yalnız ExperimentClient'a aittir) — audit: 5 fabrika BASE `dependencies.analytics` alıyordu, olay-
+/// larında variant atfı eksikti; UnlockSheetModel ile hizalandı.
 @MainActor
 extension AppComposition {
     // MARK: - PlayerKit (Ana Sayfa)
@@ -26,7 +30,7 @@ extension AppComposition {
         KesfetModel(
             catalog: catalog,
             session: session,
-            analytics: dependencies.analytics,
+            analytics: decoratedAnalytics,
             delegate: delegate
         )
     }
@@ -41,7 +45,7 @@ extension AppComposition {
         AramaModel(
             search: search,
             recentStore: PreferencesRecentSearchStore(preferences: dependencies.preferences),
-            analytics: dependencies.analytics,
+            analytics: decoratedAnalytics,
             delegate: delegate,
             source: source,
             initialQuery: initialQuery
@@ -61,7 +65,7 @@ extension AppComposition {
             history: discoverWatchHistoryReading,
             favorites: discoverFavoritesGateway,
             entitlement: walletStore,
-            analytics: dependencies.analytics,
+            analytics: decoratedAnalytics,
             delegate: delegate
         )
     }
@@ -93,7 +97,7 @@ extension AppComposition {
             loader: coinStorefront,
             wallet: walletStore,
             purchasing: walletPurchasing,
-            analytics: dependencies.analytics,
+            analytics: decoratedAnalytics,
             delegate: delegate
         )
     }
@@ -108,7 +112,7 @@ extension AppComposition {
             loader: coinStorefront,
             wallet: walletStore,
             purchasing: walletPurchasing,
-            analytics: dependencies.analytics,
+            analytics: decoratedAnalytics,
             delegate: delegate
         )
     }

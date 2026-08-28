@@ -44,7 +44,7 @@ Durum: ☐ açık · ☑ düzeltildi (commit ile) · ⊘ kabul-edildi/won't-fix 
   - observeSession updates `account` from the session stream but never resets `wallet`, so the previous account's coin balance / VIP status stays displayed after a session-expiry (or guest/account transition) that emits no wallet-stream event.
 - ☐ **[ProfileKit/reset-partial]** Packages/ProfileKit/Sources/ProfileKit/BildirimMerkezi/NotificationCenterModel.swift:114
   - pendingDeletedIDs mezar-tası temizligi yalnız İLK sayfaya (cursor:nil) bakar; sonraki sayfalardaki silinmis id'lerin mezar-tası erkenden düser ve öge diriler (kısmi reset).
-- ☐ **[App/wrong-port-binding]** App/DI/AppComposition+FeatureModels.swift:96
+- ☑ **[App/wrong-port-binding]** App/DI/AppComposition+FeatureModels.swift:96 — DÜZELTİLDİ (5 feature-model fabrikası dependencies.analytics → decoratedAnalytics; App 212 test yeşil)
   - KesfetModel(29)/AramaModel(44)/DiziDetayModel(64)/CoinShopModel(96)/VIPSubscriptionModel(111) fabrikaları BASE `dependencies.analytics` alır; oysa dokümante edilen tasarım (ExperimentDimensionTracker + AppComposition.swift:88-90) 'feature model'leri decoratedAnalytics'i dependencies.analytics YERİNE alır; tek istisna ExperimentClient.analytics' der.
 - ☑ **[ContentKit/decode-robustness]** Packages/ContentKit/Sources/ContentKit/API/Wire/DiscoverWire.swift:14 — DÜZELTİLDİ (LossyArray eleman-bazlı decode: DiscoverWire+CollectionWire+PageWire; ContentKit 61 test yeşil)
   - Malformed banner or nested series element throws the entire /discover decode, blanking Keşfet — the documented banner/collection isolation only covers absent/null fields, not present-but-invalid elements.
