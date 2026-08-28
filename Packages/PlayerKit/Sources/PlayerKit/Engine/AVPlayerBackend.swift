@@ -18,7 +18,8 @@ final class AVPlayerBackend: VideoPlaying, @unchecked Sendable {
     @MainActor private var keepUpObservation: NSKeyValueObservation?
     @MainActor private var notificationTokens: [NSObjectProtocol] = []
     @MainActor private var hasSignaledFirstFrame = false
-    @MainActor private var isLikelyStalled = false
+    /// Stall karar mantığı (04 §6.x; audit LOW bug 70) — saf/test-edilebilir. load/pause reset eder.
+    @MainActor private var stallTracker = StallTracker()
     /// Güncel yüklemenin jenerasyonu: KVO→Task köprüsünde geciken bayat görev,
     /// yakaladığı jenerasyon bununla eşleşmiyorsa sinyal ÜRETMEZ (jenerasyon korkuluğu).
     @MainActor private var currentLoadGeneration: UInt64 = 0
@@ -39,7 +40,7 @@ final class AVPlayerBackend: VideoPlaying, @unchecked Sendable {
             removeItemObservers()
             currentLoadGeneration = generation
             hasSignaledFirstFrame = false
-            isLikelyStalled = false
+            stallTracker.reset()
 
             // T2: senkron property okuması yok; item AVURLAsset'ten yaratılır, anahtar
             // yüklemesi AVFoundation'ın kendi async hattında ilerler.
@@ -66,6 +67,10 @@ final class AVPlayerBackend: VideoPlaying, @unchecked Sendable {
     func pause() async {
         await MainActor.run {
             player?.pause()
+            // Duraklatılan item "stall" sayılmaz: bayrağı temizle → devam edildiğinde sonraki GERÇEK
+            // buffer-stall'ın `playbackStalled`'ı bastırılmaz (audit LOW bug 70). Stall sırasında pause
+            // edildiyse engine zaten `.stalled → .paused` geçer; backend bayrağı da tutarlı sıfırlanır.
+            stallTracker.reset()
         }
     }
 
@@ -183,8 +188,7 @@ final class AVPlayerBackend: VideoPlaying, @unchecked Sendable {
             guard let self else { return }
             Task { @MainActor in
                 guard self.currentLoadGeneration == generation else { return } // bayat item sinyali
-                if observedItem.isPlaybackLikelyToKeepUp, self.isLikelyStalled {
-                    self.isLikelyStalled = false
+                if self.stallTracker.markKeepUp(observedItem.isPlaybackLikelyToKeepUp) {
                     self.eventContinuation.yield(TaggedRuntimeEvent(generation: generation, event: .stallEnded))
                 }
             }
@@ -203,8 +207,7 @@ final class AVPlayerBackend: VideoPlaying, @unchecked Sendable {
             guard let self else { return }
             Task { @MainActor in
                 guard self.currentLoadGeneration == generation else { return } // bayat item sinyali
-                guard !self.isLikelyStalled else { return }
-                self.isLikelyStalled = true
+                guard self.stallTracker.markStalled() else { return } // zaten stall'da → çift stallBegan yok
                 self.eventContinuation.yield(TaggedRuntimeEvent(generation: generation, event: .stallBegan))
             }
         })
