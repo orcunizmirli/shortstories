@@ -157,18 +157,26 @@ public final class ListemModel {
         if continueItems.isEmpty {
             continueState = .loading
         }
-        let records = await ((try? continueWatchingService.continueWatching(limit: continueLimit)) ?? [])
-            .filter { !hiddenEpisodeIDs.contains($0.episodeID) }
+        // continueLimit == 0 → SINIR YOK (F1 varsayılanı, hepsi). Aksi halde gizli-filtre DB limitinden
+        // SONRA uygulanınca gizli öğeler limiti tüketip listeyi kısaltıyordu (audit LOW): gizli sayısı
+        // kadar FAZLA çek, filtrele, sonra continueLimit'e kırp.
+        let fetchLimit = continueLimit == 0 ? 0 : continueLimit + hiddenEpisodeIDs.count
+        let fetched = await ((try? continueWatchingService.continueWatching(limit: fetchLimit)) ?? [])
+        let filtered = fetched.filter { !hiddenEpisodeIDs.contains($0.episodeID) }
+        let records = continueLimit == 0 ? filtered : Array(filtered.prefix(continueLimit))
         async let infosTask = catalog.seriesInfo(ids: records.map(\.seriesID))
         async let numbersTask = catalog.episodeNumbers(ids: records.map(\.episodeID))
         let (infos, numbers) = await (infosTask, numbersTask)
-        continueItems = records.map { record in
-            ContinueWatchingItem.make(
-                record: record,
-                info: infos[record.seriesID],
-                episodeNumber: numbers[record.episodeID]
-            )
-        }
+        // await sırasında araya giren hideContinueItem'ı da uygula (filter race, audit LOW): commit-anı filtresi.
+        continueItems = records
+            .filter { !hiddenEpisodeIDs.contains($0.episodeID) }
+            .map { record in
+                ContinueWatchingItem.make(
+                    record: record,
+                    info: infos[record.seriesID],
+                    episodeNumber: numbers[record.episodeID]
+                )
+            }
         continueState = continueItems.isEmpty ? .empty : .loaded
         loadedSegments.insert(.continueWatching)
     }

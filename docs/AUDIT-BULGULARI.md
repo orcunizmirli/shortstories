@@ -83,9 +83,9 @@ Durum: ☐ açık · ☑ düzeltildi (commit ile) · ⊘ kabul-edildi/won't-fix 
   - `.home` (ve `.profile`) deep-link/push rotaları yalnız sekme değiştirir; hedef sekmenin NavigationStack'ini köke sıfırlamaz → kullanıcı beklenen sekme kökü yerine önceden push edilmiş bayat detay ekranında kalır.
 - ☑ **[ContentKit/decode-robustness]** Packages/ContentKit/Sources/ContentKit/API/Wire/FeedWire.swift:22 — DÜZELTİLDİ (aynı kök: PageWire.items lossy)
   - A malformed required field inside one nested episode/series throws the whole feed page before compactMap runs, so the documented per-item resilience does not protect against bad required data — the entire page is lost with no retry.
-- ☐ **[LibraryKit/history-sync-stale]** Packages/LibraryKit/Sources/LibraryKit/Listem/ListemModel.swift:153
+- ⊘ **[LibraryKit/history-sync-stale]** Packages/LibraryKit/Sources/LibraryKit/Listem/ListemModel.swift:153 — KABUL (won't-fix): session-scoped 'Kaldır' bilinçli UX; re-watch'ta un-hide için hide-pozisyon takibi (veri-modeli değişikliği) gerekir, LOW/enhancement — ertelendi
   - Devam Et'te gizlenen bölüm, kullanıcı onu yeniden izleyip taze ilerleme kaydetse bile oturum boyunca kalıcı olarak gizli kalır; hiddenEpisodeIDs hiç temizlenmez.
-- ☐ **[LibraryKit/tombstone-dedup]** Packages/LibraryKit/Sources/LibraryKit/Listem/ListemModel.swift:157
+- ☑ **[LibraryKit/tombstone-dedup]** Packages/LibraryKit/Sources/LibraryKit/Listem/ListemModel.swift:157 — DÜZELTİLDİ (loadContinue commit-anı yeniden-filtre; LibraryKit 61 test yeşil)
   - loadContinue filters hiddenEpisodeIDs at line 153 (right after the first await) but writes continueItems only after two more awaits; a concurrent hideContinueItem in that window resurrects the hidden (tombstoned) item.
 - ☐ **[AppFoundation/torn-token-write]** Packages/AppFoundation/Sources/AppFoundation/Session/TokenRefreshCoordinator.swift:117
   - performRefresh writes accessToken and refreshToken as two separate, non-atomic Keychain setString calls with no rollback; a failure of the second leaves a new access token paired with the OLD (already-rotated-away) refresh token.
@@ -97,7 +97,7 @@ Durum: ☐ açık · ☑ düzeltildi (commit ile) · ⊘ kabul-edildi/won't-fix 
   - Banner.isActive gates purely on device clock (.now) with no server-time correction, so device clock skew shows expired promo banners or hides active ones.
 - ☑ **[DiscoverKit/pagination-termination]** Packages/DiscoverKit/Sources/DiscoverKit/Arama/AramaModel.swift:176 — DÜZELTİLDİ (aynı kök: loadMore boş-sayfa nextCursor=nil, commit 75ea2e4)
   - loadMore, sunucu boş sayfa fakat non-nil nextCursor döndürdüğünde sonlanmaz; en-alt hücrede tekrar tetiklenip sınırsız boş-sayfa çekme döngüsü oluşturabilir.
-- ☐ **[LibraryKit/offline-list-consistency]** Packages/LibraryKit/Sources/LibraryKit/Listem/ListemModel.swift:152
+- ☑ **[LibraryKit/offline-list-consistency]** Packages/LibraryKit/Sources/LibraryKit/Listem/ListemModel.swift:152 — DÜZELTİLDİ (gizli-sayısı fazla-çek + prefix; continueLimit=0 sınır-yok korunur)
   - loadContinue, hidden filtresini DB fetchLimit'ten SONRA uygular; gizlenen öğeler limiti tüketip listeyi mevcut öğeler varken bile kısaltır/erken boşaltır.
 - ☑ **[AnalyticsKit/size-truncation]** Packages/AnalyticsKit/Sources/AnalyticsKit/Experiment/ExperimentEvents.swift:22 — DÜZELTİLDİ (ABVariants.format 100-char sınırı, tam-atama; AnalyticsKit 35 test yeşil)
   - ABVariants.format produces an unbounded comma-joined string with no length cap; as active experiments accumulate it exceeds Firebase/GA4's 100-char string-parameter limit and is silently truncated.

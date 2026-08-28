@@ -38,6 +38,32 @@ struct ListemModelTests {
         )
     }
 
+    // MARK: - Devam Et: gizli öğe limiti tüketmez (audit LOW)
+
+    @Test func continueWatchingGizliOgeLimitiTuketmez() async throws {
+        let history = try historyService()
+        try await history.recordProgress(Fixtures.progress(episode: "e1", series: "s1", at: 100))
+        try await history.recordProgress(Fixtures.progress(episode: "e2", series: "s2", at: 200))
+        try await history.recordProgress(Fixtures.progress(episode: "e3", series: "s3", at: 300))
+        let model = try ListemModel(
+            favoritesService: favoritesService(),
+            continueWatchingService: history,
+            catalog: FakeLibraryCatalog(),
+            analytics: MockAnalytics(),
+            delegate: ListemDelegateSpy(),
+            continueLimit: 2
+        )
+
+        await model.load(.continueWatching)
+        #expect(model.continueItems.count == 2) // limit 2 dolu
+        let first = try #require(model.continueItems.first)
+        model.hideContinueItem(first) // en üsttekini gizle
+        await model.load(.continueWatching)
+
+        // Gizli öğe DB limitini tüketip listeyi kısaltmamalı: 2 dolu kalır (fazla-çek + prefix).
+        #expect(model.continueItems.count == 2)
+    }
+
     // MARK: - Segment görünürlüğü
 
     @Test func downloadsSegmentHiddenByDefault() throws {
