@@ -341,4 +341,27 @@ struct NotificationCenterMutationTests {
         #expect(delegate.discoverFallbackCount == 1)
         #expect(delegate.openedRoutes.isEmpty)
     }
+
+    // MARK: - Mezar taşı: kısmi-reset (audit MEDIUM)
+
+    @Test func firstPageLoadPreservesLaterPageTombstoneWhenMorePagesExist() async {
+        // İlk-sayfa load'u mezar taşlarını YALNIZ ilk sayfaya sınırlıyordu → sonraki sayfadaki silinmiş
+        // öğenin mezar taşı erken düşüp öge diriliyordu. Daha fazla sayfa varken (nextCursor != nil)
+        // temizleme YAPILMAZ → sonraki-sayfa mezar taşı korunur, silinen öğe dirilmez.
+        let gateway = FakeNotificationsGateway()
+        gateway.setFirstPage(NotificationsPage(items: [NotificationFactory.make(id: "a")], nextCursor: "c2"))
+        gateway.setPage(NotificationsPage(items: [NotificationFactory.make(id: "b")], nextCursor: nil), forCursor: "c2")
+        let model = makeModel(gateway: gateway)
+
+        await model.load() // [a], nextCursor c2
+        await model.loadMore() // [a, b]
+        await model.delete(NotificationID("b")) // b silindi (mezar taşı)
+        #expect(model.notifications.map(\.id) == [NotificationID("a")])
+
+        await model.load() // refresh (ilk sayfa [a], more pages) → b mezar taşı KORUNMALI
+        await model.loadMore() // sayfa 2 hâlâ b döndürüyor (silme yayılmadı)
+
+        #expect(!model.notifications.contains { $0.id == NotificationID("b") }) // b DİRİLMEDİ
+        #expect(model.notifications.map(\.id) == [NotificationID("a")])
+    }
 }

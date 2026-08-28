@@ -109,9 +109,13 @@ public final class NotificationCenterModel {
         do {
             let page = try await gateway.fetch(cursor: nil)
             guard token == loadGeneration else { return } // üstü örtüldü: bayat yazma yok
-            // Mezar taşlarını sunucunun HÂLÂ döndürdükleriyle sınırla (artık dönmeyen → silme yayıldı,
-            // temizle); sonra sayfayı filtrele → başarıyla silinen öğe bayat snapshot'la dirilmez (F5).
-            pendingDeletedIDs.formIntersection(page.items.map(\.id))
+            // Mezar taşı temizliği YALNIZ TAM liste (tek sayfa; nextCursor == nil) load'una aittir: o zaman
+            // sunucunun döndürmedikleri gerçekten silinmiş sayılır → mezar taşı temizlenir. Daha fazla sayfa
+            // varsa temizleme YAPMA — ilk sayfada OLMAYAN silinmiş bir öğe SONRAKİ sayfalarda olabilir; yalnız
+            // ilk sayfaya göre formIntersection onu erken düşürüp loadMore'da diriltiyordu (audit MEDIUM kısmi-reset).
+            if page.nextCursor == nil {
+                pendingDeletedIDs.formIntersection(page.items.map(\.id))
+            }
             let items = page.items.filter { !pendingDeletedIDs.contains($0.id) }
             notifications = items
             listEpoch += 1 // authoritative replace: uçuştaki optimistik telafileri geçersizle (F2/F3)
