@@ -241,6 +241,10 @@ actor PlaybackEngine {
         switch tagged.event {
         case .firstFrameReady:
             apply(.firstFrameReady)
+            // Sağlıklı oynatma onaylandı → kurtarma bütçesi tazelenir (04 §6.4/T11): başarıyla kurtarılıp
+            // OYNAYAN item TEKRAR süre-dolarsa (bağımsız expiry) yine 1 otomatik deneme alır. Ardışık
+            // reload-fail firstFrame'e ULAŞMAZ → sayaç korunur, sonsuz kurtarma döngüsü oluşmaz.
+            recoveryAttempts = 0
             if let position = pendingResumePosition {
                 pendingResumePosition = nil
                 await backend.seek(toSeconds: position)

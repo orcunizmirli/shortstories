@@ -111,19 +111,39 @@ struct SignedURLRecoveryFlowTests {
         #expect(state == .loading) // spinner; failed değil
     }
 
-    @Test func ikinciArdisikHataYuzeyeCikar() async {
+    @Test func ardisikKurtarmaHatasiYuzeyeCikar() async {
+        // Kurtarmanın KENDİSİ (reload) sağlıklı oynatmaya (firstFrame) ULAŞMADAN tekrar fail ederse
+        // (ardışık hata) 2. hata yüzeye çıkar — sonsuz kurtarma döngüsü YOK (04 §6.4 kural 5:
+        // "1 otomatik deneme; ikinci hatada hücre içi hata"). firstFrame gelmediği için sayaç korunur.
         let provider = URLProviderSpy(serving: [url2, url2])
         let (engine, backend) = await playingEngine(provider: provider)
 
         backend.emit(.didFail(.playback(.signedURLExpired)))
         _ = await eventually { backend.calls.contains(.load(url2, .active)) }
-        backend.emit(.firstFrameReady)
-        _ = await awaitState(.playing, on: engine)
-
+        // firstFrame YOK: reload sağlıklı oynatmaya ulaşmadan tekrar fail (gerçek ardışık hata).
         backend.emit(.didFail(.playback(.signedURLExpired)))
 
         #expect(await awaitState(.failed(.playback(.signedURLExpired)), on: engine))
         #expect(provider.callCount == 1) // ikinci otomatik deneme YOK
+    }
+
+    @Test func basariliKurtarmaSonrasiBagimsizExpiryYineKurtarilir() async {
+        // 04 §6.4 + T11 (uzun oturumlarda ansızın 403 → siyah ekran fix'i kurtarma akışı): başarıyla
+        // kurtarılıp OYNAYAN item TEKRAR süre-dolarsa (BAĞIMSIZ expiry) yine 1 otomatik denemeyle
+        // kurtarılmalı. Kurtarma sayacı sağlıklı firstFrame'de sıfırlanır; aksi halde uzun oturum ilk
+        // expiry'den sonra zorunlu 1-retry hakkını kalıcı kaybedip 2. expiry'de siyah ekrana düşerdi.
+        let provider = URLProviderSpy(serving: [url2, url2])
+        let (engine, backend) = await playingEngine(provider: provider)
+
+        backend.emit(.didFail(.playback(.signedURLExpired)))
+        _ = await eventually { backend.calls.contains(.load(url2, .active)) }
+        backend.emit(.firstFrameReady) // kurtarma başarılı → oynatma sürüyor (sayaç sıfırlanır)
+        _ = await awaitState(.playing, on: engine)
+
+        backend.emit(.didFail(.playback(.signedURLExpired))) // BAĞIMSIZ ikinci expiry
+        #expect(await eventually { provider.callCount == 2 }) // yine kurtarıldı
+        backend.emit(.firstFrameReady)
+        #expect(await awaitState(.playing, on: engine))
     }
 
     @Test func tazeURLAlinamazsaFailedaDusulur() async {
