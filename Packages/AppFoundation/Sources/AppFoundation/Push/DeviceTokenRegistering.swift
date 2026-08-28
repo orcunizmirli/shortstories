@@ -42,7 +42,33 @@ public actor LiveDeviceTokenRegistrar: DeviceTokenRegistering {
         self.timezoneProvider = timezoneProvider
     }
 
+    /// Eşzamanlı token/izin çağrılarını SERİLEŞTİREN kuyruk kuyruğu (audit MEDIUM TOCTOU): actor
+    /// reentrant olduğundan, birinci çağrının `await apiClient.send`'i sırasında ikinci çağrı araya girip
+    /// BAYAT snapshot okuyup `.skip` verebiliyor ve kullanıcının son niyetini (opt-in/out) DÜŞÜRÜYORDU.
+    /// Her işlem öncekinin (load→POST→save) BİTMESİNİ bekler → snapshot hep en güncel save'den SONRA okunur.
+    private var tail: Task<Void, Never>?
+
     public func registerToken(_ token: DeviceToken, optIn: Bool) async {
+        await serialize { await self.performRegisterToken(token, optIn: optIn) }
+    }
+
+    public func updateOptIn(_ optIn: Bool) async {
+        await serialize { await self.performUpdateOptIn(optIn) }
+    }
+
+    /// load→decide→POST→save'i sıraya alır: yeni işlem öncekinin tam bitişini (`await previous.value`)
+    /// bekler; `tail` okuma/yazması await'siz olduğundan reentrancy'de zincir doğru bağlanır.
+    private func serialize(_ work: @escaping @Sendable () async -> Void) async {
+        let previous = tail
+        let task = Task {
+            await previous?.value
+            await work()
+        }
+        tail = task
+        await task.value
+    }
+
+    private func performRegisterToken(_ token: DeviceToken, optIn: Bool) async {
         let plan = DeviceRegistrationPlanner.planForToken(
             token: token.hexString,
             optIn: optIn,
@@ -51,7 +77,7 @@ public actor LiveDeviceTokenRegistrar: DeviceTokenRegistering {
         await apply(plan)
     }
 
-    public func updateOptIn(_ optIn: Bool) async {
+    private func performUpdateOptIn(_ optIn: Bool) async {
         let plan = DeviceRegistrationPlanner.planForOptInChange(optIn: optIn, lastSent: loadSnapshot())
         await apply(plan)
     }

@@ -121,6 +121,38 @@ struct DeviceTokenRegistrarTests {
         #expect(try lastBody().apnsToken == "bbbb")
     }
 
+    // MARK: - Eşzamanlılık: TOCTOU (audit MEDIUM — actor reentrancy)
+
+    @Test func eszamanliOptInSonNiyetiKorur() async throws {
+        // updateOptIn(false) POST'u askıdayken updateOptIn(true) araya girerse, BAYAT snapshot'la
+        // planForOptInChange .skip verip kullanıcının son opt-IN niyetini DÜŞÜRÜR (TOCTOU). Serileştirme
+        // ikinci işlemi birincinin save'inden SONRA çalıştırır → son niyet (opt-in) korunur.
+        let gate = SendGate()
+        let inner = MockAPIClient()
+        inner.stub("/devices", with: .success(Data()))
+        let store = MockSecureStore()
+        try store.setData(
+            JSONEncoder().encode(DeviceRegistrationSnapshot(apnsToken: "tok", notificationOptIn: true)),
+            forKey: .pushRegistration
+        )
+        let registrar = LiveDeviceTokenRegistrar(
+            apiClient: GatedAPIClient(inner: inner, gate: gate),
+            secureStore: store,
+            environment: .sandbox,
+            logger: MockLogger()
+        )
+
+        async let first: Void = registrar.updateOptIn(false)
+        await gate.waitForArrival() // birinci POST askıda
+        async let second: Void = registrar.updateOptIn(true)
+        await gate.open() // birinciyi serbest (bug: bu askı sırasında ikinci reentrant .skip eder)
+        _ = await (first, second)
+
+        let saved = try #require(try store.data(forKey: .pushRegistration))
+        let snap = try JSONDecoder().decode(DeviceRegistrationSnapshot.self, from: saved)
+        #expect(snap.notificationOptIn == true) // son niyet (opt-in) korundu, düşmedi
+    }
+
     // MARK: - İzin değişimi
 
     @Test func optInFlipReRegistersWithSameToken() async throws {
@@ -172,5 +204,52 @@ struct DeviceTokenRegistrarTests {
         let generated = try #require(try secureStore.string(forKey: .deviceID))
         #expect(!generated.isEmpty)
         #expect(try lastBody().deviceId == generated)
+    }
+}
+
+// MARK: - Reentrancy testi için kapı (birinci send'i bloklar, ikinciyi geçirir) + gated APIClient
+
+private actor SendGate {
+    private var opened = false
+    private var releaseWaiter: CheckedContinuation<Void, Never>?
+    private var arrived = false
+    private var arrivalWaiter: CheckedContinuation<Void, Never>?
+
+    func wait() async {
+        if opened {
+            return
+        } // açıldıktan sonraki send'ler geçer
+        arrived = true
+        arrivalWaiter?.resume()
+        arrivalWaiter = nil
+        await withCheckedContinuation { releaseWaiter = $0 }
+    }
+
+    func waitForArrival() async {
+        if arrived {
+            return
+        }
+        await withCheckedContinuation { arrivalWaiter = $0 }
+    }
+
+    func open() {
+        opened = true
+        releaseWaiter?.resume()
+        releaseWaiter = nil
+    }
+}
+
+private final class GatedAPIClient: APIClientProtocol, @unchecked Sendable {
+    private let inner: MockAPIClient
+    private let gate: SendGate
+
+    init(inner: MockAPIClient, gate: SendGate) {
+        self.inner = inner
+        self.gate = gate
+    }
+
+    func send<E: Endpoint>(_ endpoint: E) async throws -> E.Response {
+        await gate.wait()
+        return try await inner.send(endpoint)
     }
 }
