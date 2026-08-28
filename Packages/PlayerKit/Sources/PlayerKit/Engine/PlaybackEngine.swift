@@ -290,6 +290,12 @@ actor PlaybackEngine {
         }
         recoveryAttempts += 1
         apply(.recoveryStarted)
+        // Resume niyeti kurtarma BAŞINDA kurulur (await'lerden ÖNCE): aktif slot reload sonrası kaldığı
+        // yerden oynar. Kritik: bunu await'lerden SONRA koşulsuz set etmek, kurtarma penceresinde (loading)
+        // gelen kullanıcı pause()'unu (pendingPlay=false) EZİYORDU → gizli otomatik resume. Burada kurulunca
+        // pencere-içi pause/play niyeti KORUNUR (son kullanıcı niyeti kazanır; pendingPlay yalnız firstFrame'de
+        // tüketilir).
+        pendingPlay = currentBufferPolicy == .active
         let recoveryGeneration = generation
         let savedPosition = await backend.currentPositionSeconds()
         guard generation == recoveryGeneration else { return }
@@ -298,7 +304,6 @@ actor PlaybackEngine {
             guard generation == recoveryGeneration else { return }
             currentURL = freshURL
             pendingResumePosition = savedPosition > 0 ? savedPosition : nil
-            pendingPlay = currentBufferPolicy == .active
             generation &+= 1
             await backend.load(url: freshURL, bufferPolicy: currentBufferPolicy, generation: generation)
         } catch {

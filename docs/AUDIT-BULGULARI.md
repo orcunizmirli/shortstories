@@ -69,7 +69,7 @@ Durum: ☐ açık · ☑ düzeltildi (commit ile) · ⊘ kabul-edildi/won't-fix 
   - recoveryAttempts is reset only in prepare(), never after a successful signed-URL recovery, so a warm-retained/long-lived loaded item permanently loses its mandated 1 auto-retry after the first mid-play expiry.
 - ☐ **[PlayerKit/stall-recovery]** Packages/PlayerKit/Sources/PlayerKit/Engine/AVPlayerBackend.swift:206
   - `isLikelyStalled` is cleared only when isPlaybackLikelyToKeepUp becomes true; pausing/resuming across a stall leaves it stuck true, so the next genuine stall's playbackStalledNotification is suppressed and no buffering state is emitted.
-- ☐ **[PlayerKit/state]** Packages/PlayerKit/Sources/PlayerKit/Engine/PlaybackEngine.swift:275
+- ☑ **[PlayerKit/state]** Packages/PlayerKit/Sources/PlayerKit/Engine/PlaybackEngine.swift:275 — DÜZELTİLDİ (resume niyeti kurtarma BAŞINDA kurulur, await sonrası koşulsuz set kaldırıldı → pencere-içi pause korunur; gated-provider RED→GREEN testi, PlayerKit 241 test yeşil)
   - Signed-URL recovery unconditionally sets pendingPlay from the buffer policy, discarding a user pause issued during the recovery window; the active slot auto-resumes against the user's intent.
 - ☐ **[ProfileKit/linking-merge-desync]** Packages/ProfileKit/Sources/ProfileKit/Profil/ProfilModel.swift:108
   - observeSession() günceller yalnız `account`'u; hesap DEĞİŞİMİNDE (misafir→farklı bağlı hesap / conflict→switch) cüzdan yeniden çekilmez, iki bağımsız akış koordine edilmez.

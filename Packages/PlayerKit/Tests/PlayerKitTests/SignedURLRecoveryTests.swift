@@ -146,6 +146,39 @@ struct SignedURLRecoveryFlowTests {
         #expect(await awaitState(.playing, on: engine))
     }
 
+    @Test func kurtarmaPenceresindeKullaniciPauseKorunur() async {
+        // Kurtarma penceresinde (loading) kullanıcı pause ederse reload sonrası item OTOMATİK RESUME
+        // ETMEMELİ (kullanıcı niyeti ezilmez). Bug: handleFailure pendingPlay'i buffer-policy'den koşulsuz
+        // set edip pencere-içi pause'u eziyordu. Fix: resume niyeti kurtarma BAŞINDA kurulur → son
+        // kullanıcı niyeti (pause) korunur. Kapı, sağlamayı line 301 ÖNCESİ askıya alıp pause'u sokar.
+        let gate = TestGate()
+        let freshURL = url2
+        let backend = FakeVideoPlaying()
+        let engine = PlaybackEngine(
+            backend: backend,
+            freshURLProvider: { _ in
+                await gate.pass("freshURL")
+                return freshURL
+            }
+        )
+        await engine.prepare(episodeID: episodeID, url: url1, bufferPolicy: .active)
+        backend.emit(.firstFrameReady)
+        _ = await awaitState(.readyAtFirstFrame, on: engine)
+        await engine.play()
+        _ = await awaitState(.playing, on: engine)
+
+        backend.emit(.didFail(.playback(.signedURLExpired)))
+        await gate.awaitEntered("freshURL") // handleFailure freshURLProvider'da askıda (clobber ÖNCESİ)
+        await engine.pause() // kullanıcı kurtarma penceresinde pause
+
+        gate.open("freshURL") // kurtarma devam → reload
+        _ = await eventually { backend.calls.contains(.load(url2, .active)) }
+        backend.emit(.firstFrameReady)
+        await settle(engine)
+
+        #expect(await engine.currentState() != .playing) // pause korundu → gizli otomatik resume YOK
+    }
+
     @Test func tazeURLAlinamazsaFailedaDusulur() async {
         let provider = URLProviderSpy(serving: [])
         let (engine, backend) = await playingEngine(provider: provider)
