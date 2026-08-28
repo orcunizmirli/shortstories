@@ -158,6 +158,30 @@ struct ProfilModelTests {
         #expect(cleared) // bayat coin/VIP display'i temizlendi
     }
 
+    @Test func lateWalletEmissionDoesNotRestoreStaleCoinsAfterSessionExpired() async {
+        // SS-132 pekiştirme + flaky yarış kökü: oturum düştükten (wallet temizlendikten) SONRA gelen
+        // GEÇ bir cüzdan emission'ı (in-flight refresh / cache replay) sessionExpired ekranında coin/VIP'i
+        // GERİ GETİRMEMELİ. observeWallet + observeSession eşzamanlı yazar; guard olmadan geç emission
+        // temizlemeyi clobber ediyordu (deterministik: temizlik ONAYLANDIKTAN sonra emit edilir).
+        let wallet = FakeWalletSummary(WalletSummary(coinBalance: 500, isVIP: true, vipRenewalDate: Date()))
+        let session = MockSession(state: .linked(userID: "u1", provider: .google))
+        let model = makeModel(session: session, wallet: wallet, delegate: ProfileDelegateSpy())
+        model.onAppear()
+        await model.pendingWork()
+
+        let observer = Task { await model.observeUpdates() }
+        defer { observer.cancel() }
+        // (1) canlı akış replay'i yerleşsin (coin 500), (2) oturum düşsün, (3) temizlik onaylansın.
+        _ = await eventually { model.wallet.coinBalance == 500 }
+        session.send(.loggedOut(previousUserID: "u1", provider: .google))
+        _ = await eventually { model.wallet.coinBalance == 0 }
+
+        // ŞİMDİ geç cüzdan emission'ı gelir — sessionExpired'de coin'i GERİ GETİRMEMELİ.
+        wallet.set(WalletSummary(coinBalance: 777, isVIP: true, vipRenewalDate: Date()))
+        let restored = await eventually { model.wallet.coinBalance == 777 }
+        #expect(!restored) // geç emission bayat coin'i geri getirmedi
+    }
+
     @Test func sessionLiveUpdateReflected() async {
         let session = MockSession(state: .guest(userID: "g1"))
         let model = makeModel(session: session, delegate: ProfileDelegateSpy())

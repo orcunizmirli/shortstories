@@ -101,7 +101,15 @@ public final class ProfilModel {
 
     private func observeWallet() async {
         for await summary in walletSummary.summaryUpdates() {
-            wallet = summary
+            // Oturum düştüyse (sessionExpired) cüzdan display'i BOŞ kalmalı: bu akış cache-replay eden
+            // bir cüzdan portudur (yeni abone SON değeri replay alır) + in-flight refresh geç dönebilir →
+            // sessionExpired ekranında bayat coin/VIP'i GERİ GETİRMESİN (SS-132; observeSession clear'ini
+            // KALICI/otoriter kılar; observeWallet↔observeSession sıra yarışını da deterministikler).
+            if case .sessionExpired = account.kind {
+                wallet = .empty
+            } else {
+                wallet = summary
+            }
         }
     }
 
