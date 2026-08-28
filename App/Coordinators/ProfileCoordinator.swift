@@ -42,6 +42,12 @@ final class ProfileCoordinator {
 
     // MARK: - Cross-tab / deep link yardımcıları
 
+    /// Sekme-kökü deep-link/push (`.profile`) → Profil stack'ini köke sıfırla (bayat Ayarlar/
+    /// BildirimMerkezi push'unda kalınmaz; 02 §8.2). `.settings`/`.notifications` KÖKE gitmez, iter.
+    func resetToRoot() {
+        path = []
+    }
+
     func showSettings() {
         path.appendIfNotTop(.ayarlar)
     }

@@ -94,7 +94,7 @@ final class TabCoordinator {
 
     // Düz `Route` dağıtım tablosu (her case tek satır delege) — döngüsel karmaşıklık doğası gereği
     // case sayısı kadardır; tek switch olması dağıtımın tam listesini bir yerde tutar.
-    // swiftlint:disable cyclomatic_complexity
+    // swiftlint:disable cyclomatic_complexity function_body_length
 
     /// Çözülmüş rotayı hedef sekme koordinatörüne delege eder. AppCoordinator soğuk açılış
     /// `PendingRoute`'unu (ve banner/kampanya rotalarını) buraya akıtır; `source` başarılı çözüm
@@ -109,6 +109,10 @@ final class TabCoordinator {
         switch route {
         case .home:
             switchTab(.anaSayfa)
+            // Sekme-KÖKÜ hedefi (02 §8.2): stack'i köke sıfırla → kullanıcı önceden push edilmiş bayat
+            // DiziDetay'da kalmasın (deep-link/push beklenen kök ekranı gösterir). switchTab zaten
+            // seçili sekmedeyse erken döner; sıfırlama yine de gerekli.
+            home.resetToRoot()
         case let .play(seriesId, startSeconds):
             requestPlayback(HomeCoordinator.PlaybackIntent(
                 seriesID: seriesId,
@@ -151,6 +155,9 @@ final class TabCoordinator {
             library.selectSegment(segment)
         case .profile:
             switchTab(.profil)
+            // Sekme-KÖKÜ hedefi (02 §8.2): Profil stack'ini köke sıfırla → bayat Ayarlar/BildirimMerkezi
+            // push'unda kalınmaz. (Not: `.settings`/`.notifications` KÖKE gitmez, root'tan İTER.)
+            profile.resetToRoot()
         case let .settings(section):
             switchTab(.profil)
             // TODO(SS-130): section → Ayarlar alt-bölümüne scroll (AyarlarModel çapa girişi yok).
@@ -165,7 +172,7 @@ final class TabCoordinator {
         }
     }
 
-    // swiftlint:enable cyclomatic_complexity
+    // swiftlint:enable cyclomatic_complexity function_body_length
 }
 
 // MARK: - DiziDetayDelegate (02 §4.4) — stack-bağımsız, tüm sekmelerin DiziDetay'ı buraya bağlanır

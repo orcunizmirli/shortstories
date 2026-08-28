@@ -138,6 +138,12 @@ final class HomeCoordinator {
 
     // MARK: - Bağlamsal oynatma (SS-062 App feed dilimi tüketir)
 
+    /// Sekme-kökü deep-link/push (`.home`) → Ana Sayfa stack'ini köke sıfırla (bayat DiziDetay'da
+    /// kalınmaz; 02 §8.2). NavigationPath SwiftUI tipidir → sıfırlama burada (koordinatör) kapsüllenir.
+    func resetToRoot() {
+        path = NavigationPath()
+    }
+
     func requestPlayback(_ intent: PlaybackIntent) {
         // PlayerFeed'i öne getir: DiziDetay/başka bir push altında GİZLİ kalmasın (02 §4.3.2). Ana
         // Sayfa stack'i köke sıfırlanır ki bağlamsal oynatma doğrudan feed'de görünsün.
