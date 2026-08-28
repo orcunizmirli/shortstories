@@ -56,7 +56,7 @@ Durum: ☐ açık · ☑ düzeltildi (commit ile) · ⊘ kabul-edildi/won't-fix 
   - loadFavorites has no generation/cancellation guard; two overlapping loadFavorites can commit out of order and resurrect a just-removed favorite.
 - ☐ **[LibraryKit/tombstone-dedup]** Packages/LibraryKit/Sources/LibraryKit/Favorites/FavoritesService.swift:205
   - Compensating-DELETE intent for an add that was removed mid-PUT is held only in the in-memory compensatingDeletes set and is never persisted; if flush is deferred (offline or app kill) the removal is lost and, because favorites sync has no server->local pull, a ghost favorite stays on the server permanently.
-- ☐ **[DiscoverKit/pagination-dedup]** Packages/DiscoverKit/Sources/DiscoverKit/Arama/AramaModel.swift:183
+- ☑ **[DiscoverKit/pagination-dedup]** Packages/DiscoverKit/Sources/DiscoverKit/Arama/AramaModel.swift:183 — DÜZELTİLDİ (loadMore SeriesID dedup + boş-sayfa paginasyon durdur; DiscoverKit 132 test yeşil)
   - loadMore sayfa birleştirmesi (results += page.items) hiçbir dedup yapmaz; cursor sayfalamada sayfa sınırında örtüşen dizi aynı SeriesID ile iki kez listeye girer.
 
 ## LOW (20)

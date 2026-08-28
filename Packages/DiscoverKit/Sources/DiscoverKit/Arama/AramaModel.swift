@@ -186,8 +186,11 @@ public final class AramaModel {
         guard let page = try? await search.search(query: lastSearchedQuery, cursor: cursor) else { return }
         // Sorgu await sırasında değiştiyse bu sayfayı yeni listeye KARIŞTIRMA.
         guard token == searchGeneration else { return }
-        results += page.items
-        nextCursor = page.nextCursor
+        // Sayfa-sınırı örtüşmesi: aynı SeriesID iki kez listeye girmesin (audit MEDIUM dedup).
+        let existingIDs = Set(results.map(\.id))
+        results += page.items.filter { !existingIDs.contains($0.id) }
+        // Sunucu BOŞ sayfa + non-nil cursor döndürürse sonsuz döngü olmasın: paginasyonu durdur (audit LOW).
+        nextCursor = page.items.isEmpty ? nil : page.nextCursor
     }
 
     /// Sonuç hatası "Tekrar Dene" (§4.11): son sorguyu yeniden çalıştır.

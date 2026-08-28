@@ -169,6 +169,33 @@ struct AramaModelTests {
         #expect(!model.canLoadMore)
     }
 
+    @Test func loadMoreSayfaSinirindaCiftDiziyiDedupEder() async {
+        // Audit MEDIUM: cursor sayfalamada sayfa sınırında örtüşen dizi (aynı SeriesID) iki kez girerdi.
+        let search = SpySearch()
+        search.setSearch(.success(Page(items: [series("a"), series("b")], nextCursor: "c2", ttlSec: nil)), cursor: nil)
+        search.setSearch(.success(Page(items: [series("b"), series("c")], nextCursor: nil, ttlSec: nil)), cursor: "c2")
+        let model = makeModel(search: search)
+
+        await model.performSearch(query: "q")
+        await model.loadMore()
+
+        #expect(model.results.map(\.id.rawValue) == ["a", "b", "c"]) // b sayfa-sınırında iki kez GELMEZ
+    }
+
+    @Test func loadMoreBosSayfadaPaginasyonuDurdurur() async {
+        // Audit LOW: sunucu boş sayfa + non-nil nextCursor döndürdüğünde loadMore sonsuz döngüye girerdi.
+        let search = SpySearch()
+        search.setSearch(.success(Page(items: [series("a")], nextCursor: "c2", ttlSec: nil)), cursor: nil)
+        search.setSearch(.success(Page(items: [], nextCursor: "c3", ttlSec: nil)), cursor: "c2") // boş ama cursor var
+        let model = makeModel(search: search)
+
+        await model.performSearch(query: "q")
+        await model.loadMore()
+
+        #expect(model.results.map(\.id.rawValue) == ["a"]) // yeni öğe yok
+        #expect(!model.canLoadMore) // boş sayfa → paginasyon DURUR (sonsuz döngü yok)
+    }
+
     // MARK: - Seçimler
 
     @Test func selectSeriesSuggestionNavigatesAndRecordsRecent() {
