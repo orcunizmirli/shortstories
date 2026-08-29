@@ -313,6 +313,12 @@ extension HomeCoordinator: PlayerFeedDelegate {
         }
         subtitleChoices = intersected.count > 1 ? intersected : offered
     }
+
+    func playerFeedDidCompleteEpisode(_: PlayerFeedViewController) {
+        // Bölüm sonuna kadar izlendi = POZİTİF an → App Store puanlama istemini değerlendir (RTG-01;
+        // kill-switch + terbiye/eşik composition/controller'da). Render-loop dışı (bölüm sonu olayı).
+        composition.requestReviewIfEnabled(.episodeCompleted)
+    }
 }
 
 // MARK: - Altyazı menüsü (04 §8.3 / SS-046)

@@ -371,6 +371,9 @@ extension PlayerFeedViewController {
         autoAdvanceTask = Task { [weak self] in
             for await decision in decisions {
                 guard let self else { return }
+                // Her karar bir playedToEnd'den doğar = aktif bölüm sonuna kadar izlendi → POZİTİF an
+                // (RTG-01). Render-loop dışı (bölüm sonu). Kararın kendisi (advance/stay/more) sonra işlenir.
+                delegate?.playerFeedDidCompleteEpisode(self)
                 execute(decision)
             }
         }

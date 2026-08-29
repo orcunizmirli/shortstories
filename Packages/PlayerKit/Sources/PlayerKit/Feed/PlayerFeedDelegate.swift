@@ -51,4 +51,13 @@ public protocol PlayerFeedDelegate: AnyObject {
 
     /// Sağ ray: Altyazı seçim sheet'i (04 §8.3; F1 iskelet — SS-046).
     func playerFeed(_ feed: PlayerFeedViewController, didRequestSubtitleMenu episode: Episode)
+
+    /// Aktif bölüm SONUNA kadar izlendi (playedToEnd → auto-advance kararı). POZİTİF an (RTG-01 puanlama
+    /// istemi tetiği; 00-genel-bakis.md §294). Render-loop DIŞI (bölüm sonu olayı). Varsayılan boş →
+    /// mevcut conformer'lar/testler kırılmaz. App koordinatörü `requestReviewIfEnabled(.episodeCompleted)`e iletir.
+    func playerFeedDidCompleteEpisode(_ feed: PlayerFeedViewController)
+}
+
+public extension PlayerFeedDelegate {
+    func playerFeedDidCompleteEpisode(_: PlayerFeedViewController) {}
 }
