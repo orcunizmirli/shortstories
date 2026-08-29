@@ -91,10 +91,12 @@ public actor PurchaseCoordinator {
         await wallet.refresh()
     }
 
-    /// Launch-time entitlement tohumu (06 §4.5): StoreKit `currentEntitlements`'tan iyimser VIP.
+    /// Launch-time entitlement tohumu (06 §4.5): StoreKit `currentEntitlements`'tan iyimser VIP. Aile
+    /// Paylaşımı KAPALI (06 §4.7) → family-shared entitlement HARİÇ (process()'in reddettiği aynı durum;
+    /// aksi halde ailedeki yakının VIP'i kullanıcıya bedava istemci-VIP verirdi — audit MEDIUM).
     public func seedEntitlementsFromStoreKit() async {
         let hasActiveSubscription = await purchases.currentEntitlements()
-            .contains { $0.kind == .subscription && $0.revocationDate == nil }
+            .contains { $0.kind == .subscription && $0.revocationDate == nil && !$0.isFamilyShared }
         await wallet.seedEntitlementFromStoreKit(hasActiveSubscription: hasActiveSubscription)
     }
 
@@ -203,11 +205,14 @@ enum ProcessOutcome: Sendable, Equatable {
         switch self {
         case .credited, .alreadyProcessed:
             .completed(transactionID: transactionID)
-        case .pendingRetry:
+        // `.inFlight`: aynı transaction'ı işleyen eşzamanlı BAŞKA bir yol var (purchase() ↔ observer
+        // yarışı); kazanan krediyi yazar → kaybeden FAIL DEĞİL "birazdan kredilenecek" raporlar (audit
+        // MEDIUM: yanlış "satın alma başarısız" bannerı + negatif puanlama sinyali önlenir).
+        case .pendingRetry, .inFlight:
             .verificationPending
         case .invalidReceipt:
             .invalidReceipt
-        case .revoked, .rejected, .inFlight:
+        case .revoked, .rejected:
             .failed(.wallet(.transactionConflict))
         }
     }

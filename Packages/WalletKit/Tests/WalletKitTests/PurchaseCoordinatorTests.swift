@@ -47,6 +47,15 @@ struct PurchaseCoordinatorTests {
         }
     }
 
+    // MARK: - audit MEDIUM: dual-delivery kaybedeni YANLIŞ fail raporlamamalı
+
+    @Test func inFlightPendingRaporlarFailDegil() {
+        // Aynı transaction hem purchase() hem observer'dan gelince kaybeden `.inFlight` alır. Bu, kazananın
+        // krediyi yazdığı bir YARIŞTIR — kullanıcıya "satın alma başarısız" (+ negatif puanlama sinyali)
+        // GÖSTERİLMEMELİ. `.inFlight` → `.verificationPending` (birazdan kredilenecek), `.failed` DEĞİL.
+        #expect(ProcessOutcome.inFlight.flowResult(transactionID: "9001") == .verificationPending)
+    }
+
     // MARK: - §575 audit HIGH: uçuştaki kredi hesap-değişiminde sızmamalı
 
     @Test func inFlightPurchaseCreditDroppedAfterAccountSwitch() async {
@@ -334,5 +343,19 @@ struct PurchaseCoordinatorTests {
         await sut.coordinator.seedEntitlementsFromStoreKit()
 
         #expect(await sut.store.hasAccess(to: EpisodeID("any")))
+    }
+
+    @Test func aileSharedAbonelikTohumuVipVERMEZ() async {
+        // Aile Paylaşımı KAPALI (06 §4.7): `process()` family-shared'i reddeder; SEED de aynı politikayı
+        // uygulamalı — aksi halde Apple ailesindeki bir yakınının VIP'i, kullanıcıya bedava istemci-VIP verir.
+        let sut = make()
+        sut.purchases.setEntitlements([
+            .fixture(id: 1, productID: "com.shortseries.vip.weekly", kind: .subscription, ownership: .familyShared)
+        ])
+
+        await sut.coordinator.seedEntitlementsFromStoreKit()
+
+        #expect(await sut.store.hasAccess(to: EpisodeID("any")) == false)
+        #expect(await sut.store.subscriptionStatus().grantsFullAccess == false)
     }
 }

@@ -66,6 +66,23 @@ struct VIPSubscriptionActivationTests {
         model.onDisappear()
     }
 
+    @Test func completedAmaVIPDegilseAktivasyonTetiklemez() async {
+        // audit: StoreKit `.completed` ama server entitlement henüz VIP DEĞİL (verify lag / alreadyProcessed
+        // sonrası refresh fail). Aktivasyon ATILMAMALI — aksi halde paywall erken kapanır ve hasAccess=false
+        // olan kilitli bölüme çıkmaz-sokak yönlendirilir. Canlı path (handleEntitlementChange) isVIP ile kapılı.
+        let gateway = FakeWalletGateway(subscription: .none)
+        let purchasing = FakeWalletPurchasing()
+        purchasing.purchaseResults = [.completed(transactionID: "tx1")]
+        let delegate = SpyVIPSubscriptionDelegate()
+        let model = makeModel(gateway: gateway, purchasing: purchasing, delegate: delegate)
+        await model.begin()
+
+        await model.subscribe()
+
+        #expect(delegate.activations == 0)
+        model.onDisappear()
+    }
+
     @Test func zatenVIPYonetimModuSahteAktivasyonTetiklemez() async {
         // Yönetim modunda açılan (zaten VIP) ekran, canlı entitlement replay'inde didActivate ATMAZ.
         let gateway = FakeWalletGateway(subscription: .vip(plan: .monthly))

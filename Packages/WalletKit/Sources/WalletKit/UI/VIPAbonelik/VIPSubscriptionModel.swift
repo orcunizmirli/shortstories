@@ -190,8 +190,7 @@ public final class VIPSubscriptionModel {
         guard !started else { return }
         started = true
         subscription = await wallet.subscriptionStatus()
-        // Zaten VIP açılan yönetim modunda aktivasyonu "tüketilmiş" say → canlı akış replay'i sahte
-        // didActivate tetiklemez (sheet yalnız BU ekran ömründe VIP olunca kapanmalı).
+        // Zaten VIP (yönetim modu) açılışta aktivasyonu "tüketilmiş" say → canlı replay sahte didActivate atmaz.
         didFireActivation = subscription.isVIP
         // Await sırasında sheet kapandıysa gözlem kurma (kalıcı sızıntı olmasın).
         guard !isDisposed else { return }
@@ -212,10 +211,9 @@ public final class VIPSubscriptionModel {
         }
     }
 
-    /// Entitlement değişimi (başlangıç/expiry/grace/iade) → durumu otoritatif tazele; mode buna göre
-    /// purchase↔management geçer (06 §8.4). VIP BU ekran ömründe aktifleşirse — satın alma StoreKit
-    /// sonucundan bağımsız (ör. başka cihaz/family/pending Ask-to-Buy onayı) — aktivasyon delegate'i
-    /// idempotent atılır (sheet yığını kapanır, kilitli bölüm oynar; 06 §6.6 / §8).
+    /// Entitlement değişimi → durumu otoritatif tazele; mode purchase↔management geçer (06 §8.4). VIP bu
+    /// ekran ömründe aktifleşirse (StoreKit sonucundan bağımsız: başka cihaz/pending onay) aktivasyon
+    /// delegate'i idempotent atılır.
     private func handleEntitlementChange() async {
         subscription = await wallet.subscriptionStatus()
         if subscription.isVIP {
@@ -223,8 +221,8 @@ public final class VIPSubscriptionModel {
         }
     }
 
-    /// Aktivasyon delegate'ini ekran ömründe EN FAZLA BİR KEZ atar (subscribe .completed VE canlı
-    /// gözlem aynı aktivasyonu görebilir → çift çağrı yok).
+    /// Aktivasyon delegate'ini ekran ömründe EN FAZLA BİR KEZ atar (subscribe .completed + canlı gözlem
+    /// aynı aktivasyonu görebilir → çift çağrı yok).
     private func fireActivationIfNeeded() {
         guard !didFireActivation else { return }
         didFireActivation = true
@@ -266,7 +264,7 @@ public final class VIPSubscriptionModel {
     }
 
     public func subscribe() async {
-        // Çift satın alma koruması: uçuşta VEYA Ask-to-Buy onayı beklerken (pending) yeni istek yok.
+        // Çift satın alma koruması: uçuşta/pending iken yeni istek yok.
         guard !purchasePhase.preventsNewPurchase, let option = selectedOption else { return }
         purchasePhase = .purchasing(productID: option.product.id)
         trackSubscriptionStart(option)
@@ -278,7 +276,12 @@ public final class VIPSubscriptionModel {
         case let .completed(transactionID):
             subscription = await wallet.subscriptionStatus()
             trackSubscriptionSuccess(option, transactionID: transactionID)
-            fireActivationIfNeeded()
+            // Aktivasyonu yalnız entitlement GERÇEKTEN VIP iken at (handleEntitlementChange simetrisi):
+            // `.completed` ama non-VIP (verify lag) paywall'ı erken kapatıp kilitli bölüme yönlendirmesin
+            // (audit); VIP canlı gelince gözlemci atar (didFireActivation tek sefer).
+            if subscription.isVIP {
+                fireActivationIfNeeded()
+            }
         case .cancelled:
             break // sessiz (06 §7.5)
         case let .failed(error):
@@ -290,11 +293,10 @@ public final class VIPSubscriptionModel {
         }
     }
 
-    /// Win-back banner CTA'sı (SS-099 F2): offer'ın ait olduğu plana geçip mevcut VIP satın-alma
-    /// akışına bağlanır — coin/entitlement mutasyonu YOK, karar `subscribe()` durum makinesine düşer.
-    /// TODO(SS-099): StoreKit 2 win-back offer purchase özel imza ister (`Product.PurchaseOption`
-    ///   win-back offer imza/nonce). Canlı katman offer'ı bağladığında `purchasing.purchase` bu
-    ///   parametreyi taşıyacak; şimdilik standart abonelik satın alma akışına (graceful) bağlanır.
+    /// Win-back banner CTA'sı (SS-099 F2): offer'ın planına geçip mevcut VIP satın-alma akışına bağlanır
+    /// (coin/entitlement mutasyonu YOK; `subscribe()` durum makinesine düşer).
+    /// TODO(SS-099): StoreKit 2 win-back offer purchase özel imza ister (`Product.PurchaseOption` nonce);
+    ///   canlı katman bağladığında `purchasing.purchase` taşır; şimdilik standart akışa graceful bağlanır.
     public func subscribeViaWinBack() {
         if let option = winBackOfferOption {
             select(option.plan)
@@ -302,9 +304,8 @@ public final class VIPSubscriptionModel {
         Task { await subscribe() }
     }
 
-    /// Win-back banner bu ekran ömründe İLK kez göründüğünde App'e bildirir (frekans sayacını App
-    /// persist eder; 07 §5.3). İdempotent — banner yeniden çizilse de bir kez tetikler. View banner'ın
-    /// `.onAppear`'ında çağırır.
+    /// Win-back banner bu ekran ömründe İLK kez göründüğünde App'e bildirir (frekans sayacını App persist
+    /// eder; 07 §5.3). İdempotent — banner yeniden çizilse de bir kez tetikler (View `.onAppear`'ında).
     public func winBackBannerAppeared() {
         guard !didNotifyWinBack else { return }
         let surface = winBackSurface
