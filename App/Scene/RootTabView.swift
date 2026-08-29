@@ -77,7 +77,24 @@ private struct HomeTabView: View {
             .navigationDestination(for: AppRoute.self) { coordinator.destination(for: $0) }
             .toolbar(.hidden, for: .navigationBar)
             .task { await coordinator.continueEntry.load() }
+            .sheet(isPresented: bolumListesiBinding) {
+                if let model = coordinator.bolumListesiModel {
+                    BolumListesiView(model: model)
+                }
+            }
         }
+    }
+
+    /// BolumListesi sunum bağı: model non-nil iken sheet açık; swipe/kapanışta koordinatör temizlenir.
+    private var bolumListesiBinding: Binding<Bool> {
+        Binding(
+            get: { coordinator.bolumListesiModel != nil },
+            set: { presented in
+                if !presented {
+                    coordinator.bolumListesiRequestsDismiss()
+                }
+            }
+        )
     }
 }
 

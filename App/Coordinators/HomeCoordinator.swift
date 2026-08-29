@@ -30,6 +30,10 @@ final class HomeCoordinator {
     var path = NavigationPath()
     /// SS-065 "kaldığın yerden devam et" giriş yüzeyi durumu.
     let continueEntry: ContinueWatchingEntryModel
+    /// BolumListesi sheet'i (04 §8.5) — non-nil olunca RootTabView sunar; seçim/kapamada temizlenir.
+    private(set) var bolumListesiModel: BolumListesiModel?
+    /// Feed'de şu an aktif olan bölüm (BolumListesi vurgusu). `didChangeActiveIndex` günceller.
+    private(set) var activeEpisodeID: EpisodeID?
 
     /// Bekleyen bağlamsal oynatma isteği: RootTabView (Ana Sayfa görünür olunca / yeni intent gelince)
     /// `seedFeedWithPendingPlaybackIfNeeded()` ile TÜKETİR → `PlaybackFeedResolver` bunu feed-entry
@@ -224,8 +228,9 @@ extension HomeCoordinator: PlayerFeedDelegate {
         walletFlow.presentUnlock(for: episode, in: series, source: .autoAdvance)
     }
 
-    func playerFeed(_: PlayerFeedViewController, didChangeActiveIndex _: Int, episode _: Episode?) {
-        // F1: aktif kart değişimi — SS-062 feed sayfalama + izleme-ilerleme heartbeat'i Faz 2'de.
+    func playerFeed(_: PlayerFeedViewController, didChangeActiveIndex _: Int, episode: Episode?) {
+        // Aktif bölümü izle → BolumListesi "şu an" vurgusu (SS-062 sayfalama/heartbeat Faz 2'de).
+        activeEpisodeID = episode?.id
     }
 
     func playerFeedDidRequestMoreItems(_: PlayerFeedViewController) {
@@ -258,8 +263,14 @@ extension HomeCoordinator: PlayerFeedDelegate {
         tabCoordinator?.sharePresenter.share(url)
     }
 
-    func playerFeed(_: PlayerFeedViewController, didRequestEpisodeList _: Series) {
-        // TODO(04 §8.5): BolumListesi sheet'i — PlayerKit'te public bir liste view'ı yok (F1 iskelet).
+    func playerFeed(_: PlayerFeedViewController, didRequestEpisodeList series: Series) {
+        // BolumListesi sheet'i (04 §8.5): DiscoverKit modeli (katalog+entitlement) kurulur, aktif bölüm
+        // vurgulanır; RootTabView `bolumListesiModel != nil` iken sunar. Seçim/kapama delegate'te temizler.
+        bolumListesiModel = composition.makeBolumListesiModel(
+            series: series,
+            currentEpisodeID: activeEpisodeID,
+            delegate: self
+        )
     }
 
     func playerFeed(_: PlayerFeedViewController, didRequestPlaybackSpeedMenu _: Double) {
@@ -268,5 +279,20 @@ extension HomeCoordinator: PlayerFeedDelegate {
 
     func playerFeed(_: PlayerFeedViewController, didRequestSubtitleMenu _: Episode) {
         // TODO(04 §8.3 / SS-046): altyazı seçim sheet'i — F1 iskelet.
+    }
+}
+
+// MARK: - BolumListesiDelegate (04 §8.5) — bölüm seçimi feed'e döner
+
+extension HomeCoordinator: BolumListesiDelegate {
+    func bolumListesiDidSelectEpisode(number: Int, in seriesID: SeriesID) {
+        // Sheet'i kapat + feed'i seçilen bölüme geçir (mevcut bağlamsal oynatma yolu). Kilitliyse
+        // feed o bölümde UnlockSheet'i açar (didReachLockedEpisode) — burada kilit kontrolü YOK.
+        bolumListesiModel = nil
+        requestPlayback(PlaybackIntent(seriesID: seriesID, episodeNumber: number))
+    }
+
+    func bolumListesiRequestsDismiss() {
+        bolumListesiModel = nil
     }
 }

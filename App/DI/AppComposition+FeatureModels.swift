@@ -70,6 +70,22 @@ extension AppComposition {
         )
     }
 
+    /// BolumListesi modeli (04 §8.5) — player feed hızlı bölüm-değiştirici; DiziDetay ile AYNI
+    /// katalog + entitlement portları (kilit türetimi). `currentEpisodeID`: aktif bölüm (vurgu).
+    func makeBolumListesiModel(
+        series: Series,
+        currentEpisodeID: EpisodeID?,
+        delegate: (any BolumListesiDelegate)?
+    ) -> BolumListesiModel {
+        BolumListesiModel(
+            series: series,
+            currentEpisodeID: currentEpisodeID,
+            catalog: catalog,
+            entitlement: walletStore,
+            delegate: delegate
+        )
+    }
+
     // MARK: - WalletKit sheet'leri (çapraz — WalletFlowCoordinator sunar)
 
     /// UnlockSheet modeli — canlı cüzdan (bakiye/entitlement yayınları + coin unlock) + SS-114 reklam-ile-aç
