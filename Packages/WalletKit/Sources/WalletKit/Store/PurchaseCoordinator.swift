@@ -127,6 +127,9 @@ public actor PurchaseCoordinator {
         processing.insert(transaction.id)
         defer { processing.remove(transaction.id) }
 
+        // Hesap epoch'unu verify await'inden ÖNCE yakala (§575 audit HIGH): verify uçuştayken hesap
+        // değişirse (reset) bu kredi ÖNCEKİ hesaba aittir → `applyIfCurrentEpoch` onu düşürür.
+        let epoch = await wallet.currentEpoch()
         do {
             let outcome = try await remote.verifyPurchase(
                 productID: transaction.productID,
@@ -134,7 +137,7 @@ public actor PurchaseCoordinator {
                 kind: transaction.kind,
                 idempotencyKey: transaction.idempotencyKey
             )
-            return await apply(outcome, transaction: transaction)
+            return await apply(outcome, transaction: transaction, epoch: epoch)
         } catch {
             // Geçici hata: finish ETME — unfinished kalır, sonraki updates/retry turunda gelir.
             log.error("iap verify failed, left unfinished: \(String(describing: error))")
@@ -142,24 +145,24 @@ public actor PurchaseCoordinator {
         }
     }
 
-    private func apply(_ outcome: VerifyOutcome, transaction: VerifiedTransaction) async -> ProcessOutcome {
+    private func apply(_ outcome: VerifyOutcome, transaction: VerifiedTransaction, epoch: Int) async -> ProcessOutcome {
         switch outcome {
         case let .coinsCredited(_, walletSnapshot, _):
-            await wallet.apply(walletSnapshot: walletSnapshot)
+            await wallet.applyIfCurrentEpoch(walletSnapshot: walletSnapshot, epoch: epoch)
             await purchases.finish(transactionID: transaction.id)
             analytics.track("iap_credited", parameters: ["product_id": .string(transaction.productID)])
             return .credited
         case let .subscriptionUpdated(subscription):
-            await wallet.apply(subscription: subscription)
+            await wallet.applyIfCurrentEpoch(subscription: subscription, epoch: epoch)
             await purchases.finish(transactionID: transaction.id)
             analytics.track("iap_subscription_updated", parameters: ["product_id": .string(transaction.productID)])
             return .credited
         case let .alreadyProcessed(walletSnapshot, subscription):
             if let walletSnapshot {
-                await wallet.apply(walletSnapshot: walletSnapshot)
+                await wallet.applyIfCurrentEpoch(walletSnapshot: walletSnapshot, epoch: epoch)
             }
             if let subscription {
-                await wallet.apply(subscription: subscription)
+                await wallet.applyIfCurrentEpoch(subscription: subscription, epoch: epoch)
             }
             if walletSnapshot == nil, subscription == nil {
                 await wallet.refresh()

@@ -38,6 +38,38 @@ struct PurchaseCoordinatorTests {
         )
     }
 
+    private func waitUntil(_ condition: @Sendable () -> Bool) async {
+        for _ in 0 ..< 1000 {
+            if condition() {
+                return
+            }
+            await Task.yield()
+        }
+    }
+
+    // MARK: - §575 audit HIGH: uçuştaki kredi hesap-değişiminde sızmamalı
+
+    @Test func inFlightPurchaseCreditDroppedAfterAccountSwitch() async {
+        let sut = make()
+        let gate = AsyncGate()
+        sut.remote.verifyGate = { await gate.wait() }
+        sut.purchases.purchaseResult = .success(.success(.fixture(id: 2002)))
+        sut.remote.verifyResults = [.success(coinsCredited(purchased: 999, version: 87))] // X hesabı
+
+        let purchaseTask = Task { await sut.coordinator.purchase(productID: "com.shortseries.coins.tier3") }
+        await waitUntil { sut.remote.verifyCallCount == 1 } // verify uçuşta (epoch yakalandı)
+
+        // Hesap değişimi: reset (epoch bump) + Y hesabının snapshot'ı.
+        await sut.store.reset()
+        await sut.store.apply(walletSnapshot: .fixture(purchased: 20, version: 1))
+
+        await gate.open()
+        _ = await purchaseTask.value
+
+        // X'in 999 kredisi Y hesabına SIZMAMALI.
+        #expect(await sut.store.currentBalance() == CoinBalance(purchasedCoins: 20, earnedCoins: 0))
+    }
+
     // MARK: - Satın alma yolları
 
     @Test func basariliSatinAlmaKrediEderVeFinishEder() async {

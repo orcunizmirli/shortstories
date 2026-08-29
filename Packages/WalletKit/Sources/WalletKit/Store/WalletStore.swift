@@ -1,23 +1,19 @@
 import AppFoundation
 import Foundation
 
-/// Cüzdan durumu ve kilit açma akışının otoritatif istemci-tarafı sahibi (SS-092/095/097).
-/// `actor` (kanon §2). Sorumluluklar:
-/// - Bakiye state'i; her mutasyon SUNUCU snapshot'ından SET edilir (asla lokal aritmetik).
-/// - `version` monoton-artan guard (out-of-order + idempotent kredi koruması).
-/// - Optimistic kilit açma: earned-önce ön-düşüm + server reddinde ROLLBACK.
-/// - Aynı anda en fazla 1 bekleyen unlock (06 §6.4).
-/// - `EntitlementChecking` (R8): PlayerKit kilit kontrolü buradan beslenir.
-/// - Entitlement + bakiye değişim yayını (AsyncStream; ≤5 sn hedefi push tabanlı).
+/// Cüzdan durumu ve kilit açma akışının otoritatif istemci-tarafı sahibi (SS-092/095/097). `actor`
+/// (kanon §2). Sorumluluklar: bakiye state'i (her mutasyon SUNUCU snapshot'ından SET; lokal aritmetik
+/// YOK); `version` monoton guard (out-of-order + idempotent kredi); optimistic kilit (earned-önce
+/// ön-düşüm + server reddinde rollback); aynı anda ≤1 bekleyen unlock (06 §6.4); `EntitlementChecking`
+/// (R8, PlayerKit kilit kontrolü); entitlement + bakiye değişim yayını (AsyncStream, ≤5 sn push).
 public actor WalletStore: EntitlementChecking {
     private let remote: any WalletRemoting
     private let analytics: any AnalyticsTracking
     private let log: any Logging
     private let makeIdempotencyKey: @Sendable () -> String
     private let now: @Sendable () -> Date
-    /// Kazanç-hızı danışma monitörü (SS-100). Earned-kese ARTIŞLARI buraya raporlanır; monitör
-    /// pencere-içi hızı türetir ve `FraudSignalInterceptor`'ı besler. `nil` = fraud sinyali bağlı
-    /// değil (F1/test). Yalnız GÖZLEM: bakiye/entitlement akışını ETKİLEMEZ.
+    /// Kazanç-hızı danışma monitörü (SS-100). Earned-kese ARTIŞLARI raporlanır (`FraudSignalInterceptor`).
+    /// `nil` = bağlı değil (F1/test). Yalnız GÖZLEM: bakiye/entitlement akışını ETKİLEMEZ.
     private let earnVelocityRecorder: (any EarnVelocityRecording)?
 
     private var snapshot: WalletSnapshot
@@ -27,6 +23,9 @@ public actor WalletStore: EntitlementChecking {
     private var storeKitOptimisticVIP = false
     private var unlockedEpisodes: Set<EpisodeID> = []
     private var pendingUnlock: EpisodeID?
+    /// Hesap epoch'u (§575 audit HIGH): her `reset()` artırır; uçuştaki önceki-hesap yanıtını fence eder
+    /// (version-guard hesaplar-arası ayrım yapamaz — bkz. dosya sonundaki epoch-guard extension'ı).
+    private var accountEpoch = 0
 
     private let entitlementBroadcast = AsyncMulticast<EntitlementSnapshot>()
     private let balanceBroadcast = AsyncMulticast<CoinBalance>()
@@ -62,14 +61,12 @@ public actor WalletStore: EntitlementChecking {
 
     // MARK: - Hesap-değişimi (§575)
 
-    /// Hesap-değişiminde (SS-132/§575) yerel cüzdan state'ini SIFIRLAR — önceki hesabın
-    /// bakiye/abonelik/açılmış-bölüm state'i yeni hesaba SIZMAZ. Monoton version + subscription
-    /// guard'ları da sıfırlanır (`hasServerSnapshot`/`hasServerSubscription` = false): reset SONRASI
-    /// ilk `refresh()` yeni hesabın (muhtemelen düşük-version) snapshot'ını TAZE uygular — aksi halde
-    /// guard onu bayat sanıp düşürür ve eski bakiye yapışkan kalırdı. Temizlenen state gözlemcilere
-    /// yayınlanır: stale bakiye/VIP display'i (coin header, ProfilModel) anında düşer, refresh
-    /// başarısız olsa bile eski hesap verisi görünmez.
+    /// Hesap-değişiminde (SS-132/§575) yerel cüzdan state'ini SIFIRLAR — önceki hesabın bakiye/abonelik/
+    /// açılmış-bölüm state'i yeni hesaba SIZMAZ. Version + subscription guard'ları da sıfırlanır (ilk
+    /// `refresh()` yeni hesabın düşük-version snapshot'ını TAZE uygular); state gözlemcilere yayınlanır.
+    /// `accountEpoch` artışı uçuştaki önceki-hesap yanıtlarını fence eder (audit HIGH).
     public func reset() {
+        accountEpoch &+= 1 // uçuştaki önceki-hesap yanıtlarını fence et (audit HIGH)
         snapshot = Self.initialSnapshot(now: now)
         hasServerSnapshot = false
         subscription = .none
@@ -101,8 +98,8 @@ public actor WalletStore: EntitlementChecking {
 
     // MARK: - EntitlementChecking (R8)
 
-    /// PlayerKit ön-kontrolü (04 §9.1): VIP tüm bölümleri açar; değilse daha önce açılmış mı.
-    /// Oynatma yetkisinin doğruluk kaynağı yine sunucudur (`POST /playback/authorize`).
+    /// PlayerKit ön-kontrolü (04 §9.1): VIP tümü açar; değilse daha önce açılmış mı. Yetkinin doğruluk
+    /// kaynağı yine sunucudur (`POST /playback/authorize`).
     public func hasAccess(to episodeID: EpisodeID) async -> Bool {
         subscription.grantsFullAccess || unlockedEpisodes.contains(episodeID)
     }
@@ -119,32 +116,34 @@ public actor WalletStore: EntitlementChecking {
 
     // MARK: - Sunucu senkronu
 
-    /// `GET /wallet` + `GET /subscription` — otoritatif tazeleme (06 §4.5).
+    /// `GET /wallet` + `GET /subscription` — otoritatif tazeleme (06 §4.5). Epoch fetch await'inden ÖNCE
+    /// yakalanır; hesap araya değiştiyse (reset) uçuştaki önceki-hesap yanıtı apply edilMEZ (§575).
     public func refresh() async {
+        let epoch = accountEpoch
         do {
-            try await applyWallet(remote.fetchWallet())
+            let wallet = try await remote.fetchWallet()
+            guard epoch == accountEpoch else {
+                log.debug("wallet refresh dropped: account epoch changed mid-flight")
+                return
+            }
+            applyWallet(wallet)
         } catch {
             log.error("wallet refresh failed: \(String(describing: error))")
         }
         do {
-            try await applySubscription(remote.fetchSubscription())
+            let subscription = try await remote.fetchSubscription()
+            guard epoch == accountEpoch else {
+                log.debug("subscription refresh dropped: account epoch changed mid-flight")
+                return
+            }
+            applySubscription(subscription)
         } catch {
             log.error("subscription refresh failed: \(String(describing: error))")
         }
     }
 
-    /// Bakiye snapshot'ı uygular (version-guard). PurchaseCoordinator kredilerde de kullanır.
-    public func apply(walletSnapshot incoming: WalletSnapshot) {
-        applyWallet(incoming)
-    }
-
-    /// Abonelik durumunu uygular ve entitlement değişimini yayınlar.
-    public func apply(subscription incoming: SubscriptionStatus) {
-        applySubscription(incoming)
-    }
-
-    /// StoreKit `currentEntitlements`'tan iyimser VIP tohumlar (06 §4.5): yalnız sunucu
-    /// aboneliği henüz gelmemişken. Sunucu snapshot'ı geldiğinde ezilir; uyuşmazlık loglanır.
+    /// StoreKit `currentEntitlements`'tan iyimser VIP tohumlar (06 §4.5): yalnız sunucu aboneliği henüz
+    /// gelmemişken. Sunucu snapshot'ı geldiğinde ezilir; uyuşmazlık loglanır.
     public func seedEntitlementFromStoreKit(hasActiveSubscription: Bool) {
         guard !hasServerSubscription, hasActiveSubscription else { return }
         storeKitOptimisticVIP = true
@@ -185,12 +184,19 @@ public actor WalletStore: EntitlementChecking {
         }
 
         let key = makeIdempotencyKey()
+        let epoch = accountEpoch // await'ten ÖNCE yakala (§575 audit HIGH)
         do {
             let outcome = try await remote.unlock(
                 episodeID: episodeID,
                 expectedPrice: expectedPrice,
                 idempotencyKey: key
             )
+            // Hesap araya değiştiyse (reset epoch'u artırdı) bu yanıt ÖNCEKİ hesaba aittir → uygulama
+            // (applyWallet + confirmUnlocked) X'in bakiyesini/kilidini Y'ye sızdırır → DÜŞÜR.
+            guard epoch == accountEpoch else {
+                log.debug("unlock response dropped: account epoch changed mid-flight")
+                return .failed(.wallet(.transactionConflict))
+            }
             return handleUnlockOutcome(outcome, episodeID: episodeID, wasUnlocked: wasUnlocked)
         } catch let error as AppError {
             rollbackOptimisticUnlock(episodeID, wasUnlocked: wasUnlocked)
@@ -354,5 +360,41 @@ public actor WalletStore: EntitlementChecking {
                 lastUnlockedEpisode: lastUnlocked
             )
         )
+    }
+}
+
+// MARK: - Snapshot uygulama + hesap-epoch guard'ı (§575 audit HIGH)
+
+/// `apply(...)` GÜNCEL epoch'ta uygular (test seed'i + await-geçmeyen çağrılar). Cross-actor krediciler
+/// (PurchaseCoordinator) server await'ini AŞTIĞINDA `currentEpoch()`'u await ÖNCESİ okur ve
+/// `applyIfCurrentEpoch(...:epoch:)`e geçer; hesap araya değiştiyse kredi ÖNCEKİ hesaba aittir → düşürülür
+/// (TOCTOU yok; kontrol+apply tek actor-hop). unlock()/refresh() epoch'u kendi içinde yakalar.
+public extension WalletStore {
+    func apply(walletSnapshot incoming: WalletSnapshot) {
+        applyWallet(incoming)
+    }
+
+    func apply(subscription incoming: SubscriptionStatus) {
+        applySubscription(incoming)
+    }
+
+    func currentEpoch() -> Int {
+        accountEpoch
+    }
+
+    func applyIfCurrentEpoch(walletSnapshot incoming: WalletSnapshot, epoch: Int) {
+        guard epoch == accountEpoch else {
+            log.debug("wallet credit dropped: account epoch changed mid-flight")
+            return
+        }
+        applyWallet(incoming)
+    }
+
+    func applyIfCurrentEpoch(subscription incoming: SubscriptionStatus, epoch: Int) {
+        guard epoch == accountEpoch else {
+            log.debug("subscription update dropped: account epoch changed mid-flight")
+            return
+        }
+        applySubscription(incoming)
     }
 }

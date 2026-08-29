@@ -20,6 +20,7 @@ final class FakeWalletRemote: WalletRemoting, @unchecked Sendable {
     // Yavaşlatma kancaları (eşzamanlılık testleri için): çağrıda beklet.
     var verifyGate: (@Sendable () async -> Void)?
     var unlockGate: (@Sendable () async -> Void)?
+    var fetchWalletGate: (@Sendable () async -> Void)?
 
     /// Spy
     struct UnlockCall: Sendable {
@@ -51,6 +52,9 @@ final class FakeWalletRemote: WalletRemoting, @unchecked Sendable {
 
     func fetchWallet() async throws -> WalletSnapshot {
         lock.withLock { fetchWalletCount += 1 }
+        if let gate = fetchWalletGate {
+            await gate()
+        }
         return try lock.withLock { walletResult }.get()
     }
 
