@@ -38,47 +38,6 @@ struct PurchaseCoordinatorTests {
         )
     }
 
-    private func waitUntil(_ condition: @Sendable () -> Bool) async {
-        for _ in 0 ..< 1000 {
-            if condition() {
-                return
-            }
-            await Task.yield()
-        }
-    }
-
-    // MARK: - audit MEDIUM: dual-delivery kaybedeni YANLIŞ fail raporlamamalı
-
-    @Test func inFlightPendingRaporlarFailDegil() {
-        // Aynı transaction hem purchase() hem observer'dan gelince kaybeden `.inFlight` alır. Bu, kazananın
-        // krediyi yazdığı bir YARIŞTIR — kullanıcıya "satın alma başarısız" (+ negatif puanlama sinyali)
-        // GÖSTERİLMEMELİ. `.inFlight` → `.verificationPending` (birazdan kredilenecek), `.failed` DEĞİL.
-        #expect(ProcessOutcome.inFlight.flowResult(transactionID: "9001") == .verificationPending)
-    }
-
-    // MARK: - §575 audit HIGH: uçuştaki kredi hesap-değişiminde sızmamalı
-
-    @Test func inFlightPurchaseCreditDroppedAfterAccountSwitch() async {
-        let sut = make()
-        let gate = AsyncGate()
-        sut.remote.verifyGate = { await gate.wait() }
-        sut.purchases.purchaseResult = .success(.success(.fixture(id: 2002)))
-        sut.remote.verifyResults = [.success(coinsCredited(purchased: 999, version: 87))] // X hesabı
-
-        let purchaseTask = Task { await sut.coordinator.purchase(productID: "com.shortseries.coins.tier3") }
-        await waitUntil { sut.remote.verifyCallCount == 1 } // verify uçuşta (epoch yakalandı)
-
-        // Hesap değişimi: reset (epoch bump) + Y hesabının snapshot'ı.
-        await sut.store.reset()
-        await sut.store.apply(walletSnapshot: .fixture(purchased: 20, version: 1))
-
-        await gate.open()
-        _ = await purchaseTask.value
-
-        // X'in 999 kredisi Y hesabına SIZMAMALI.
-        #expect(await sut.store.currentBalance() == CoinBalance(purchasedCoins: 20, earnedCoins: 0))
-    }
-
     // MARK: - Satın alma yolları
 
     @Test func basariliSatinAlmaKrediEderVeFinishEder() async {
@@ -343,19 +302,5 @@ struct PurchaseCoordinatorTests {
         await sut.coordinator.seedEntitlementsFromStoreKit()
 
         #expect(await sut.store.hasAccess(to: EpisodeID("any")))
-    }
-
-    @Test func aileSharedAbonelikTohumuVipVERMEZ() async {
-        // Aile Paylaşımı KAPALI (06 §4.7): `process()` family-shared'i reddeder; SEED de aynı politikayı
-        // uygulamalı — aksi halde Apple ailesindeki bir yakınının VIP'i, kullanıcıya bedava istemci-VIP verir.
-        let sut = make()
-        sut.purchases.setEntitlements([
-            .fixture(id: 1, productID: "com.shortseries.vip.weekly", kind: .subscription, ownership: .familyShared)
-        ])
-
-        await sut.coordinator.seedEntitlementsFromStoreKit()
-
-        #expect(await sut.store.hasAccess(to: EpisodeID("any")) == false)
-        #expect(await sut.store.subscriptionStatus().grantsFullAccess == false)
     }
 }

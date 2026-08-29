@@ -85,9 +85,14 @@ public actor PurchaseCoordinator {
 
     // MARK: - Restore (06 §4.6)
 
-    /// "Satın Alımları Geri Yükle": App Store senkronu + backend snapshot tazeleme.
+    /// "Satın Alımları Geri Yükle": App Store senkronu + bekleyen (unfinished) transaction'ları yeniden
+    /// dene + backend snapshot tazeleme. `retryUnfinished()`: ödenmiş ama /iap/verify kalıcı başarısız
+    /// olduğu için askıda kalan bir consumable kredisini bu kullanıcı-tetiklemeli eylem KURTARIR (audit —
+    /// aksi halde restore sync()+refresh() stuck consumable için hiçbir şey yapmaz, kredi sonraki açılışa
+    /// kadar gelmezdi).
     public func restore() async throws {
         try await purchases.sync()
+        await retryUnfinished()
         await wallet.refresh()
     }
 

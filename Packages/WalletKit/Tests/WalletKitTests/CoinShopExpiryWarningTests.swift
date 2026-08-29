@@ -71,4 +71,27 @@ struct CoinShopExpiryWarningTests {
         #expect(model.earnedExpiryWarning == nil)
         model.onDisappear()
     }
+
+    @Test func canliBakiyeEarnedSifirlaninceVadeUyarisiGizlenir() async {
+        // audit: buckets/notice açılışta seed edilir; canlı bakiye yayını (yalnız CoinBalance) onları
+        // tazelemez → earned coin başka yüzeyde harcanınca 0 için vade bandı çizmemeli.
+        let now = Date(timeIntervalSince1970: 1_752_278_400)
+        let notice = ExpiryNotice(amount: 15, expiresAt: now.addingTimeInterval(3 * 86400))
+        let gateway = FakeWalletGateway(
+            balance: CoinBalance(purchasedCoins: 0, earnedCoins: 15),
+            snapshot: .fixture(purchased: 0, earned: 15, earnedExpiringSoon: notice)
+        )
+        let model = makeModel(gateway: gateway, now: { now })
+        await model.begin()
+        #expect(model.earnedExpiryWarning?.coins == 15) // önce görünür
+
+        gateway.pushBalance(CoinBalance(purchasedCoins: 0, earnedCoins: 0)) // earned harcandı
+        for _ in 0 ..< 2000 where model.balance.earnedCoins != 0 {
+            await Task.yield()
+        }
+
+        #expect(model.balance.earnedCoins == 0)
+        #expect(model.earnedExpiryWarning == nil) // 0 earned → bant yok
+        model.onDisappear()
+    }
 }

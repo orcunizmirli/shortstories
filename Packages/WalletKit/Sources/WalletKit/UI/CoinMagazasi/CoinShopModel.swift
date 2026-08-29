@@ -57,8 +57,13 @@ public final class CoinShopModel {
 
     /// Yaklaşan-vade uyarısının saf sunum türevi (SS-115 D1). View doğrudan çizer; uygun vade
     /// yoksa `nil` (bant çizilmez). `now` enjekte → deterministik "N gün".
+    ///
+    /// CANLI bakiye earned'i 0 iken uyarı GİZLENİR (audit): `earnedBuckets`/`earnedExpiringSoon` açılışta
+    /// seed edilir ve canlı bakiye yayını (yalnız `CoinBalance` taşır) bunları tazelemez → earned coin
+    /// başka yüzeyde harcanınca bayat kalıp artık-tutulmayan coin için vade bandı çizerdi.
     public var earnedExpiryWarning: EarnedExpiryWarning? {
-        EarnedExpiryWarning.resolve(buckets: earnedBuckets, notice: earnedExpiringSoon, now: now())
+        guard balance.earnedCoins > 0 else { return nil }
+        return EarnedExpiryWarning.resolve(buckets: earnedBuckets, notice: earnedExpiringSoon, now: now())
     }
 
     // MARK: - Bağımlılıklar
