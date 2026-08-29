@@ -162,10 +162,19 @@ private struct DiscoverTabView: View {
 // MARK: - Ödüller (OdulMerkezi)
 
 private struct RewardsTabView: View {
-    let coordinator: RewardsCoordinator
+    @Bindable var coordinator: RewardsCoordinator
 
     var body: some View {
-        OdulMerkeziView(model: coordinator.odulMerkeziModel)
+        NavigationStack {
+            OdulMerkeziView(model: coordinator.odulMerkeziModel)
+                .navigationDestination(isPresented: $coordinator.isPresentingReferral) {
+                    // RWD-07: push → kök `sharePresenter` paylaşım sheet'i bunun üstünde açılır (diziDetay
+                    // kalıbı; sheet-üstü-sheet çakışması olmaz). Davet kartı varsayılan flag KAPALI → gizli.
+                    DavetMerkeziView(model: coordinator.referralModel)
+                        .navigationTitle("Davet Et")
+                        .navigationBarTitleDisplayMode(.inline)
+                }
+        }
     }
 }
 

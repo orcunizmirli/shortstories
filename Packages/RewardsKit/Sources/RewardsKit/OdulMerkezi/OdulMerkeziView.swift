@@ -52,6 +52,9 @@ public struct OdulMerkeziView: View {
                 balanceHeader
                 checkInSection
                 missionSection
+                if model.referralCardVisible {
+                    referralEntryCard // varsayılan flag KAPALI → gizli (RWD-07 canlıda açar)
+                }
                 if model.rewardedAdCardVisible {
                     rewardedAdCard // F1'de flag KAPALI → gizli (SS-113 F2)
                 }
@@ -191,6 +194,35 @@ public struct OdulMerkeziView: View {
         case .offline: "Bağlantı gerekli — tekrar dene"
         case .generic: "Ödül alınamadı — tekrar dene"
         }
+    }
+
+    // MARK: - Davet giriş kartı (RWD-07; varsayılan flag KAPALI → gizli)
+
+    private var referralEntryCard: some View {
+        Button { model.openReferral() } label: {
+            HStack(spacing: DSSpacing.m) {
+                Image(systemName: "gift.fill")
+                    .font(DSTypography.headingM)
+                    .foregroundStyle(DSColors.coinGold)
+                VStack(alignment: .leading, spacing: DSSpacing.xxs) {
+                    Text("Arkadaşını Davet Et")
+                        .font(DSTypography.bodyEmphasized)
+                        .foregroundStyle(DSColors.textPrimary)
+                    Text("Davet et, ikiniz de coin kazanın")
+                        .font(DSTypography.caption)
+                        .foregroundStyle(DSColors.textSecondary)
+                }
+                Spacer(minLength: DSSpacing.s)
+                Image(systemName: "chevron.right")
+                    .font(DSTypography.captionEmphasized)
+                    .foregroundStyle(DSColors.textTertiary)
+            }
+            .padding(DSSpacing.l)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(DSColors.surface, in: RoundedRectangle(cornerRadius: DSRadius.card))
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint("Davet ekranını açar")
     }
 
     // MARK: - Rewarded ad kartı alanı (F1'de gizli — SS-113 F2)

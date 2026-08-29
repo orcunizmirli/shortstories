@@ -171,6 +171,8 @@ final class FakeRewardClaiming: RewardClaiming, @unchecked Sendable {
 @MainActor
 final class RewardsDelegateSpy: RewardsDelegate {
     var coinStore = 0
+    /// Davet giriş kartı açma sayısı (RWD-07).
+    var referral = 0
     /// Başarılı check-in claim'inde gelen streak-günleri (RTG-01 pozitif an).
     private(set) var checkInClaims: [Int] = []
 
@@ -180,6 +182,10 @@ final class RewardsDelegateSpy: RewardsDelegate {
 
     func rewardsDidClaimCheckIn(streakDay: Int) {
         checkInClaims.append(streakDay)
+    }
+
+    func rewardsOpensReferral() {
+        referral += 1
     }
 }
 

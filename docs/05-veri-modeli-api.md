@@ -621,6 +621,14 @@ Base URL: `https://api.shortseries.app/v1` (staging: `https://api.staging.shorts
 | 35 | `POST /auth/email/verify` | link: ✓ / reset: — | — | Doğrulama kodu teyidi (F2, §4.2.1) |
 | 36 | `POST /auth/email/password` | — (`passwordToken`) | — | Şifre belirleme / sıfırlama tamamlama (F2, §4.2.1) |
 | 37 | `POST /auth/email/login` | — | — | E-posta+şifre ile oturum açma (F2, §4.2.1) |
+| 38 | `GET /rewards/referral` | ✓ | — | Davet durumu: kod + sayaçlar (DavetMerkezi, RWD-07 — PREP-BEKLEYEN) |
+| 39 | `POST /rewards/referral/redeem` | ✓ | **zorunlu** | Davet kodu kullanma (RWD-07 — PREP-BEKLEYEN) |
+
+> **RWD-07 davet-arkadaş (referral) — İSTEMCİ MOCK SÖZLEŞMESİ (canlı endpoint PREP-BEKLEYEN):** İstemci soyutlaması (RewardsKit `ReferralGateway` portu + App `APIReferralGateway` adaptörü) commit'lidir ama `rewards.referral_card_enabled` KAPALI iken `MockReferralGateway`'e bağlanır (canlı çağrı YOK). Aşağıdaki şekiller adaptörün beklediği server sözleşmesidir (§4.7 zarf kalıbı); canlı endpoint + ekonomi/anti-fraud kararı gelene dek doğruluk kaynağı budur.
+>
+> `GET /rewards/referral` → `{ inviteCode, inviteURL, invitedCount, rewardedCount, pendingCount, rewardPerReferral, maxReferrals?, canRedeem }` (`inviteURL` sunucu verir; istemci kurmaz).
+>
+> `POST /rewards/referral/redeem` `{ code }` (Header `Idempotency-Key: UUID v4`) → **200** `{ reward{coins,bucket:"earned",expiresAt?}, referral{<state>}, wallet{purchasedCoins,earnedCoins} }` (server-otoriter kredi; istemci optimistik kredi VERMEZ). Çakışmalar (kullanıcıya-görünür): **404** `REFERRAL_CODE_INVALID`, **410** `REFERRAL_CODE_EXPIRED`, **422** `REFERRAL_SELF`, **409** `REFERRAL_ALREADY_REDEEMED` (taze durumla). Adaptör `error.code` yerine HTTP durum kodundan eşler (05 §9 idempotent POST listesine `/rewards/referral/redeem` eklenir).
 
 ### 4.2 Auth
 

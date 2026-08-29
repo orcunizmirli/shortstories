@@ -53,6 +53,7 @@ final class TabCoordinator {
         discover.tabCoordinator = self
         library.tabCoordinator = self
         profile.tabCoordinator = self
+        rewards.tabCoordinator = self // RWD-07: davet paylaşımı kök sharePresenter'a akar
     }
 
     // MARK: - Sekme geçişi (03 §3.2 kural 4)

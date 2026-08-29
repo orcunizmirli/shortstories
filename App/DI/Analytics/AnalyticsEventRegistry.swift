@@ -95,6 +95,12 @@ enum AnalyticsEventRegistry {
         "rewarded_ad_start",
         "rewarded_ad_complete",
         "rewarded_ad_fail",
+        // RWD-07 davet-arkadaş (referral) (08 §3.5): RewardsKit `ReferralModel` emit eder. `referral_view`
+        // (params: invited_count, can_redeem), `referral_shared`, `referral_redeemed` (2°; params:
+        // coin_reward, expires_at?). Registry'de OLMAZSA strictInDebug ilk davet ekranında assertionFailure.
+        "referral_view",
+        "referral_shared",
+        "referral_redeemed",
         // RTG-01 App Store puanlama istemi (00-genel-bakis.md §294): sistem istemi GERÇEKTEN talep
         // edilince yazılır (param: trigger = episode_completed / streak_day). Apple diyaloğu gösterip
         // göstermediğini garanti etmez → "istek" düzeyi event. Registry'de OLMAZSA strictInDebug crash.

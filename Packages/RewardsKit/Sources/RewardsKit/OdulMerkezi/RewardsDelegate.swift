@@ -12,8 +12,13 @@ public protocol RewardsDelegate: AnyObject {
     /// istemi; 00-genel-bakis.md §294). App koordinatörü bunu `ReviewPromptController`'a iletir.
     /// `streakDay`: kazanılan döngü günü (1–7). Varsayılan boş → mevcut conformer'lar/testler kırılmaz.
     func rewardsDidClaimCheckIn(streakDay: Int)
+
+    /// Davet giriş kartından "Arkadaşını Davet Et" → App `DavetMerkeziView`'ı sunar (RWD-07). Kart
+    /// `RewardsFlags.referralCard` ile gizlenir. Varsayılan boş → mevcut conformer'lar/testler kırılmaz.
+    func rewardsOpensReferral()
 }
 
 public extension RewardsDelegate {
     func rewardsDidClaimCheckIn(streakDay _: Int) {}
+    func rewardsOpensReferral() {}
 }

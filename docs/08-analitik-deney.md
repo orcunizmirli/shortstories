@@ -224,6 +224,11 @@ Kolonlar: event adı, kendine özgü parametreleri (ortak parametreler §2.2 har
 | `mission_claim` | `mission_id`, `coin_reward`, `expires_at?` (earned coin son kullanma) | Ödül cüzdana yazıldığında | `RewardsKit` | ✔ |
 | `rewarded_ad_start` / `rewarded_ad_complete` / `rewarded_ad_fail` | `placement: "unlock_sheet"\|"odul_merkezi"`, `ads_used_today`, `daily_cap` | AdMob callback'leri (Faz 2) | `RewardsKit` | ✔ (complete) |
 | `review_prompt_requested` | `trigger: "episode_completed"\|"streak_day"` | Sistem puanlama istemi (RTG-01, §294) GERÇEKTEN talep edildiğinde; Apple diyaloğu gösterip göstermediğini garanti etmez → "istek" düzeyi event | `App` | ✔ |
+| `referral_view` | `invited_count`, `can_redeem: bool` | Davet ekranı (`DavetMerkezi`) server durumunu yükleyip gösterdiğinde | `RewardsKit` | |
+| `referral_shared` | — | Kullanıcı davet paylaşım niyeti tetiklediğinde (paylaşım sayfası açılır) | `RewardsKit` | |
+| `referral_redeemed` | `coin_reward`, `expires_at?` (earned coin son kullanma) | Davet kodu backend'de onaylanıp ödül cüzdana yazıldığında (RWD-07; server-otoriter) | `RewardsKit` | ✔ |
+
+> **RWD-07 davet-arkadaş (referral):** İstemci soyutlaması (port + model + UI) F1'de ships ama `rewards.referral_card_enabled` flag'i VARSAYILAN KAPALI (kullanıcıya gizli). Yukarıdaki üç event kayıtlıdır (registry drift önlenir) ama flag açılana + canlı `/rewards/referral` endpoint'i gelene dek emit edilmez. Canlı açılış = ürün/ekonomi kararı (§bkz. PREP-BEKLEYEN RWD-07).
 
 ### 3.6 Push ve bildirim
 

@@ -18,5 +18,12 @@ enum DeepLinkFactory {
         URL(string: "\(webHost)/s/\(seriesID.rawValue)/e/\(episodeNumber)") ?? fallback
     }
 
+    /// Davet linki (`/r/{code}`) — RWD-07. Server `inviteURL` verirse o tercih edilir; bu FALLBACK
+    /// kurucudur (server link vermediğinde). AASA `/r/{code}` yayını + gelen link çözümü PREP-BEKLEYEN.
+    static func referralURL(_ code: String) -> URL {
+        let escaped = code.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? code
+        return URL(string: "\(webHost)/r/\(escaped)") ?? fallback
+    }
+
     private static let fallback = URL(string: webHost)!
 }

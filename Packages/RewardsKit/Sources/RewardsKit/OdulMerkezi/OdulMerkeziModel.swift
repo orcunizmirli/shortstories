@@ -54,6 +54,8 @@ public final class OdulMerkeziModel {
     public private(set) var claimFailure: ClaimFailure?
     /// Rewarded ad kartı görünür mü — F1'de flag KAPALI (yapı var, gizli; SS-113 F2 açar).
     public let rewardedAdCardVisible: Bool
+    /// Davet giriş kartı görünür mü — varsayılan flag KAPALI (yapı var, gizli; RWD-07 canlıda açar).
+    public let referralCardVisible: Bool
 
     // MARK: - Görev merkezi durumu (SS-112; Observable)
 
@@ -128,6 +130,7 @@ public final class OdulMerkeziModel {
         self.lastSeenStreakStore = lastSeenStreakStore
         self.delegate = delegate
         rewardedAdCardVisible = featureFlags.value(for: RewardsFlags.rewardedAdCard)
+        referralCardVisible = featureFlags.value(for: RewardsFlags.referralCard)
     }
 
     // MARK: - Türetimler (SAF; View doğrudan okur)
@@ -312,6 +315,11 @@ public final class OdulMerkeziModel {
     /// Bakiye kartı / "Coin Al" → CoinMagazasi (02 §4.9).
     public func openCoinStore() {
         delegate?.rewardsOpensCoinStore()
+    }
+
+    /// Davet giriş kartı → App `DavetMerkezi`'yi sunar (RWD-07). Kart yalnız flag açıkken görünür.
+    public func openReferral() {
+        delegate?.rewardsOpensReferral()
     }
 
     // MARK: - İç: analitik

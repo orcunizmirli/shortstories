@@ -78,8 +78,9 @@ Bu kalemler **spec-dokümante gereksinim** (spekülatif rakip-özelliği değil)
 2. ✅ **BolumListesi sheet** — YAPILDI (2026-08-29, CI yeşil).
 3. ✅ **Hız menüsü** — YAPILDI (2026-08-29, CI yeşil).
 4. ✅ **Altyazı seçim + AVMediaSelection (SS-046)** — YAPILDI (2026-08-29, CI-yeşil). Odaklı workflow-map + push-modeli implementasyon + adversarial review. **3 player menüsü de tamamlandı.**
+5. ✅ **RWD-07 referral client-soyutlama** — YAPILDI (2026-08-30). RewardsKit `ReferralGateway` port + `MockReferralGateway` + `ReferralModel` (server-otoriter redeem, optimistik-kredi-YOK, reconciliation guard) + tam test süiti + `DavetMerkeziView` + OdulMerkezi giriş kartı + App `APIReferralGateway`/composition/coordinator/share wiring + analitik. **Flag KAPALI (kullanıcıya gizli)**; canlı endpoint + ürün/ekonomi kararı PREP-BEKLEYEN §7. Design-map workflow + adversarial-review workflow.
 
-**Sıradaki (ürün-kararı otonom verildi — kullanıcı: hiç sorma):** SS-160 String Catalog (base-dil EN), referral client-soyutlama (injectable port + mock), RTG-01 kalan kaynak-wiring'leri.
+**Sıradaki (ürün-kararı otonom verildi — kullanıcı: hiç sorma):** SS-160 String Catalog (base-dil EN), RTG-01 kalan kaynak-wiring'leri.
 
 > **⚠️ KULLANICIYA SURFACE EDİLDİ (2026-08-28):** SS-160 String Catalog altyapısı (F0 task) commit'li kodda **YOK** — KANON/memory "hazır" diyor ama `.xcstrings`+knownRegions bulunmuyor. TR/ES/PT lokalizasyonun tüm önkoşulu. Tam migrasyon büyük + base-dil (EN vs TR kaynak) kararı içerir → otonom yapılMADI, kullanıcı kararı bekliyor.
 
@@ -87,7 +88,7 @@ Bu kalemler **spec-dokümante gereksinim** (spekülatif rakip-özelliği değil)
 
 Bunlar **yüksek etkili ama ürün/ekonomi/sunucu-sözleşmesi kararları** — otonom implement edilMEZ, kullanıcı önceliği beklenir:
 
-- **Referral/davet programı** (en yüksek büyüme leveri; sunucu-attribution + kredi ekonomisi).
+- **Referral/davet programı** — ⚙️ İSTEMCİ SOYUTLAMASI YAPILDI (2026-08-30, RWD-07, flag-kapalı); KALAN karar: sunucu-attribution + kredi ekonomisi + anti-fraud + flag'in canlı açılması (PREP-BEKLEYEN §7).
 - Spin-wheel / piggy-bank / leaderboard (gamification ekonomi-dengesi).
 - Season-pass/bundle, promo kodları (fiyat-SKU kararı).
 - Çoklu profil / parental controls (ürün kapsamı).

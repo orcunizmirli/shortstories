@@ -510,6 +510,14 @@ Retention hedefleri bağlamı (kanon): D1 ≥ %30, D7 ≥ %10, D30 ≥ %5; kateg
 **Kabul kriterleri:**
 - [ ] Seri durumu sunucuda; kurtarma günde en fazla 1 kez.
 
+#### RWD-07 — Davet-arkadaş (referral) — **Should, F2 (istemci soyutlaması F1'de flag-kapalı ships)**
+**Davranış:** `OdulMerkezi`'nde davet giriş kartı → `DavetMerkezi`: kullanıcının davet kodu + paylaş CTA'sı (paylaşım sayfası) + davet sayaçları; yeni kullanıcı bir davet kodu kullanabilir (redeem) ve karşılığında ödül kazanır. Kredi **server-otoriter** (istemci optimistik kredi vermez); çakışmalar (geçersiz kod / kendine-davet / süresi-dolmuş / zaten-kullanılmış) kullanıcıya-görünür. Kart `rewards.referral_card_enabled` flag'i ile gizlenir.
+**Durum (2026-08-30):** İstemci soyutlaması (RewardsKit `ReferralGateway` portu + `MockReferralGateway` + `ReferralModel` + `DavetMerkeziView` + App `APIReferralGateway`/wiring + analitik `referral_view/shared/redeemed`) commit'li ama **flag VARSAYILAN KAPALI** (kullanıcıya gizli); canlı `/rewards/referral` endpoint'i + ürün/ekonomi/anti-fraud kararı + AASA `/r/{code}` **PREP-BEKLEYEN §7**. Not: bu, §4'teki "gifting Won't" ile bitişik ama ayrı (referral = büyüme leveri, gifting = coin-transferi); canlı açılış ürün kararıdır.
+**Kabul kriterleri:**
+- [ ] Redeem server-otoriter + idempotent (Idempotency-Key); istemci coin kreditlemez.
+- [ ] Attribution + anti-fraud (self/device/velocity) sunucuda.
+- [ ] Davet linki round-trip: giden `DeepLinkFactory.referralURL` / gelen `DeepLinkRoute` (server `inviteURL` tercih edilir).
+
 ---
 
 ### 2.9 Listem (modül: `LibraryKit`)

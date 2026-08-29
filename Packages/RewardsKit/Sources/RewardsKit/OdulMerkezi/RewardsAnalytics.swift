@@ -20,6 +20,10 @@ enum RewardsAnalytics {
         static let rewardedAdStart = "rewarded_ad_start"
         static let rewardedAdComplete = "rewarded_ad_complete"
         static let rewardedAdFail = "rewarded_ad_fail"
+        // RWD-07 referral (§3.5): view/shared/redeemed — RewardsKit sahipli. `redeemed` 2° zorunlu.
+        static let referralView = "referral_view"
+        static let referralShared = "referral_shared"
+        static let referralRedeemed = "referral_redeemed"
     }
 
     /// §3.5 parametre anahtarları (ortak parametreler §2.2 `track()` tarafından otomatik eklenir).
@@ -41,6 +45,9 @@ enum RewardsAnalytics {
         static let placement = "placement"
         static let adsUsedToday = "ads_used_today"
         static let dailyCap = "daily_cap"
+        // RWD-07 referral (§3.5): davet sayacı + kullanım uygunluğu.
+        static let invitedCount = "invited_count"
+        static let canRedeem = "can_redeem"
     }
 
     /// §3.5 `mission_type` değer taksonomisi — registry YALNIZ bu 4 tipi tanır. İstemci `RewardTask.Kind`
@@ -124,6 +131,30 @@ extension AnalyticsTracking {
             parameters[RewardsAnalytics.Param.expiresAt] = .int(RewardsAnalytics.epochMilliseconds(expiresAt))
         }
         track(RewardsAnalytics.Event.missionClaim, parameters: parameters)
+    }
+
+    // MARK: - RWD-07 referral (§3.5)
+
+    /// referral_view — davet ekranı server durumunu yükleyip gösterdiğinde.
+    func trackReferralView(invitedCount: Int, canRedeem: Bool) {
+        track(RewardsAnalytics.Event.referralView, parameters: [
+            RewardsAnalytics.Param.invitedCount: .int(invitedCount),
+            RewardsAnalytics.Param.canRedeem: .bool(canRedeem)
+        ])
+    }
+
+    /// referral_shared — kullanıcı davet paylaşım niyeti tetiklediğinde.
+    func trackReferralShared() {
+        track(RewardsAnalytics.Event.referralShared, parameters: [:])
+    }
+
+    /// referral_redeemed (2°) — davet kodu server'da onaylanıp ödül cüzdana yazıldığında.
+    func trackReferralRedeemed(coinReward: Int, expiresAt: Date?) {
+        var parameters: [String: AnalyticsValue] = [RewardsAnalytics.Param.coinReward: .int(coinReward)]
+        if let expiresAt {
+            parameters[RewardsAnalytics.Param.expiresAt] = .int(RewardsAnalytics.epochMilliseconds(expiresAt))
+        }
+        track(RewardsAnalytics.Event.referralRedeemed, parameters: parameters)
     }
 
     // MARK: - SS-113 rewarded ads (§3.5)
