@@ -113,11 +113,22 @@ public actor TokenRefreshCoordinator: AuthTokenRefreshing {
         guard let refreshToken = storedToken, !refreshToken.isEmpty else {
             return try await recoverViaFallback()
         }
+        // Yenileme öncesi access token (rotasyon tespiti — audit MEDIUM): refresh uçuştayken eşzamanlı
+        // bir link/switch (`SessionManager.linkSession`) access'i rotasyonlarsa, bu refresh yanıtı ÖNCEKİ
+        // (misafir) oturuma aittir ve linked token'ları EZMEMELİdir.
+        let preRefreshAccess = try? secureStore.string(forKey: .accessToken)
         do {
             let endpoint = RefreshTokenEndpoint(requestBody: RefreshTokenEndpoint.RequestBody(
                 refreshToken: refreshToken
             ))
             let response = try await apiClient.send(endpoint)
+            // Rotasyon tespiti: keychain access, yenileme boyunca DEĞİŞTİYSE (link araya girdi) yanıtı
+            // yazma DÜŞÜR ve GÜNCEL (linked) token'ı döndür → çağıran onunla tekrar eder. Yalnız pozitif
+            // tespitte düşürülür (postAccess okunamazsa normal yola devam → glitch'te false-drop yok).
+            let postRefreshAccess = try? secureStore.string(forKey: .accessToken)
+            if let postRefreshAccess, postRefreshAccess != preRefreshAccess {
+                return postRefreshAccess
+            }
             // İki Keychain yazımı atomik değil (transaction yok). Refresh token (uzun-ömürlü kimlik)
             // ÖNCE yazılır: ikinci (access) yazma koparsa Keychain'de (bayat access, YENİ refresh)
             // kalır → sonraki 401 YENİ refresh'le kendini onarır (self-heal). Ters sıra (access önce)

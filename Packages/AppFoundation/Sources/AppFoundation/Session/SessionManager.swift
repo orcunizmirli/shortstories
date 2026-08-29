@@ -40,6 +40,11 @@ public final class SessionManager: SessionManaging {
     @ObservationIgnored private let clientInfo: SessionClientInfo
     @ObservationIgnored private let broadcaster = SessionStateBroadcaster(initial: .unauthenticated)
     @ObservationIgnored private var bootstrapTask: Task<SessionState, Error>?
+    /// Oturum-kimliği epoch'u (audit MEDIUM): her `linkSession` (bağlama/switch) bunu artırır. UÇUŞTAKİ
+    /// misafir bootstrap yanıtı, await ÖNCESİ bu değeri yakalar; storeGuestSession/setState ÖNCESİ
+    /// eşleşmezse araya bir link girmiştir → misafir yanıtı bayattır ve UYGULANMAZ (linked oturumu ezip
+    /// hesabı sessizce misafire indirgemesin). MainActor serileştirdiği için yakalama+kontrol atomiktir.
+    @ObservationIgnored private var sessionGeneration = 0
 
     public init(
         apiClient: any APIClientProtocol,
@@ -100,14 +105,24 @@ public final class SessionManager: SessionManaging {
         accessToken: String,
         refreshToken: String
     ) {
-        // Keychain yazımı best-effort: başarısızlığı bellek-içi yükseltmeyi ENGELLEMEZ (canlı
-        // durum yayını asıl amaçtır; snapshot yalnız relaunch tutarlılığı içindir). Snapshot,
-        // `StoredSessionSnapshot` şemasıyla `restoreFromKeychain`in `.linked` gördüğü kayıttır.
-        try? secureStore.setString(accessToken, forKey: .accessToken)
-        try? secureStore.setString(refreshToken, forKey: .refreshToken)
-        let snapshot = StoredSessionSnapshot(userID: userID, provider: provider)
-        if let data = try? JSONEncoder().encode(snapshot) {
-            try? secureStore.setData(data, forKey: .sessionSnapshot)
+        // Uçuştaki misafir bootstrap yanıtını fence et: bu link, o yanıttan SONRA gelirse yanıt bu
+        // linked token'ları ezmemeli (audit MEDIUM). MainActor senkron → yakalama+kontrol atomik.
+        sessionGeneration &+= 1
+        // Keychain yazımı best-effort: başarısızlığı bellek-içi yükseltmeyi ENGELLEMEZ (canlı durum
+        // yayını asıl amaçtır). REFRESH ÖNCE (performRefresh kalıbı): access'ten önce yazılır ve YAZIMI
+        // KOPARSA access YAZILMAZ → "yeni access + eski refresh" saatli bombası (access dolunca eski
+        // refresh'le kalıcı logout) önlenir; refresh yazıldıysa access best-effort'tur (koparsa sonraki
+        // 401 taze refresh'le self-heal). Snapshot en son (relaunch kimlik ayracı).
+        do {
+            try secureStore.setString(refreshToken, forKey: .refreshToken)
+            try? secureStore.setString(accessToken, forKey: .accessToken)
+            let snapshot = StoredSessionSnapshot(userID: userID, provider: provider)
+            if let data = try? JSONEncoder().encode(snapshot) {
+                try? secureStore.setData(data, forKey: .sessionSnapshot)
+            }
+        } catch {
+            // Refresh yazımı koptu → access/snapshot YAZILMAZ (torn "yeni access + eski refresh" önlenir);
+            // keychain eski tutarlı halde kalır. Bellek-içi yükseltme yine yapılır (canlı oturum doğru).
         }
         // Tekrar-idempotent: durum zaten hedefse gereksiz yayın YAPILMAZ (abonelere kopya .linked
         // gönderilmez).
@@ -122,6 +137,7 @@ public final class SessionManager: SessionManaging {
 
     private func performGuestBootstrap() async throws -> SessionState {
         do {
+            let generation = sessionGeneration // await ÖNCESİ yakala (audit MEDIUM)
             let endpoint = GuestAuthEndpoint(requestBody: GuestAuthEndpoint.RequestBody(
                 deviceId: persistentDeviceID(),
                 platform: clientInfo.platform,
@@ -129,6 +145,12 @@ public final class SessionManager: SessionManaging {
                 locale: clientInfo.locale
             ))
             let response = try await apiClient.send(endpoint)
+            // Bootstrap uçuştayken bir link geldiyse (generation değişti) bu misafir yanıtı BAYATTIR →
+            // storeGuestSession/setState ATLANIR (linked token'ları/snapshot'ı ezip hesabı sessizce
+            // misafire indirgemesin). MainActor senkron → kontrol+erken-dönüş atomik.
+            guard generation == sessionGeneration else {
+                return state
+            }
             try storeGuestSession(response)
             let newState = SessionState.guest(userID: response.userId)
             setState(newState)
