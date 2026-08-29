@@ -34,6 +34,8 @@ final class HomeCoordinator {
     private(set) var bolumListesiModel: BolumListesiModel?
     /// Feed'de şu an aktif olan bölüm (BolumListesi vurgusu). `didChangeActiveIndex` günceller.
     private(set) var activeEpisodeID: EpisodeID?
+    /// Hız menüsü (04 §8.2) açık mı + hangi hız işaretli — non-nil olunca RootTabView action-sheet sunar.
+    private(set) var speedMenuCurrentRate: Double?
 
     /// Bekleyen bağlamsal oynatma isteği: RootTabView (Ana Sayfa görünür olunca / yeni intent gelince)
     /// `seedFeedWithPendingPlaybackIfNeeded()` ile TÜKETİR → `PlaybackFeedResolver` bunu feed-entry
@@ -138,6 +140,19 @@ final class HomeCoordinator {
         // mümkün ama korunan kareyi kaybedip sıfırdan (yinelenen `video_start` + yeniden buffer) başlatır
         // → kare-koruyan pause'a göre NET REGRESYON. Bu yüzden App yalnız aktif/pasif sinyalini üretir;
         // kare-doğru auto-resume, feature resume kontrolü eklenince bu sinyale bağlanır (SS-061 sonraki dilim).
+    }
+
+    // MARK: - Hız menüsü (04 §8.2)
+
+    /// Hız menüsünden seçim: kalıcı tercihi feed VM'ine yaz (köprü VC→director'a akıtır) + menüyü kapat.
+    func selectPlaybackRate(_ rate: Double) {
+        feedViewModel.preferredPlaybackRate = rate
+        speedMenuCurrentRate = nil
+    }
+
+    /// Hız menüsü kapatıldı (seçim yapılmadan).
+    func dismissSpeedMenu() {
+        speedMenuCurrentRate = nil
     }
 
     // MARK: - Bağlamsal oynatma (SS-062 App feed dilimi tüketir)
@@ -273,8 +288,10 @@ extension HomeCoordinator: PlayerFeedDelegate {
         )
     }
 
-    func playerFeed(_: PlayerFeedViewController, didRequestPlaybackSpeedMenu _: Double) {
-        // TODO(04 §8.2): hız menüsü UI'ı — F1 iskelet (PlayerFeedDelegate sözleşmesi).
+    func playerFeed(_: PlayerFeedViewController, didRequestPlaybackSpeedMenu currentRate: Double) {
+        // Hız menüsü (04 §8.2): RootTabView `speedMenuCurrentRate != nil` iken action-sheet sunar;
+        // güncel hız işaretli. Seçim `selectPlaybackRate` ile feedViewModel'e → VC → director'a akar.
+        speedMenuCurrentRate = PlaybackSpeedMenu.selected(for: currentRate)
     }
 
     func playerFeed(_: PlayerFeedViewController, didRequestSubtitleMenu _: Episode) {

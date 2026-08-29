@@ -82,6 +82,12 @@ private struct HomeTabView: View {
                     BolumListesiView(model: model)
                 }
             }
+            .confirmationDialog("Oynatma Hızı", isPresented: speedMenuBinding, titleVisibility: .visible) {
+                ForEach(PlaybackSpeedMenu.rates, id: \.self) { rate in
+                    Button(speedMenuLabel(rate)) { coordinator.selectPlaybackRate(rate) }
+                }
+                Button("İptal", role: .cancel) { coordinator.dismissSpeedMenu() }
+            }
         }
     }
 
@@ -95,6 +101,24 @@ private struct HomeTabView: View {
                 }
             }
         )
+    }
+
+    /// Hız menüsü sunum bağı: güncel-hız non-nil iken action-sheet açık; kapanışta koordinatör temizler.
+    private var speedMenuBinding: Binding<Bool> {
+        Binding(
+            get: { coordinator.speedMenuCurrentRate != nil },
+            set: { presented in
+                if !presented {
+                    coordinator.dismissSpeedMenu()
+                }
+            }
+        )
+    }
+
+    /// Hız butonu etiketi; güncel seçili hıza onay imi ekler.
+    private func speedMenuLabel(_ rate: Double) -> String {
+        let base = PlaybackSpeedMenu.label(for: rate)
+        return rate == coordinator.speedMenuCurrentRate ? "✓ \(base)" : base
     }
 }
 

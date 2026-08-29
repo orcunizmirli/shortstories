@@ -161,6 +161,18 @@ public final class PlayerFeedViewController: UIViewController {
         }
     }
 
+    /// Son diske/director'a uygulanan kalıcı hız — `updateUIViewController` her SwiftUI güncellemesinde
+    /// çağrıldığından tekrar-uygulamayı önler (yalnız değişince director'a gider).
+    private var lastAppliedPlaybackRate: Double = 1.0
+
+    /// Kalıcı hız tercihini (hız menüsü, 04 §8.2) director'a uygular; değişmemişse no-op. App köprüsü
+    /// (`PlayerFeedView.updateUIViewController`) `PlayerFeedViewModel.preferredPlaybackRate`'ten çağırır.
+    public func applyPlaybackRate(_ rate: Double) {
+        guard rate != lastAppliedPlaybackRate else { return }
+        lastAppliedPlaybackRate = rate
+        Task { [director] in await director.setPreferredRate(rate) }
+    }
+
     /// Kilitli kalan aktif kart yeni state'te oynatılabilir olduysa indeksi döner (arka
     /// planda / sheet sonrası unlock — access `.locked` → oynatılabilir). Saf entitlement
     /// sinyali (access.kind değişmeden) WalletKit `episodeUnlocked` portundadır — SS-050.

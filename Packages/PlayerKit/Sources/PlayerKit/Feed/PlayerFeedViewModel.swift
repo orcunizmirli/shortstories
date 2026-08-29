@@ -21,6 +21,10 @@ public struct FeedState: Sendable, Equatable {
 @Observable
 public final class PlayerFeedViewModel {
     public var feedState: FeedState
+    /// Kalıcı hız tercihi (04 §8.2 hız menüsü). App menüden yazar; köprü (`updateUIViewController`)
+    /// VC'ye → `FeedPlaybackDirector.setPreferredRate`'e akıtır (VC son-uygulananı tutup tekrar-uygulamaz).
+    /// Uzun-basma 2x bunun ÜZERİNE geçicidir (bırakınca bu tercihe döner).
+    public var preferredPlaybackRate: Double = 1.0
 
     public init(feedState: FeedState = FeedState()) {
         self.feedState = feedState

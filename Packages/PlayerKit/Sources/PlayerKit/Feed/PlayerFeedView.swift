@@ -48,5 +48,6 @@ public struct PlayerFeedView: UIViewControllerRepresentable {
     public func updateUIViewController(_ controller: PlayerFeedViewController, context _: Context) {
         controller.delegate = delegate
         controller.apply(state: viewModel.feedState) // diff'li uygulama; reloadData YASAK (04 §14 T7)
+        controller.applyPlaybackRate(viewModel.preferredPlaybackRate) // hız menüsü tercihi (04 §8.2); değişince director'a
     }
 }
