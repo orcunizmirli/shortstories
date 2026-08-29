@@ -338,6 +338,24 @@ struct SessionManagerTests {
 
         #expect(try secureStore.string(forKey: .deviceID) == deviceID)
     }
+
+    // MARK: - Geçici Keychain hatası cold-start'ta yıkıcı downgrade yapmamalı (audit MEDIUM)
+
+    @Test func geciciKeychainHatasindaColdStartLinkedOturumuMisafireIndirmez() async throws {
+        try stubGuestSuccess()
+        try seedStoredSession(provider: .apple, userID: "linkedU") // bağlı oturum (snapshot + token'lar)
+        secureStore.setError(.storage(.keychainUnavailable)) // geçici okuma hatası
+
+        // Geçici hata yok-oturum'dan ayrılır → FIRLATILIR (misafir bootstrap'a düşmez).
+        await #expect(throws: (any Error).self) {
+            try await manager.bootstrapGuestSessionIfNeeded()
+        }
+
+        secureStore.setError(nil)
+        #expect(apiClient.receivedPaths.isEmpty) // /auth/guest ÇAĞRILMADI → linked ezilmedi
+        #expect(try secureStore.string(forKey: .accessToken) == "at_stored") // korundu
+        #expect(try secureStore.string(forKey: .refreshToken) == "rt_stored")
+    }
 }
 
 struct SessionStateTests {

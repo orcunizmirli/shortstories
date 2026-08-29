@@ -73,7 +73,11 @@ public final class SessionManager: SessionManaging {
         if let bootstrapTask {
             return try await bootstrapTask.value
         }
-        if let restored = restoreFromKeychain() {
+        // `try`: restore GEÇİCİ Keychain hatasını (keychainUnavailable — securityd glitch / ilk-kilit
+        // öncesi) yok-oturum'dan AYIRIR ve FIRLATIR → misafir bootstrap'a DÜŞMEZ (aksi halde bağlı
+        // oturumun token/snapshot'ı misafir tokenlarıyla EZİLİP hesap sessizce misafire iniyordu, audit
+        // MEDIUM). Çağıran (soğuk açılış) sonra tekrar dener; yalnız GENUINE yokluk (nil) bootstrap'a gider.
+        if let restored = try restoreFromKeychain() {
             setState(restored)
             return restored
         }
@@ -181,12 +185,14 @@ public final class SessionManager: SessionManaging {
 
     // MARK: - Keychain'den devam
 
-    private func restoreFromKeychain() -> SessionState? {
-        guard let snapshot = storedSnapshot() else {
+    private func restoreFromKeychain() throws -> SessionState? {
+        guard let snapshot = try storedSnapshot() else {
             return nil
         }
-        let accessToken = (try? secureStore.string(forKey: .accessToken)) ?? ""
-        let refreshToken = (try? secureStore.string(forKey: .refreshToken)) ?? ""
+        // `try`: geçici okuma hatası FIRLATILIR (bootstrap'a düşmez); yalnız GENUINE yokluk (nil → "")
+        // aşağıdaki tokensız-snapshot yoluna gider.
+        let accessToken = try secureStore.string(forKey: .accessToken) ?? ""
+        let refreshToken = try secureStore.string(forKey: .refreshToken) ?? ""
         guard !accessToken.isEmpty, !refreshToken.isEmpty else {
             // Tokensız bağlı snapshot = kalıcı loggedOut kaydı (05 §4.2: misafire dönülmez;
             // `handleRefreshFailure` tokenları siler, snapshot'ı bilinçli korur). Tokensız
@@ -202,8 +208,11 @@ public final class SessionManager: SessionManaging {
         return .guest(userID: snapshot.userID)
     }
 
-    private func storedSnapshot() -> StoredSessionSnapshot? {
-        guard let snapshotData = try? secureStore.data(forKey: .sessionSnapshot) else {
+    /// `try`: `data(...)` GEÇİCİ hatası (keychainUnavailable) FIRLATILIR (çağıran ayırt eder); yalnız
+    /// GENUINE yokluk (`nil`) veya bozuk-decode `nil` döner. Bozuk snapshot decode'u yokluk sayılır
+    /// (bilinçli — geçici hata DEĞİL).
+    private func storedSnapshot() throws -> StoredSessionSnapshot? {
+        guard let snapshotData = try secureStore.data(forKey: .sessionSnapshot) else {
             return nil
         }
         return try? JSONDecoder().decode(StoredSessionSnapshot.self, from: snapshotData)
@@ -226,7 +235,7 @@ extension SessionManager: RefreshFailureHandling {
             if case let .linked(userID, provider) = state {
                 return (userID, provider)
             }
-            if let snapshot = storedSnapshot(), let provider = snapshot.provider {
+            if let snapshot = try? storedSnapshot(), let provider = snapshot.provider {
                 return (snapshot.userID, provider)
             }
             return nil
