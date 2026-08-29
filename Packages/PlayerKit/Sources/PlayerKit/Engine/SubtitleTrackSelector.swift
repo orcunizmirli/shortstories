@@ -4,7 +4,7 @@ import Foundation
 /// verilir; KARAR burada üretilir, `AVPlayerBackend` yalnız uygular (`item.select`). Böylece tüm mantık
 /// CI birim testinde koşar (gerçek AVPlayer backend'i sim/cihaz-perf koşusunda; `StallTracker` deseni).
 /// Hedef dil `String?` (BCP-47 birincil alt-etiket, PlayerKit ProfileKit'i görmez; nil = kapalı).
-enum SubtitleTrackSelector {
+public enum SubtitleTrackSelector {
     /// Bir legible `AVMediaSelectionOption`'ın saf temsili.
     struct Option: Equatable, Sendable {
         /// `group.options` içindeki konum — `item.select(group.options[index], in: group)` bununla yapılır.
@@ -37,8 +37,11 @@ enum SubtitleTrackSelector {
         return .off
     }
 
-    /// BCP-47 birincil alt-etiket: küçük harf, "-"/"_" öncesi ilk bileşen. Boş/nil → nil.
-    private static func primarySubtag(_ tag: String?) -> String? {
+    /// BCP-47 birincil alt-etiket: küçük harf, "-"/"_" öncesi ilk bileşen. Boş/nil → nil. `public`:
+    /// altyazı MENÜSÜ (App) de bunu kullanmalı — seçici track'i primary-subtag'le eşleştirdiğinden,
+    /// menü exact `contains` kullanırsa "pt-BR" gibi sunucu kodları menüden gizlenip seçilebilir track
+    /// kaybolur (adversarial review bulgusu). Menü ile seçim AYNI normalleştirmeden geçmeli.
+    public static func primarySubtag(_ tag: String?) -> String? {
         guard let tag, !tag.isEmpty else {
             return nil
         }

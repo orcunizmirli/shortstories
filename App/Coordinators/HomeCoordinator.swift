@@ -305,7 +305,12 @@ extension HomeCoordinator: PlayerFeedDelegate {
         let series = feedViewModel.feedState.items.first { $0.episode?.id == episode.id }?.series
         let offered = LanguageCatalog.offeredSubtitleLanguages
         let available = series?.localeInfo.subtitleLanguages ?? []
-        let intersected = offered.filter { $0.isOff || available.contains($0.code ?? "") }
+        // Menü ile TRACK SEÇİMİ aynı normalleştirmeden geçmeli (SubtitleTrackSelector primary-subtag
+        // eşleştirir): exact `contains` "pt-BR" gibi region-kodlu sunucu track'ini gizlerdi (review bulgusu).
+        let availableSubtags = Set(available.compactMap { SubtitleTrackSelector.primarySubtag($0) })
+        let intersected = offered.filter { language in
+            language.isOff || availableSubtags.contains(SubtitleTrackSelector.primarySubtag(language.code) ?? "")
+        }
         subtitleChoices = intersected.count > 1 ? intersected : offered
     }
 }

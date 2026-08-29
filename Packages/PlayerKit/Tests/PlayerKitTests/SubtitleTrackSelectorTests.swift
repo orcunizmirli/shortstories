@@ -49,4 +49,22 @@ struct SubtitleTrackSelectorTests {
     @Test func nilLanguageTagliOptionEslesmez() {
         #expect(SubtitleTrackSelector.decide(preferredCode: "en", available: [opt(0, nil)]) == .off)
     }
+
+    // MARK: - primarySubtag (menü + seçim AYNI normalleştirmeyi paylaşır — review bulgusu)
+
+    @Test func primarySubtagRegionKoduSoyar() {
+        #expect(SubtitleTrackSelector.primarySubtag("pt-BR") == "pt")
+        #expect(SubtitleTrackSelector.primarySubtag("es-419") == "es")
+        #expect(SubtitleTrackSelector.primarySubtag("en_US") == "en")
+    }
+
+    @Test func primarySubtagBuyukHarfKucultur() {
+        #expect(SubtitleTrackSelector.primarySubtag("EN") == "en")
+        #expect(SubtitleTrackSelector.primarySubtag("zh-Hant") == "zh")
+    }
+
+    @Test func primarySubtagNilVeBosNilDoner() {
+        #expect(SubtitleTrackSelector.primarySubtag(nil) == nil)
+        #expect(SubtitleTrackSelector.primarySubtag("") == nil)
+    }
 }
