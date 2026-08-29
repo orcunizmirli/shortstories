@@ -46,7 +46,7 @@ Feature yüzeyi büyük ölçüde **kurulu ve sertleşmiş** (prototip değil): 
 |-----|---------|-----|
 | **Bölüm-listesi (BolumListesi) sheet** | ✅ YAPILDI (2026-08-29) | DiscoverKit BolumListesiModel(+View) + App wiring; 5-sütun ızgara + kilit + aktif-vurgu + dokun→requestPlayback. 7 test, CI yeşil. |
 | **Hız-seçim menüsü** | ✅ YAPILDI (2026-08-29) | PlaybackSpeedMenu (saf, 5 test) + VM→VC→director köprüsü (last-applied guard) + confirmationDialog. CI yeşil. |
-| **Altyazı seçim sheet + AVMediaSelection** | Ü (BÜYÜK — tam SS-046, real-player) | Sheet F1-STUB. **AVMediaSelection HİÇ yok** + `SubtitleLanguageProviding` portu pool→engine→backend boyunca UNWIRED. Altyazı tercihi/stream (`subtitleLanguageUpdates`) hazır ama backend TÜKETMİYOR. Yarım picker (preference set, track değişmez) kullanıcıyı YANILTIR → hep-ya-hiç. Tam SS-046: port plumbing + AVMediaSelectionGroup track seçimi (on-load + live) + picker. Odaklı bir pass hak ediyor; oturum-kuyruğunda hassas player-stack'e aceleci değişiklik yapılmadı. |
+| **Altyazı seçim sheet + AVMediaSelection (SS-046)** | ✅ YAPILDI (2026-08-29, CI-yeşil) | Push-modeli: PlayerKit-yerel `SubtitlePreferenceProviding` portu (App `SubtitlePreferenceAdapter` ProfileKit'i köprüler) + AVPlayerBackend `.readyToPlay`'de legible grubu ASYNC yükleyip tercihi seçer + canlı stream'e abone; saf `SubtitleTrackSelector` (BCP-47, 9 test) + adapter (2 test). Gerçek AVMediaSelection cihaz/sim koşusunda. |
 | Thumbnail scrub önizleme (PLR-05) | Ü | F2 |
 | Offline indirilenler | P | FairPlay DRM'e bağlı (F3, prep) |
 
@@ -77,7 +77,9 @@ Bu kalemler **spec-dokümante gereksinim** (spekülatif rakip-özelliği değil)
 1. ✅ **RTG-01** — mekanizma 5/5 YAPILDI (kaldı: bölüm-tamamlama pozitif + oynatma-hatası negatif tetik-kaynakları, feed hot-path gözlem noktası ister).
 2. ✅ **BolumListesi sheet** — YAPILDI (2026-08-29, CI yeşil).
 3. ✅ **Hız menüsü** — YAPILDI (2026-08-29, CI yeşil).
-4. **Altyazı seçim + AVMediaSelection (tam SS-046)** — BÜYÜK, real-player; `SubtitleLanguageProviding` portu player-stack (pool→engine→backend) boyunca plumbing + AVMediaSelectionGroup track seçimi (on-load + live) + picker. Yarım-picker YANILTICI (hep-ya-hiç). **Odaklı bir pass olarak yapılmalı** — hassas player-stack'e oturum-kuyruğunda aceleci değişiklik yapılmadı. Çok-dilli katalog (00 §119 rakip farklılaştırıcı) client tarafı.
+4. ✅ **Altyazı seçim + AVMediaSelection (SS-046)** — YAPILDI (2026-08-29, CI-yeşil). Odaklı workflow-map + push-modeli implementasyon + adversarial review. **3 player menüsü de tamamlandı.**
+
+**Sıradaki (ürün-kararı otonom verildi — kullanıcı: hiç sorma):** SS-160 String Catalog (base-dil EN), referral client-soyutlama (injectable port + mock), RTG-01 kalan kaynak-wiring'leri.
 
 > **⚠️ KULLANICIYA SURFACE EDİLDİ (2026-08-28):** SS-160 String Catalog altyapısı (F0 task) commit'li kodda **YOK** — KANON/memory "hazır" diyor ama `.xcstrings`+knownRegions bulunmuyor. TR/ES/PT lokalizasyonun tüm önkoşulu. Tam migrasyon büyük + base-dil (EN vs TR kaynak) kararı içerir → otonom yapılMADI, kullanıcı kararı bekliyor.
 
