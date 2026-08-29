@@ -114,6 +114,22 @@ Durum tarihi: 2026-07-20 · Referans: `09-yol-haritasi-tasklar.md`
   gelince:** APIClient response `Date` header'ından cihaz-saat offset'i hesaplayan bir `ServerClock`
   portu + Kesfet render'ında `isActive(at: serverClock.now)`. LOW/kozmetik; cihaz saati pragmatik interim.
 
+### AppFoundation auth bug-hunt — ertelenen 2 kalem (2026-08-30)
+Auth/session bug-hunt'ın 9 bulgusundan 7'si düzeltildi (4 commit); 2'si düşük-değer/atomiklik-doğası
+gereği ertelendi:
+- **linkSession snapshot/token ayrışması (finding 5, MEDIUM):** 3 Keychain yazması (refresh/access/
+  snapshot) atomik değil. Torn-write TOKEN sırası (refresh-first) DÜZELTİLDİ (saatli bomba engellendi);
+  ama snapshot en son + best-effort yazıldığından, refresh+access başarılı olup snapshot yazması koparsa
+  relaunch'ta "guest snapshot + linked token" ayrışması (UI misafir gösterir ama istekler linked) kalır.
+  Keychain transaction olmadığı için 3-yazma tam atomiklik imkânsız; **kurtarılabilir UI/kimlik uyuşmazlığı**
+  (server hesap sağlam, re-login düzeltir), güvenlik açığı/veri kaybı DEĞİL. Prep gelince: SecureStore'a
+  atomik çok-anahtar-yazma primitifi (tek SecItem update / staging+swap) → linkSession o primitifi kullanır.
+- **handleRefreshFailure redundant Keychain re-read (finding 225, LOW):** Başarılı misafir re-bootstrap
+  sonrası access token'ı bellekteki `response.accessToken` yerine Keychain'den `try?` ile yeniden okuyor;
+  o tek okuma geçici glitch'lerse uçuştaki istek gereksiz `sessionExpired` alır (sonraki istek self-heal).
+  Benign/self-healing; iyileştirme: `singleFlightGuestBootstrap` bellekteki taze access'i döndürsün
+  (Keychain re-read yerine). Değer düşük, ertelendi.
+
 ---
 
 ## Kod-içsel (prep gerektirmeyen) kalan iş — ayrı izlenir
