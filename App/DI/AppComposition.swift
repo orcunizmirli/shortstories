@@ -229,11 +229,6 @@ final class AppComposition {
         FavoritesServiceGateway(service: favoritesService)
     }
 
-    /// PlayerKit oynatma-tercihi portu (veri tasarrufu) → `PreferencesStoring`.
-    var playerDataSaverProvider: any PlayerKit.PlaybackPreferencesProviding {
-        PreferencesDataSaverProvider(preferences: dependencies.preferences)
-    }
-
     /// PlayerKit video-cache LRU indeksi → tek `PersistenceStore`.
     var assetCacheIndex: any AssetCacheIndexing {
         persistence.makeAssetCacheIndex()
@@ -250,6 +245,7 @@ final class AppComposition {
             entitlements: walletStore,
             network: networkCondition,
             preferences: playerDataSaverProvider,
+            subtitleProvider: playerSubtitleProvider,
             logger: dependencies.logger
         )
     }

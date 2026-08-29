@@ -4,6 +4,7 @@ import DiscoverKit
 import Foundation
 import Observation
 import PlayerKit
+import ProfileKit
 import SwiftUI
 
 /// Ana Sayfa koordinatörü (03 §3.1): `PlayerFeed` + üstündeki sheet/push yüzeyleri. PlayerFeed'in
@@ -36,6 +37,9 @@ final class HomeCoordinator {
     private(set) var activeEpisodeID: EpisodeID?
     /// Hız menüsü (04 §8.2) açık mı + hangi hız işaretli — non-nil olunca RootTabView action-sheet sunar.
     private(set) var speedMenuCurrentRate: Double?
+    /// Altyazı menüsü (04 §8.3 / SS-046) seçenekleri — non-nil olunca RootTabView action-sheet sunar
+    /// (güncel seçim canlı `composition.languagePreferences`'tan okunur). Aktif dizinin sunduğu diller.
+    private(set) var subtitleChoices: [SubtitleLanguage]?
 
     /// Bekleyen bağlamsal oynatma isteği: RootTabView (Ana Sayfa görünür olunca / yeni intent gelince)
     /// `seedFeedWithPendingPlaybackIfNeeded()` ile TÜKETİR → `PlaybackFeedResolver` bunu feed-entry
@@ -294,8 +298,35 @@ extension HomeCoordinator: PlayerFeedDelegate {
         speedMenuCurrentRate = PlaybackSpeedMenu.selected(for: currentRate)
     }
 
-    func playerFeed(_: PlayerFeedViewController, didRequestSubtitleMenu _: Episode) {
-        // TODO(04 §8.3 / SS-046): altyazı seçim sheet'i — F1 iskelet.
+    func playerFeed(_: PlayerFeedViewController, didRequestSubtitleMenu episode: Episode) {
+        // Altyazı menüsü (04 §8.3 / SS-046): aktif dizinin sunduğu diller ∩ uygulama-offered + "Kapalı".
+        // Dizi eşleşmezse/boşsa tüm offered listeye düşülür. Seçim `setSubtitleLanguage` → tercih değişir
+        // → tüm slot backend'leri (SS-046) legible track'i canlı yeniden-seçer.
+        let series = feedViewModel.feedState.items.first { $0.episode?.id == episode.id }?.series
+        let offered = LanguageCatalog.offeredSubtitleLanguages
+        let available = series?.localeInfo.subtitleLanguages ?? []
+        let intersected = offered.filter { $0.isOff || available.contains($0.code ?? "") }
+        subtitleChoices = intersected.count > 1 ? intersected : offered
+    }
+}
+
+// MARK: - Altyazı menüsü (04 §8.3 / SS-046)
+
+extension HomeCoordinator {
+    /// Menüden altyazı dili seçildi: tercihi yaz (persist + multicast → backend'ler canlı uygular) + kapat.
+    func selectSubtitleLanguage(_ language: SubtitleLanguage) {
+        _ = composition.languagePreferences.setSubtitleLanguage(language)
+        subtitleChoices = nil
+    }
+
+    /// Altyazı menüsü kapatıldı (seçim yapılmadan).
+    func dismissSubtitleMenu() {
+        subtitleChoices = nil
+    }
+
+    /// Menüde işaretli göstermek için güncel altyazı tercihi (canlı okuma).
+    var currentSubtitleLanguage: SubtitleLanguage {
+        composition.languagePreferences.currentSubtitleLanguage
     }
 }
 

@@ -25,13 +25,22 @@ final class AVPlayerBackend: VideoPlaying, @unchecked Sendable {
     @MainActor private var currentLoadGeneration: UInt64 = 0
     /// Aktif bitrate tavanı (04 §6.3): item değişse de korunur; 0 = tavansız.
     @MainActor private var peakBitRateCap: Double?
+    /// Altyazı tercihi portu (SS-046) — nil ise altyazı seçimi hiç yapılmaz (feature kapalı/test).
+    private let subtitleProvider: (any SubtitlePreferenceProviding)?
+    /// Aktif item'ın legible (altyazı) seçim grubu + saf temsili — PER-ITEM (load'da temizlenir).
+    @MainActor private var legibleGroup: AVMediaSelectionGroup?
+    @MainActor private var legibleOptions: [SubtitleTrackSelector.Option] = []
+    /// Provider aboneliği (uzun ömürlü, per-item DEĞİL) — canlı tercih değişiminde yeniden-seçer.
+    @MainActor private var subtitleObserverTask: Task<Void, Never>?
 
-    init() {
+    init(subtitleProvider: (any SubtitlePreferenceProviding)? = nil) {
+        self.subtitleProvider = subtitleProvider
         (runtimeEvents, eventContinuation) = AsyncStream.makeStream()
     }
 
     deinit {
         eventContinuation.finish()
+        subtitleObserverTask?.cancel()
     }
 
     func load(url: URL, bufferPolicy: BufferPolicy, generation: UInt64) async {
@@ -55,6 +64,9 @@ final class AVPlayerBackend: VideoPlaying, @unchecked Sendable {
             item.preferredPeakBitRate = peakBitRateCap ?? 0
             player.replaceCurrentItem(with: item)
             installItemObservers(player: player, item: item, generation: generation)
+            // SS-046: tercih aboneliğini tembel başlat (ilk load'da; provider yoksa no-op). Grup yükleme
+            // + track seçimi item `.readyToPlay` olunca (async) yapılır — burada senkron okuma YOK (T2).
+            startSubtitleObserverIfNeeded()
         }
     }
 
@@ -171,6 +183,8 @@ final class AVPlayerBackend: VideoPlaying, @unchecked Sendable {
                 Task { @MainActor in
                     self.signalFirstFrameIfNeeded(generation: generation)
                 }
+                // SS-046: item hazır → legible seçim grubu artık yüklenebilir; tercih edilen altyazıyı seç.
+                loadLegibleGroupAndApply(item: observedItem, generation: generation)
             case .failed:
                 eventContinuation.yield(TaggedRuntimeEvent(
                     generation: generation,
@@ -242,6 +256,10 @@ final class AVPlayerBackend: VideoPlaying, @unchecked Sendable {
             NotificationCenter.default.removeObserver(token)
         }
         notificationTokens.removeAll()
+        // SS-046: legible önbelleği PER-ITEM'dir → yeni item eski grubun `options[index]`'ini kullanmasın
+        // (yanlış track / crash). Provider aboneliği uzun ömürlüdür, burada iptal edilmez (yalnız deinit).
+        legibleGroup = nil
+        legibleOptions = []
     }
 
     /// Feed hücresinin görüntü yüzeyi bağlaması (04 §3.3 kural 4): AVPlayerLayer,
@@ -275,3 +293,63 @@ final class AVPlayerBackend: VideoPlaying, @unchecked Sendable {
 // MARK: - Görüntü yüzeyi kaynağı (feed hücresi)
 
 extension AVPlayerBackend: AVPlayerSurfaceSource {}
+
+// MARK: - Altyazı track seçimi (SS-046) — aynı dosyada extension (private erişim + class-body bütçesi)
+
+extension AVPlayerBackend {
+    /// Provider tercih değişimlerini dinler (uzun ömürlü, tek sefer başlar); her değişimde GÜNCEL item'a
+    /// yeniden uygular. Stream replay'lidir → abone anında mevcut değerle başlar (item hazırsa uygulanır).
+    @MainActor
+    func startSubtitleObserverIfNeeded() {
+        guard subtitleObserverTask == nil, let provider = subtitleProvider else { return }
+        subtitleObserverTask = Task { @MainActor [weak self] in
+            for await _ in provider.subtitleCodeUpdates() {
+                guard let self else { return }
+                applySubtitleSelection(generation: currentLoadGeneration)
+            }
+        }
+    }
+
+    /// Item `.readyToPlay` olunca legible seçim grubunu ASYNC yükler (T2: senkron değil), saf temsile
+    /// indirir ve tercihi uygular. Jenerasyon korkuluğu: await'ten dönünce yeni load geldiyse çıkar.
+    @MainActor
+    func loadLegibleGroupAndApply(item: AVPlayerItem, generation: UInt64) {
+        guard subtitleProvider != nil, let asset = item.asset as? AVURLAsset else { return }
+        Task { @MainActor [weak self] in
+            let group = try? await asset.loadMediaSelectionGroup(for: .legible)
+            guard let self, currentLoadGeneration == generation, let group else { return }
+            legibleGroup = group
+            legibleOptions = group.options.enumerated().map { index, option in
+                SubtitleTrackSelector.Option(
+                    index: index,
+                    languageTag: option.extendedLanguageTag ?? option.locale?.identifier
+                )
+            }
+            applySubtitleSelection(generation: generation)
+        }
+    }
+
+    /// Güncel tercihi (senkron getter = otorite) yüklü gruba uygular. Grup/item yoksa veya jenerasyon
+    /// eskiyse no-op. Zaten seçili option seçiliyse tekrar seçmez (gereksiz re-buffer önlenir).
+    @MainActor
+    func applySubtitleSelection(generation: UInt64) {
+        guard currentLoadGeneration == generation,
+              let group = legibleGroup,
+              let item = player?.currentItem
+        else { return }
+        let decision = SubtitleTrackSelector.decide(
+            preferredCode: subtitleProvider.flatMap(\.currentSubtitleCode),
+            available: legibleOptions
+        )
+        let current = item.currentMediaSelection.selectedMediaOption(in: group)
+        switch decision {
+        case .off:
+            guard current != nil, group.allowsEmptySelection else { return }
+            item.select(nil, in: group)
+        case let .select(index):
+            let target = group.options[index]
+            guard current != target else { return } // zaten seçili
+            item.select(target, in: group)
+        }
+    }
+}

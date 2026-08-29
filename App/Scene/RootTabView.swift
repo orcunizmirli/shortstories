@@ -88,6 +88,12 @@ private struct HomeTabView: View {
                 }
                 Button("İptal", role: .cancel) { coordinator.dismissSpeedMenu() }
             }
+            .confirmationDialog("Altyazı", isPresented: subtitleMenuBinding, titleVisibility: .visible) {
+                ForEach(coordinator.subtitleChoices ?? [], id: \.id) { language in
+                    Button(subtitleMenuLabel(language)) { coordinator.selectSubtitleLanguage(language) }
+                }
+                Button("İptal", role: .cancel) { coordinator.dismissSubtitleMenu() }
+            }
         }
     }
 
@@ -119,6 +125,24 @@ private struct HomeTabView: View {
     private func speedMenuLabel(_ rate: Double) -> String {
         let base = PlaybackSpeedMenu.label(for: rate)
         return rate == coordinator.speedMenuCurrentRate ? "✓ \(base)" : base
+    }
+
+    /// Altyazı menüsü sunum bağı: seçenekler non-nil iken action-sheet açık; kapanışta temizlenir.
+    private var subtitleMenuBinding: Binding<Bool> {
+        Binding(
+            get: { coordinator.subtitleChoices != nil },
+            set: { presented in
+                if !presented {
+                    coordinator.dismissSubtitleMenu()
+                }
+            }
+        )
+    }
+
+    /// Altyazı butonu etiketi ("Kapalı" veya dilin endonym'i); güncel seçime onay imi ekler.
+    private func subtitleMenuLabel(_ language: SubtitleLanguage) -> String {
+        let base = language.displayName ?? "Kapalı"
+        return language == coordinator.currentSubtitleLanguage ? "✓ \(base)" : base
     }
 }
 

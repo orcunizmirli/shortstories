@@ -41,22 +41,22 @@ public actor PlayerPool {
     private let preferences: any PlaybackPreferencesProviding
     private let logger: any Logging
 
-    /// Kompozisyon kökü (ShortSeriesApp) init'i: AVFoundation backend'iyle kurulur.
-    /// `Dependencies` konteynerine KONMAZ; `PlayerFeedView`'a init-injection ile verilir
-    /// (04 §2.4 kural 2, 03 §5.1). Havuz bütçesi kanonik 3–5 (04 §1); portlar: `playback`
-    /// imzalı URL, `entitlements` kilit erişimi (03 §4 R8), `network` ağ koşulu (SS-026,
-    /// bitrate tavanı 04 §6.3), `preferences` veri tasarrufu (04 §5.3), `logger` loglama.
+    /// Kompozisyon kökü (ShortSeriesApp) init'i: AVFoundation backend'iyle kurulur. `PlayerFeedView`'a
+    /// init-injection ile verilir (04 §2.4). Havuz bütçesi 3–5 (04 §1); portlar: `playback` imzalı URL,
+    /// `entitlements` kilit (03 §4 R8), `network` ağ (SS-026), `preferences` veri tasarrufu (04 §5.3),
+    /// `subtitleProvider` altyazı (SS-046), `logger`.
     public init(
         size: Int = 3,
         playback: any PlaybackServicing,
         entitlements: any EntitlementChecking,
         network: any NetworkConditionProviding,
         preferences: any PlaybackPreferencesProviding,
+        subtitleProvider: (any SubtitlePreferenceProviding)? = nil,
         logger: any Logging
     ) {
         self.init(
             size: size,
-            backendFactory: { AVPlayerBackend() },
+            backendFactory: { AVPlayerBackend(subtitleProvider: subtitleProvider) },
             playback: playback,
             entitlements: entitlements,
             network: network,

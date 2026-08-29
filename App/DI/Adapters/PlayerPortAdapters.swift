@@ -2,6 +2,7 @@ import AppFoundation
 import Foundation
 import Network
 import PlayerKit
+import ProfileKit
 
 // PlayerKit çalışma-zamanı portlarının canlı adaptörleri (04 §5.3/5.4, R8). PlayerKit ProfileKit/
 // AppFoundation'ı import etmeden bu portlara bağlanır; App kompozisyonu somut kaynakları verir.
@@ -62,5 +63,33 @@ struct PreferencesDataSaverProvider: PlayerKit.PlaybackPreferencesProviding {
 
     func isDataSaverEnabled() async -> Bool {
         preferences.value(for: PreferenceKeys.dataSaverEnabled)
+    }
+}
+
+/// PlayerKit `SubtitlePreferenceProviding` → ProfileKit `SubtitleLanguageProviding` (SS-161 → SS-046).
+/// `SubtitleLanguage.code` taşınır (`nil` = kapalı) — off `persistedValue`'da ""'e maplandığından
+/// muğlak olur; kod nil ile taşınır. Backend bu kodu `AVMediaSelectionGroup`'ta eşleştirir.
+struct SubtitlePreferenceAdapter: PlayerKit.SubtitlePreferenceProviding {
+    private let source: any ProfileKit.SubtitleLanguageProviding
+
+    init(source: any ProfileKit.SubtitleLanguageProviding) {
+        self.source = source
+    }
+
+    var currentSubtitleCode: String? {
+        source.currentSubtitleLanguage.code
+    }
+
+    func subtitleCodeUpdates() -> AsyncStream<String?> {
+        let upstream = source.subtitleLanguageUpdates()
+        return AsyncStream { continuation in
+            let task = Task {
+                for await language in upstream {
+                    continuation.yield(language.code)
+                }
+                continuation.finish()
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
     }
 }
