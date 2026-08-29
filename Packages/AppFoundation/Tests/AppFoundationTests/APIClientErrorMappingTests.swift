@@ -322,4 +322,15 @@ struct RetryAfterHeaderParsingTests {
         #expect(APIClient.retryAfterDelay(fromHeaderValue: "nan") == nil)
         #expect(APIClient.retryAfterDelay(fromHeaderValue: "1e300") == .seconds(30)) // aşırı ama sonlu → clamp
     }
+
+    @Test func httpDateBicimiNowaGoreParseEdilir() {
+        // Audit: RFC 7231 HTTP-date (rate limiter/CDN'ler yayar) desteklenMİYORDU → nil → 429 throttle
+        // yok sayılıp hızlı backoff'la sunucu dövülüyordu. Artık now'a göre delta hesaplanır (cap'li).
+        let now = Date(timeIntervalSince1970: 1_445_412_400) // Wed, 21 Oct 2015 07:26:40 GMT
+        let at = APIClient.retryAfterDelay
+        #expect(at("Wed, 21 Oct 2015 07:27:00 GMT", now) == .seconds(20)) // +20 sn
+        #expect(at("Wed, 21 Oct 2015 07:28:00 GMT", now) == .seconds(30)) // +80 sn → cap
+        #expect(at("Wed, 21 Oct 2015 07:26:00 GMT", now) == nil) // geçmiş → normal akış
+        #expect(at("not a date", now) == nil)
+    }
 }

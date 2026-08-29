@@ -64,6 +64,20 @@ private struct PlainPostEndpoint: Endpoint {
     }
 }
 
+/// Path'inde ZATEN yüzde-kodlanmış segment (`pathSegmentEscaped` çıktısı `a%2Fb`) taşıyan endpoint —
+/// çift-kodlama regresyonunu yakalar.
+private struct EscapedIDEndpoint: Endpoint {
+    typealias Response = EmptyResponse
+    let escapedID: String
+    var path: String {
+        "/missions/\(escapedID)/claim"
+    }
+
+    var method: HTTPMethod {
+        .post
+    }
+}
+
 struct EndpointTests {
     private let client = APIClient(
         configuration: APIConfiguration(
@@ -93,6 +107,13 @@ struct EndpointTests {
     @Test func bosQueryUrlYeSorguEklemez() throws {
         let request = try client.makeRequest(FeedLikeEndpoint(cursor: nil))
         #expect(request.url?.absoluteString == "https://api.test.local/v1/feed")
+    }
+
+    @Test func onceKodlanmisPathSegmentiCiftKodlanmaz() throws {
+        // Audit MEDIUM: `pathSegmentEscaped` `a/b`'yi `a%2Fb` yapar; `.path` DECODED sink'i `%`'i
+        // `%25`'e YENİDEN kodlayıp `a%252Fb` üretiyordu (sunucu 404). `percentEncodedPath` ile korunur.
+        let request = try client.makeRequest(EscapedIDEndpoint(escapedID: "a%2Fb"))
+        #expect(request.url?.absoluteString == "https://api.test.local/v1/missions/a%2Fb/claim")
     }
 
     @Test func basSlashsizPathNormalizeEdilir() throws {

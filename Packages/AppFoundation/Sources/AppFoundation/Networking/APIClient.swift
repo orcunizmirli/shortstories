@@ -92,7 +92,10 @@ public struct APIClient: APIClientProtocol {
             throw AppError.unexpected(underlying: "Geçersiz baseURL: \(configuration.baseURL)")
         }
         let path = endpoint.path.hasPrefix("/") ? endpoint.path : "/" + endpoint.path
-        components.path += path
+        // `percentEncodedPath` (`path` DEĞİL): endpoint path'i zaten `pathSegmentEscaped` ile yüzde-
+        // kodlanmış segmentler taşır (ör. `/missions/a%2Fb/claim`). `.path` DECODED sink'tir ve `%`'i
+        // `%25`'e YENİDEN kodlar → çift-kodlama (`a%252Fb`), sunucu yanlış kaynağa 404 (audit MEDIUM).
+        components.percentEncodedPath += path
         if !endpoint.query.isEmpty {
             components.queryItems = endpoint.query
         }
@@ -255,18 +258,33 @@ public struct APIClient: APIClientProtocol {
     /// Header'dan okunan bekleme süresinin (saniye) üst sınırı — sunucu ne derse desin bundan fazla beklenmez.
     static let maxRetryAfterSeconds: Double = 30
 
-    /// Saniye biçimli `Retry-After` değerini ayrıştırır (HTTP-date biçimi desteklenmez —
-    /// ayrıştırılamayan/geçersiz değer `nil` döner ve normal backoff'a düşülür).
-    static func retryAfterDelay(fromHeaderValue value: String?) -> Duration? {
-        guard let value,
-              let seconds = TimeInterval(value.trimmingCharacters(in: .whitespaces)),
-              seconds.isFinite, seconds >= 0
-        else { return nil }
-        // `isFinite` inf/nan'ı eler (normal backoff'a düşülür). Sonsuz/aşırı-büyük değer
-        // `Duration.seconds()`'ta trap eder (float→Int128) → SAYISAL clamp Duration'a çevirmeden
-        // ÖNCE uygulanır (audit MEDIUM: `Retry-After: inf`/`1e400` ile deterministik istemci çökmesi).
+    /// `Retry-After` değerini ayrıştırır: saniye biçimi VEYA RFC 7231 HTTP-date biçimi (ör.
+    /// "Wed, 21 Oct 2015 07:28:00 GMT"). Ayrıştırılamayan/geçmiş değer `nil` döner (normal backoff).
+    /// `now` enjekte → HTTP-date delta'sı deterministik test edilebilir.
+    static func retryAfterDelay(fromHeaderValue value: String?, now: Date = Date()) -> Duration? {
+        guard let value else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespaces)
+        if let seconds = TimeInterval(trimmed), seconds.isFinite, seconds >= 0 {
+            // `isFinite` inf/nan'ı eler. Sonsuz/aşırı-büyük değer `Duration.seconds()`'ta trap eder
+            // (float→Int128) → SAYISAL clamp Duration'a çevirmeden ÖNCE (audit: `Retry-After: inf` çökmesi).
+            return .seconds(min(seconds, maxRetryAfterSeconds))
+        }
+        // HTTP-date biçimi (rate limiter/CDN'ler yayar): şimdiye göre delta hesaplanır. Geçmiş tarih →
+        // nil (normal akış). Aksi halde 429 throttle'ı YOK SAYILIP hızlı backoff'la sunucu dövülüyordu (audit).
+        guard let date = Self.httpDateFormatter.date(from: trimmed) else { return nil }
+        let seconds = date.timeIntervalSince(now)
+        guard seconds.isFinite, seconds > 0 else { return nil }
         return .seconds(min(seconds, maxRetryAfterSeconds))
     }
+
+    /// RFC 7231 HTTP-date (IMF-fixdate) ayrıştırıcı — sabit `en_US_POSIX`/GMT (cihaz yereli etkilemez).
+    private static let httpDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(identifier: "GMT")
+        formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss zzz"
+        return formatter
+    }()
 
     static func appError(from urlError: URLError) -> AppError {
         switch urlError.code {
