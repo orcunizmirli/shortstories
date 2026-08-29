@@ -41,12 +41,12 @@ Feature yüzeyi büyük ölçüde **kurulu ve sertleşmiş** (prototip değil): 
 | "Çünkü şunu izledin" / benzer-seri rafları (DSC-06) | Ü | F2 planlı; sunucu-öneri sözleşmesi |
 | Yeni-bölüm yayın takvimi UI (DTL-05) | İ (orta) | F2; client-render, mevcut wire |
 
-### Player — TAM; birkaç F1-skeleton doldurulmalı
+### Player — TAM; F1-skeleton'lar dolduruluyor
 | Gap | Öncelik | Not |
 |-----|---------|-----|
-| **Bölüm-listesi (BolumListesi) sheet** | **İ (orta)** | HomeCoordinator:262-271 F1-STUB. Dizinin bölüm ızgarası + kilit durumu + seek. Kanon Must; **gerçek client gap** |
-| **Altyazı seçim sheet + AVMediaSelection render** | **İ (orta-yüksek)** | LOC-01 Must/F1 ama sheet stub + `AVMediaSelection` HİÇ yok. Altyazı tercihi/menüsü var, GERÇEK track seçimi/render yok. Gerçek gap |
-| **Hız-seçim menüsü** | İ (düşük) | F1-STUB (hold-2x çalışıyor ama menü yok) |
+| **Bölüm-listesi (BolumListesi) sheet** | ✅ YAPILDI (2026-08-29) | DiscoverKit BolumListesiModel(+View) + App wiring; 5-sütun ızgara + kilit + aktif-vurgu + dokun→requestPlayback. 7 test, CI yeşil. |
+| **Hız-seçim menüsü** | ✅ YAPILDI (2026-08-29) | PlaybackSpeedMenu (saf, 5 test) + VM→VC→director köprüsü (last-applied guard) + confirmationDialog. CI yeşil. |
+| **Altyazı seçim sheet + AVMediaSelection** | Ü (BÜYÜK — tam SS-046, real-player) | Sheet F1-STUB. **AVMediaSelection HİÇ yok** + `SubtitleLanguageProviding` portu pool→engine→backend boyunca UNWIRED. Altyazı tercihi/stream (`subtitleLanguageUpdates`) hazır ama backend TÜKETMİYOR. Yarım picker (preference set, track değişmez) kullanıcıyı YANILTIR → hep-ya-hiç. Tam SS-046: port plumbing + AVMediaSelectionGroup track seçimi (on-load + live) + picker. Odaklı bir pass hak ediyor; oturum-kuyruğunda hassas player-stack'e aceleci değişiklik yapılmadı. |
 | Thumbnail scrub önizleme (PLR-05) | Ü | F2 |
 | Offline indirilenler | P | FairPlay DRM'e bağlı (F3, prep) |
 
@@ -74,9 +74,10 @@ Feature yüzeyi büyük ölçüde **kurulu ve sertleşmiş** (prototip değil): 
 
 Bu kalemler **spec-dokümante gereksinim** (spekülatif rakip-özelliği değil), düşük-riskli, mevcut mimariye uygun — kullanıcı ürün-yönü kararı GEREKTİRMEZ:
 
-1. **RTG-01 tamamla** (kaldı: bölüm-tamamlama tetiği + negatif-sinyal bastırma + analitik event). Kill-switch zaten var → güvenli.
-2. **BolumListesi sheet** (player F1-stub doldur) — Must, gerçek gap, izleme-akışına değer.
-3. **Altyazı seçim + AVMediaSelection** (LOC-01 Must) — daha büyük ama dokümante Must; çok-dilli katalog stratejisinin (00 §119 rakip farklılaştırıcı) client tarafı.
+1. ✅ **RTG-01** — mekanizma 5/5 YAPILDI (kaldı: bölüm-tamamlama pozitif + oynatma-hatası negatif tetik-kaynakları, feed hot-path gözlem noktası ister).
+2. ✅ **BolumListesi sheet** — YAPILDI (2026-08-29, CI yeşil).
+3. ✅ **Hız menüsü** — YAPILDI (2026-08-29, CI yeşil).
+4. **Altyazı seçim + AVMediaSelection (tam SS-046)** — BÜYÜK, real-player; `SubtitleLanguageProviding` portu player-stack (pool→engine→backend) boyunca plumbing + AVMediaSelectionGroup track seçimi (on-load + live) + picker. Yarım-picker YANILTICI (hep-ya-hiç). **Odaklı bir pass olarak yapılmalı** — hassas player-stack'e oturum-kuyruğunda aceleci değişiklik yapılmadı. Çok-dilli katalog (00 §119 rakip farklılaştırıcı) client tarafı.
 
 > **⚠️ KULLANICIYA SURFACE EDİLDİ (2026-08-28):** SS-160 String Catalog altyapısı (F0 task) commit'li kodda **YOK** — KANON/memory "hazır" diyor ama `.xcstrings`+knownRegions bulunmuyor. TR/ES/PT lokalizasyonun tüm önkoşulu. Tam migrasyon büyük + base-dil (EN vs TR kaynak) kararı içerir → otonom yapılMADI, kullanıcı kararı bekliyor.
 
