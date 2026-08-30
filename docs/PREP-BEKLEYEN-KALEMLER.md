@@ -150,14 +150,12 @@ sessionExpired-çıkış cüzdan-restore MEDIUM); 2'si düşük-değer/self-heal
   batch'inden DAHA YENİ ise (bayat/out-of-order response) eski server kaydı yeni synced'i EZİYORDU. Fix:
   guard syncState-BAĞIMSIZ `existing.watchedAt > record.watchedAt` (pending + synced korunur; yalnız
   synced-newer case değişir); dead `isNewerLocalPending` kaldırıldı. RED→GREEN, 313 AppFoundation test yeşil.
-- **FavoritesService kalıcı-red rollback yok (FavoritesService.swift:202/223, LOW):** `syncAdd`/`syncRemove`
-  offline-DIŞI tüm hataları tek `catch` ile `.skipped` sayar → kayıt `pendingAdd`/`pendingRemove` kalır ve
-  HER sync turunda süresiz retry edilir. Sunucu KALICI reddederse (4xx: seri yok/403/422) iyimser yerel
-  favori geri ALINMAZ → istemci "favorili" gösterirken sunucu asla kabul etmez (kendini düzeltmeyen
-  local/server ayrışması). Pratikte nadir (UI yalnız var olan katalog öğesini favoriletir) + retry sync-başı
-  sınırlı (hot-loop değil). **Fix:** AppError durum-kodu sınıflandırması (kalıcı 4xx ↔ geçici 5xx/timeout)
-  + kalıcı redde iyimser yerel yazmayı rollback (veya terminal-failed işaretle + kullanıcıya yüzey).
-  Hata-sınıflandırma altyapısı + ürün kararı (rollback mı hata-göster mi) gerektirir → ertelendi.
+- **FavoritesService kalıcı-red rollback yok (LOW) → DÜZELTİLDİ (98c9647, ürün kararı: ROLLBACK):** syncAdd/
+  syncRemove offline-dışı tüm hataları `.skipped` sayıp süresiz retry ediyordu → kalıcı 4xx redde iyimser
+  favori geri alınmıyordu (kendini düzeltmeyen local/server ayrışması). Fix: rollbackAdd/rollbackRemoval repo
+  metodları + DAR sınıflandırma (isPermanentRejection = yalnız 4xx-non-429 içerik; 5xx/timeout/`.unexpected`/
+  `.decoding` GEÇİCİ → pending kalır); PUT-kalıcı → rollback, DELETE 404 → idempotent-confirmed, DELETE-kalıcı
+  → favori korunur. TDD: FavoritesRollbackTests 4 test (revert-verify). 68 LibraryKit + 314 AppFoundation yeşil.
 
 ### DiscoverKit bug-hunt — ertelenen 1 kalem (2026-08-30)
 DiscoverKit (Arama/DiziDetay/Kesfet/DeepLink) adversarial bug-hunt'ının 4 CONFIRMED bulgusundan 3'ü
