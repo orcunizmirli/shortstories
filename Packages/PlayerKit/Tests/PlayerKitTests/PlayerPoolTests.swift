@@ -5,51 +5,6 @@ import Foundation
 import Testing
 @testable import PlayerKit
 
-// MARK: - Ortak havuz harness'ı (iki suite paylaşır)
-
-private final class BackendBox: @unchecked Sendable {
-    private let lock = NSLock()
-    private var created: [FakeVideoPlaying] = []
-
-    var backends: [FakeVideoPlaying] {
-        lock.withLock { created }
-    }
-
-    var factory: @Sendable () -> any VideoPlaying {
-        {
-            let backend = FakeVideoPlaying()
-            self.lock.withLock { self.created.append(backend) }
-            return backend
-        }
-    }
-}
-
-private struct PoolHarness {
-    let pool: PlayerPool
-    let box: BackendBox
-    let service: PlaybackServicingSpy
-}
-
-private func makePool(
-    size: Int = 3,
-    entitled: Set<EpisodeID> = [],
-    network: NetworkCondition = .wifi,
-    dataSaver: Bool = false
-) -> PoolHarness {
-    let box = BackendBox()
-    let service = PlaybackServicingSpy()
-    let pool = PlayerPool(
-        size: size,
-        backendFactory: box.factory,
-        playback: service,
-        entitlements: FakeEntitlements(granted: entitled),
-        network: FakeNetworkProvider(network),
-        preferences: FakePreferences(dataSaverEnabled: dataSaver),
-        logger: MockLogger()
-    )
-    return PoolHarness(pool: pool, box: box, service: service)
-}
-
 /// PlayerPool actor testleri (04 §3, SS-040): acquire/reuse, pencere geri dönüşümü,
 /// buffer politikası rolleri (04 §4.1), kilit sınırı (04 §9) ve drain davranışı.
 /// Backend'ler sahtedir; havuz mantığı gerçek medya olmadan doğrulanır.
@@ -99,6 +54,18 @@ struct PlayerPoolTests {
         #expect(loaded) // idle player 1 sn buffer (04 §4.1)
         let played = box.backends.contains { $0.calls.contains(.playImmediately(1.0)) }
         #expect(!played)
+    }
+
+    @Test func warmAuthorizeHataSinifinaGoreRetryKarariDoner() async {
+        // self-review3: KALICI hata (4xx/içerik, isRetryable=false) → true (completedWarmups'a girer, her swipe'ta
+        // boşa authorize önlenir); GEÇİCİ (5xx/timeout) → false (ağ dönünce pencere-içi yeniden ısındırılabilir).
+        let permanent = makePool()
+        permanent.service.setFailure(.network(.server(status: 404)))
+        #expect(await permanent.pool.prepareNext(Fixture.episode(id: "e2"), atFeedIndex: 1) == true)
+
+        let transient = makePool()
+        transient.service.setFailure(.network(.timeout))
+        #expect(await transient.pool.prepareNext(Fixture.episode(id: "e2"), atFeedIndex: 1) == false)
     }
 
     @Test func warmHitAktivasyondaYenidenYuklemeYapilmaz() async throws {

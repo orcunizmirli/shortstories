@@ -148,7 +148,10 @@ public actor PlayerPool {
             return false
         } catch {
             logger.error("PlayerPool: prefetch başarısız episodeID=\(episode.id.rawValue)")
-            return false // geçici authorize/ağ hatası → pencere-içi yeniden denenebilir
+            // self-review3: KALICI hata (isRetryable=false) → true (completedWarmups'a girer, her swipe'ta boşa
+            // authorize önlenir); geçici (5xx/timeout/URL-expire) → false (ağ dönünce yeniden ısındırılabilir).
+            guard let appError = error as? AppError, !appError.isRetryable else { return false }
+            return true // kalıcı hata: pencere-içi re-warm etme
         }
     }
 
