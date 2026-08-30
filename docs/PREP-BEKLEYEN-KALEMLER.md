@@ -218,6 +218,24 @@ ContentKit (Wire decode/Models/API) adversarial bug-hunt'ının 3 kept bulgusund
   Response tipleri için 200 + boş gövde bir decode HATASI sayılmalı (retry/hata yüzeyi). AppFoundation
   APIClient (cross-package, shared infra) değişimi gerektirir → ayrı pass'e bırakıldı.
 
+### AnalyticsKit bug-hunt — ertelenen 2 kalem (2026-08-30)
+AnalyticsKit (Experiment assignment/override/exposure) adversarial bug-hunt'ının 5 kept bulgusundan 3'ü
+düzeltildi (2 commit: variant-seçimi trafik-bağımsız HIGH + negatif-weight clamp MEDIUM; ab_variants
+format break→continue LOW); 2'si App-wiring/spec-config olduğu için ertelendi:
+- **makeExperimentClient previouslyExposed beslenmiyor (App/DI/AppComposition+RemoteConfig.swift:33, LOW
+  CONFIRMED):** ExperimentClient `previouslyExposed` parametresini destekliyor (kalıcı exposure geçmişi)
+  ama App composition HİÇ beslemyor (default []) ve exposure'lar hiçbir yere persist edilmiyor → her
+  oturumda `ab_exposure.first_exposure=true` düşer → DÖNEN kullanıcılar için "deneye ilk maruz kalma"
+  KPI'si kalıcı ŞİŞİRİLİR (win-back/funnel analizi bozulur). **Fix:** exposed (exp_key,variant) çiftlerini
+  UserDefaults'a persist eden bir store + composition'da makeExperimentClient'a previouslyExposed besle
+  (RTG-01 ReviewPromptState / LastSeenStreakStore deseni). App-katmanı wiring + yeni store gerektirir →
+  ertelendi. İlgili: [[shortseries-project]] App/DI composition.
+- **Duplicate variant id tespit edilmez (Experiment.swift:49, LOW PLAUSIBLE):** aynı id'li iki variant
+  kataloğa/Experiment'e girerse `variant(withID:)` `first`'ü döner (server-override yolu) ama hash
+  bucketing kümülatif yürüyüşte SONRAKİ duplike variant'ı seçebilir → aynı raporlanan variant id FARKLI
+  payload'a eşlenir (tutarsız deney davranışı). Spec-ihlali config (operatör hatası) gerektirir. **Fix:**
+  katalog yüklemede duplicate variant id'leri validate/dedup et (ilkini tut + telemetri) → ayrı pass.
+
 ---
 
 ## Kod-içsel (prep gerektirmeyen) kalan iş — ayrı izlenir
