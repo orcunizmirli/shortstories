@@ -187,6 +187,16 @@ günlük-reset unpin MEDIUM); 3'ü App-wiring/port-versiyonlama gerektirdiği i�
   meşru debit'i açığa çıkardı. **Fix:** value-heuristic yerine cüzdan akışına monoton VERSİYON/sequence
   eklenip applyBalance yalnız STRICTLY-NEWER sürümü uygulasın (RewardsWalletReading + WalletStore port
   değişimi) → bayat düşük SEQUENCE'e göre ayrılır, meşru düşük uygulanır. Port versiyonlama gerektirir → ertelendi.
+  **VERSİYONLAMA GEREKLİLİĞİ KANITLANDI (2026-08-30, kullanıcı MEDIUM-refactor kararı sonrası denendi):** contained
+  ONE-SHOT awaited (ilk-swallow sonra temizle) denendi → `staleBalanceStreamDoesNotOverwriteClaimedBalance` testini
+  KIRDI. Kök neden: load() coinBalance'ı hemen set edip eventually'yi erken döndürünce observeUpdates REPLAY değeri
+  claim'DEN SONRA gelir → İKİ stale-altı emisyon (replay + set); one-shot ilkini yutup ikincisini uygular (claim'i
+  ezer). value-heuristic (>=, one-shot) ÇOKLU-stale ↔ meşru-spend'i AYIRAMAZ; yalnız MONOTON VERSİYON ayırır (stale =
+  version ≤ claim-baseline; spend = version > baseline). **İki-kaynaklı sorun:** claim kredisi RESPONSE'tan
+  (versiyonsuz), bakiye STREAM'den (WalletStore version-guard'lı) gelir → tam çözüm claim'i de versiyonlamalı VEYA
+  claim→WalletStore-write ile TEK-KAYNAĞA indirmeli. Subtle 3-paket (WalletKit version-expose + RewardsKit port +
+  App adapter + OdulMerkezi + test fake'leri) → self-review'lı ODAKLI görev olarak yapılmalı (oturum-sonu acele
+  regresyon riski; bu oturum self-review zinciri 4× subtle-fix regresyonu yakaladı). Mevcut `>=` guard KORUNDU.
 - **claim/applyAuthoritativeBalance epoch guard yok (OdulMerkeziModel.swift:267/289, MEDIUM/LOW PLAUSIBLE):**
   claimToday/claimTask `await claim()` ÖNCESİ epoch yakalamaz, SONRASINDA apply-öncesi doğrulamaz →
   uçuştaki claim yanıtı bir bağlam/hesap değişiminden sonra uygulanınca cross-account/bayat kredi; ayrıca
