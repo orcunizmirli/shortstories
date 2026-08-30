@@ -109,6 +109,8 @@ private struct NoopFavoritesRepository: FavoritesRepository {
 
     func confirmAdd(_: SeriesID) async throws {}
     func confirmRemoval(_: SeriesID) async throws {}
+    func rollbackAdd(_: SeriesID) async throws {}
+    func rollbackRemoval(_: SeriesID) async throws {}
     func deleteAll() async throws {}
 }
 
