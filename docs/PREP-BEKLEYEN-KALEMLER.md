@@ -244,12 +244,11 @@ ertelendi. **App CI'da DEĞİL — hepsi lokal AppTests + build ile doğrulanır
   reset ETMEZ. Testler: testDifferentAccountSwitchResetsModelButSameUserIDDoesNot + claimInFlightDuringAccount
   SwitchDoesNotWriteOldAccountData + testDifferentAccountSwitchRemountsFeedButSameUserIDDoesNot. (Not: PlayerPool
   warm-slot'ları account-agnostik kalır ama re-seed sonrası B'nin feed'inde A'nın bölümü olmadığından leak değil.)
-- **Deep-link `search?q=` Arama açıkken query düşürülür (DiscoverCoordinator.swift:52, LOW CONFIRMED):** showSearch
-  `guard searchStackDepth == nil else { return }` — Arama zaten stack'teyse yeni universal-link query'si sessizce
-  atlanır, ön-doldurma uygulanmaz. **Fix:** Arama açık+query doluysa mevcut frame'i pop+repush VEYA AramaModel'e forward.
-- **`.series` deep-link idempotent değil (DiscoverCoordinator.swift:41, LOW):** showDetail `path.append` (NavigationPath,
-  peek yok) → aynı diziye ikinci push özdeş DiziDetay çoğaltır. **Fix:** son diziDetay seriesID marker'ı (search deseni),
-  özdeşse tekrar push etme.
+- **Deep-link `search?q=` Arama açıkken query düşürülür (LOW) → DÜZELTİLDİ (f47d199):** showSearch Arama açık+query
+  doluysa pop(Arama+üstündeki DiziDetay)+repush(query) ile ön-doldurma uygular (query yoksa no-op, çift-Arama önleme korunur).
+- **`.series` deep-link idempotent değil (LOW) → DÜZELTİLDİ (f47d199):** showDetail `detailMarker (seriesID, depth)` →
+  aynı dizi hâlâ tepedeyken (marker.depth == path.count) push bastırılır (deep-link/çift-tap özdeş DiziDetay çoğaltmaz).
+  TDD: DiscoverNavigationTests 4 test (revert-verify RED→GREEN), 232 App testi yeşil.
 - **Standalone VIP aktivasyonu feed'i reaktive etmez (WalletFlowCoordinator.swift:159, LOW):** vipSubscriptionDidActivate
   yalnız vipModel=nil yapar; feed reaktivasyon kancası (onEpisodeUnlocked) bölüm-bazlı, VIP-hepsini-aç için çağrılmaz
   → VIP sonrası feed'deki kilitli bölümler `.locked` kalır. **Fix:** onVIPActivated → feed'i reaktive et (feedState-reset task'ıyla ilişkili).
