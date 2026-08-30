@@ -5,7 +5,10 @@ import Foundation
 /// Havuza ısındırma köprüsü (PlayerKit-internal): PrefetchController havuzu bu dar
 /// arayüzden görür; testler kayıt tutan sahteyle koşar.
 protocol EpisodeWarming: Sendable {
-    func warm(_ episode: Episode, atFeedIndex feedIndex: Int) async
+    /// Bölümü ısındırır. Dönüş: `true` = TAMAMLANDI/kilitli (pencere-içi RETRY ETME), `false` = GEÇİCİ
+    /// hata (5xx/timeout/authorize hatası → ağ dönerse pencere-içi yeniden denenebilir). İptal ayrıca
+    /// `Task.isCancelled` ile ele alınır. (self-review PREP §6: başarısız warm'ı "tamamlandı" sayma → cold-start.)
+    func warm(_ episode: Episode, atFeedIndex feedIndex: Int) async -> Bool
 }
 
 /// Sonraki bölüm ön-yükleme denetleyicisi (04 §5, SS-042). Public yüzeyi yalnız
@@ -96,13 +99,13 @@ public actor PrefetchController {
             let token = UUID()
             let budget = plan.budget
             let task = Task(priority: .utility) { [warmer, measurer] in
-                await warmer.warm(episode, atFeedIndex: feedIndex)
+                let completed = await warmer.warm(episode, atFeedIndex: feedIndex)
                 let wasCancelled = Task.isCancelled
                 // Task {} actor bağlamını devralır; taskCompleted izole (senkron) çağrıdır.
-                self.taskCompleted(episode.id, token: token, wasCancelled: wasCancelled)
-                if !wasCancelled {
-                    // Yaklaşık ölçüm = bütçe tanımı (~500 KB / ilk 2 sn — 04 §5.1);
-                    // gerçek ağ sayacı SS-041'de bu kancaya bağlanır.
+                self.taskCompleted(episode.id, token: token, wasCancelled: wasCancelled, completed: completed)
+                if !wasCancelled, completed {
+                    // Yalnız GERÇEKTEN tamamlanan warm'ı ölç (geçici hata over-count etmesin). Yaklaşık
+                    // ölçüm = bütçe tanımı (~500 KB / ilk 2 sn — 04 §5.1); gerçek ağ sayacı SS-041'de bağlanır.
                     await measurer.recordWarmupCompleted(
                         episodeID: episode.id,
                         approximateBytes: budget.maxBytes,
@@ -143,12 +146,14 @@ public actor PrefetchController {
         completedWarmups = completedWarmups.intersection(targetIDs)
     }
 
-    private func taskCompleted(_ episodeID: EpisodeID, token: UUID, wasCancelled: Bool) {
+    private func taskCompleted(_ episodeID: EpisodeID, token: UUID, wasCancelled: Bool, completed: Bool) {
         // Görev kimliği korkuluğu: yalnız kendi kaydını düşürebilir; anahtar bu
         // arada başka (yeni) göreve geçtiyse dokunmaz.
         guard tasks[episodeID]?.token == token else { return }
         tasks[episodeID] = nil
-        if !wasCancelled {
+        // completedWarmups'a YALNIZ gerçekten tamamlanan (başarı/kilitli) warm eklenir → geçici hata alan
+        // bölüm pencere-içi kaldıkça yeniden ısındırılabilir (ağ dönünce cold-start spinner önlenir).
+        if !wasCancelled, completed {
             completedWarmups.insert(episodeID)
         }
     }

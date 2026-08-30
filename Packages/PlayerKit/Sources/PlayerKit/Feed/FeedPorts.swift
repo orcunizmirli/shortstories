@@ -11,7 +11,8 @@ protocol FeedPlaybackPooling: Sendable {
         atFeedIndex feedIndex: Int,
         resumePosition: Double?
     ) async throws -> PlaybackHandle
-    func prepareNext(_ episode: Episode, atFeedIndex feedIndex: Int) async
+    @discardableResult
+    func prepareNext(_ episode: Episode, atFeedIndex feedIndex: Int) async -> Bool
     func recycle(keeping window: ClosedRange<Int>) async
     func drain(keepPlayers: Bool) async
 }

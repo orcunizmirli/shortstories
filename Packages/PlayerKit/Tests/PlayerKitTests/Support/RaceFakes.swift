@@ -117,7 +117,7 @@ final class GatedWarmer: EpisodeWarming, @unchecked Sendable {
         lock.withLock { completedKeys }
     }
 
-    func warm(_ episode: Episode, atFeedIndex _: Int) async {
+    func warm(_ episode: Episode, atFeedIndex _: Int) async -> Bool {
         let sequence: Int = lock.withLock {
             let next = (callCounts[episode.id] ?? 0) + 1
             callCounts[episode.id] = next
@@ -126,6 +126,7 @@ final class GatedWarmer: EpisodeWarming, @unchecked Sendable {
         let key = "\(episode.id.rawValue)#\(sequence)"
         await gate.pass(key)
         lock.withLock { completedKeys.append(key) }
+        return true // gate'li warmer başarı sayılır (yarış testleri completedWarmups davranışına bakmaz)
     }
 }
 

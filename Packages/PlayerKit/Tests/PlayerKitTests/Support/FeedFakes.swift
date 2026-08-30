@@ -166,8 +166,10 @@ final class RecordingFeedPool: FeedPlaybackPooling, @unchecked Sendable {
         return PlaybackHandle(episodeID: episode.id, engine: freshEngine)
     }
 
-    func prepareNext(_ episode: Episode, atFeedIndex feedIndex: Int) async {
+    @discardableResult
+    func prepareNext(_ episode: Episode, atFeedIndex feedIndex: Int) async -> Bool {
         lock.withLock { recorded.append(.prepareNext(episode.id, feedIndex: feedIndex)) }
+        return true
     }
 
     func recycle(keeping window: ClosedRange<Int>) async {

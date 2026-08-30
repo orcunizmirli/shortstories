@@ -132,18 +132,23 @@ public actor PlayerPool {
     /// Komşu bölümü ısındırır: item yüklü + paused + 1 sn buffer (04 §3.2).
     /// Kilitli ve entitlement'sız bölüm ISINDIRILMAZ (04 §9.1 kural 4) — boşa
     /// authorize isteği ve 403 gürültüsü önlenir.
-    func prepareNext(_ episode: Episode, atFeedIndex feedIndex: Int) async {
+    /// Dönüş (EpisodeWarming sözleşmesi): `true` = tamamlandı/kilitli (RETRY ETME), `false` = geçici hata/iptal
+    /// (pencere-içi yeniden denenebilir; iptal ayrıca PrefetchController'da `Task.isCancelled` ile de dışlanır).
+    @discardableResult
+    func prepareNext(_ episode: Episode, atFeedIndex feedIndex: Int) async -> Bool {
         guard await isPlayable(episode) else {
             logger.debug("PlayerPool: kilitli bölüm ısındırılmadı episodeID=\(episode.id.rawValue)")
-            return
+            return true // kilitli: yeniden warm anlamsız (kilit açılınca reactivation ayrı yoldan warm eder)
         }
         do {
             _ = try await acquire(for: episode, atFeedIndex: feedIndex, role: .warm)
+            return true // başarı
         } catch is CancellationError {
-            // İptal hata değildir (03 §7.3): slot temiz bırakıldı, gürültü yok.
-            logger.debug("PlayerPool: prefetch iptal edildi episodeID=\(episode.id.rawValue)")
+            logger.debug("PlayerPool: prefetch iptal edildi episodeID=\(episode.id.rawValue)") // iptal = hata değil (§7.3)
+            return false
         } catch {
-            logger.error("PlayerPool: prefetch hazırlığı başarısız episodeID=\(episode.id.rawValue)")
+            logger.error("PlayerPool: prefetch başarısız episodeID=\(episode.id.rawValue)")
+            return false // geçici authorize/ağ hatası → pencere-içi yeniden denenebilir
         }
     }
 
@@ -387,14 +392,5 @@ extension PlayerPool {
         slots[slotIndex].episodeID = nil
         slots[slotIndex].feedIndex = nil
         slots[slotIndex].role = .idle
-    }
-}
-
-// MARK: - EpisodeWarming
-
-extension PlayerPool: EpisodeWarming {
-    /// PrefetchController'ın havuza dar köprüsü: warm = prepareNext.
-    func warm(_ episode: Episode, atFeedIndex feedIndex: Int) async {
-        await prepareNext(episode, atFeedIndex: feedIndex)
     }
 }

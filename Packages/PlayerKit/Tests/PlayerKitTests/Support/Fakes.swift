@@ -282,6 +282,8 @@ final class RecordingWarmer: EpisodeWarming, @unchecked Sendable {
     private var warmedRecords: [(episodeID: EpisodeID, feedIndex: Int)] = []
     private var cancelled: [EpisodeID] = []
     private var delayNanoseconds: UInt64 = 0
+    /// Bu ID'lerin warm'ı GEÇİCİ hata (false) döner (5xx/timeout simülasyonu) — completedWarmups'a EKLENMEZ.
+    private var failingIDs: Set<EpisodeID> = []
 
     var warmedIDs: [EpisodeID] {
         lock.withLock { warmedRecords.map(\.episodeID) }
@@ -299,17 +301,25 @@ final class RecordingWarmer: EpisodeWarming, @unchecked Sendable {
         lock.withLock { delayNanoseconds = nanoseconds }
     }
 
-    func warm(_ episode: Episode, atFeedIndex feedIndex: Int) async {
+    /// Bu bölümlerin warm'ı geçici hata (false) döndürsün (retry-edilebilirlik testi).
+    func setFailing(_ ids: Set<EpisodeID>) {
+        lock.withLock { failingIDs = ids }
+    }
+
+    func warm(_ episode: Episode, atFeedIndex feedIndex: Int) async -> Bool {
         let delay = lock.withLock { delayNanoseconds }
         if delay > 0 {
             do {
                 try await Task.sleep(nanoseconds: delay)
             } catch {
                 lock.withLock { cancelled.append(episode.id) }
-                return
+                return false // iptal
             }
         }
-        lock.withLock { warmedRecords.append((episode.id, feedIndex)) }
+        return lock.withLock {
+            warmedRecords.append((episode.id, feedIndex))
+            return !failingIDs.contains(episode.id) // failing → false (geçici hata), aksi true (tamamlandı)
+        }
     }
 }
 
