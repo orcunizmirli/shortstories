@@ -330,6 +330,23 @@ KENDİ kenar-değiş-tokuşu; nav [AppRoute] TEMİZ çıktı). DÜZELTİLDİ (47
   yapısal/gerçek-durum çözümler (nav [AppRoute] peek, in-flight guard, narrow-exclude) sağlam. Heuristik yerine
   gerçek-durumu izle. self-review zincirini fix temizlenene dek sürdür (4 geçiş: her biri bir öncekini düzeltti).
 
+### Oturum-değişikliği self-review-5 — CONVERGENCE + 1 KABUL-EDİLEN LOW (2026-08-30)
+self-review4 fix'lerinin 5. review'ı YALNIZ 1 bulgu buldu (MEDIUM→LOW düşürüldü, bağımsız verifier "tradeoff
+SAVUNULABİLİR" dedi) → self-review zinciri CONVERGE etti (MEDIUM'lar → savunulabilir LOW).
+- **prepareNext `.unexpected`-exclude de kenar-değiş-tokuşu (LOW, KABUL EDİLDİ):** `.unexpected` yalnız slot-çekişme
+  DEĞİL — APIClient KALICI transport/config hatalarını (TLS/cert/redirect/ATS/interceptor) da `.unexpected`'e map
+  eder (appError(from:) default kovası). Bu yüzden `.unexpected→false (re-warm)` config-outage'da "her-swipe boşa
+  authorize"ı geri getirir. **NEDEN KABUL:** (1) authorize `.unexpected` ENDPOINT-seviyesi/all-or-nothing (per-bölüm
+  404/403/5xx → `.network(.server)`/`.content`, ASLA `.unexpected`) → yalnız TLS/config-outage'da ateşlenir, o durumda
+  aktif kart da oynamaz (app zaten bozuk) + feed'den çıkınca cancelAll temizler; (2) israf per-swipe sınırlı, görünmez
+  arka-plan pil/bant, correctness/UX/crash yok; (3) tradeoff sık+kritik slot-çekişmeyi (sticky-cold spinner) DOĞRU
+  çözer, ender config-outage'da minör israf yapar — verifier "gerçek ama düşük etkili, savunulabilir" dedi; (4)
+  `.unexpected` type-erased catch-all olduğundan HER sınıflandırma kenar-değiş-tokuşu yapar (5. kez) → belirsizliğin
+  savunulabilir dengesi. **YAPISAL SEÇENEK (gelecek):** slot-çekişme `.unexpected` yerine DİSTİNKT retryable hata
+  (yeni `PlaybackError.temporarilyUnavailable`, isRetryable=true) fırlatsın → prepareNext plain isRetryable kullanır,
+  `.unexpected`-exclude kalkar, ambiguity kökten çözülür (slot→retryable→re-warm; config-outage `.unexpected`→
+  not-retryable→re-warm-yok). AppError paylaşılan-infra dokunuşu + slot≠playback semantik pürüzü → LOW için ertelendi.
+
 ---
 
 ## Kod-içsel (prep gerektirmeyen) kalan iş — ayrı izlenir
