@@ -237,18 +237,18 @@ App katmanı (coordinators/adapters/analytics-wiring) adversarial bug-hunt'ını
 düzeltildi (3 commit: ab_exposure registry crash HIGH; rewarded-preload kill-switch LOW; deeplink_opened
 decorated LOW); kalanlar App-mimari (session-observation/reset altyapısı) veya küçük navigasyon olduğu için
 ertelendi. **App CI'da DEĞİL — hepsi lokal AppTests + build ile doğrulanır.**
-- **HESAP-DEĞİŞİMİNDE UZUN-ÖMÜRLÜ UI STATE RESET (cluster, MEDIUM) — REWARDS KISMI DÜZELTİLDİ (3f9bb17+5b60be1);
-  FEED KISMI KALDI:** App'te session-state gözlemcisi yoktu; coordinator/model'ler app-init'te bir kez kurulur ve
-  `switchToExistingAccount` onları yeniden yaratmaz. **DÜZELTİLEN (b+c rewards):** RewardsCoordinator artık
-  `session.stateUpdates` gözlemler (always-alive), userID FARKLI hesaba geçince `OdulMerkeziModel.resetForAccountSwitch()`
-  çağırır → checkInState/claimedTaskIDs/coinBalance/awaitedBalance/catalog temizlenir + generation bump + kalıcı
-  `lastSeenStreak` clear (in-session switch persisted değeri siler → cold-launch sahte-break de kapanır). link
-  (guest→aynı userID)/session-death/re-auth reset ETMEZ. CI-testli core (RewardsKit) + App wiring testi
-  (testDifferentAccountSwitchResetsModelButSameUserIDDoesNot). **KALAN (a feed):** HomeCoordinator.feedViewModel.feedState
-  (HomeCoordinator.swift:234) — applyUnlock `.unlocked` bölümler + önceki hesabın seed'lenmiş feed'i B'ye taşınır;
-  PlayerPool.isPlayable `.unlocked`'a entitlement sormadan güvenir → paywall bastırılır (imzalı-URL süresine dek;
-  sonra sunucu-otoriter backstop). **Fix:** aynı always-alive gözlemci deseni HomeCoordinator'da → feedViewModel
-  feedState reset (PlayerFeedViewModel'e resetForAccountSwitch + HomeCoordinator observer). Rewards ile aynı kök/desen.
+- **HESAP-DEĞİŞİMİNDE UZUN-ÖMÜRLÜ UI STATE RESET (cluster, MEDIUM) — TAM DÜZELTİLDİ (rewards 3f9bb17+5b60be1
+  +accountEpoch fence; feed a26ea83-sonrası):** App'te session-state gözlemcisi yoktu; coordinator/model'ler
+  app-init'te bir kez kurulup switch'te yeniden yaratılmıyordu → önceki hesabın state'i sızıyordu. **ÇÖZÜM
+  (her iki koordinatör de always-alive `session.stateUpdates` gözlemci, userID FARKLI hesaba geçince reset):**
+  (b+c) **RewardsCoordinator** → `OdulMerkeziModel.resetForAccountSwitch()` (checkInState/claimedTaskIDs/
+  coinBalance/awaitedBalance/catalog + generation bump + kalıcı lastSeenStreak clear; uçuştaki claim/load/
+  refreshTasks yolları `accountEpoch` ile fence'lenir → in-flight yanıt yeni hesaba yazılmaz). (a) **HomeCoordinator**
+  → feed reset (seedGeneration bump + feedState=FeedState() [`.unlocked` işaretleri temizlenir] + feedEntry/
+  pendingPlayback/activeEpisodeID + feedMountToken remount). link (guest→aynı userID §3.3)/session-death/re-auth
+  reset ETMEZ. Testler: testDifferentAccountSwitchResetsModelButSameUserIDDoesNot + claimInFlightDuringAccount
+  SwitchDoesNotWriteOldAccountData + testDifferentAccountSwitchRemountsFeedButSameUserIDDoesNot. (Not: PlayerPool
+  warm-slot'ları account-agnostik kalır ama re-seed sonrası B'nin feed'inde A'nın bölümü olmadığından leak değil.)
 - **Deep-link `search?q=` Arama açıkken query düşürülür (DiscoverCoordinator.swift:52, LOW CONFIRMED):** showSearch
   `guard searchStackDepth == nil else { return }` — Arama zaten stack'teyse yeni universal-link query'si sessizce
   atlanır, ön-doldurma uygulanmaz. **Fix:** Arama açık+query doluysa mevcut frame'i pop+repush VEYA AramaModel'e forward.
