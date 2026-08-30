@@ -9,3 +9,5 @@ DerivedData/
 *.xcresult
 # K1a: .xcodeproj XcodeGen ile üretilir (project.yml kaynağı), commit'lenmez
 ShortSeries.xcodeproj/
+# Xcode'un workspace'i açınca ürettiği SPM çözümleme cache'i (build-local)
+ShortSeries.xcworkspace/xcshareddata/swiftpm/
