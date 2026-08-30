@@ -380,10 +380,16 @@ public struct ExperimentAssigner: Sendable {
 
     public static func variant(for experiment: ExperimentConfig, userID: String) -> String? {
         guard experiment.status == .running else { return nil }
-        let b = bucket(userID: userID, experimentKey: experiment.key, salt: experiment.salt)
-        guard b < experiment.trafficBasisPoints else { return nil } // deneye dahil değil
+        // (1) Trafik dahil-etme: ramp YALNIZ bunu genişletir.
+        let inclusion = bucket(userID: userID, experimentKey: experiment.key, salt: experiment.salt)
+        guard inclusion < experiment.trafficBasisPoints else { return nil } // deneye dahil değil
+        // (2) Varyant seçimi TRAFİK-BAĞIMSIZ ayrı hash boyutunda + SABİT modülüsle (10_000) ölçeklenir →
+        //     ramp mevcut kullanıcının varyantını DEĞİŞTİRMEZ (aşağıdaki "Kurallar" yapışkanlık invariantı).
+        //     UYARI: varyant seçimini trafficBasisPoints'e bölmek stickiness'i BOZAR (ramp'te flip → SRM).
+        let totalWeight = experiment.variants.map(\.weight).reduce(0, +)
+        let variantBucket = bucket(userID: userID, experimentKey: experiment.key, salt: experiment.salt + ":variant")
+        let scaled = variantBucket * totalWeight / 10_000
         var cumulative = 0
-        let scaled = b * experiment.variants.map(\.weight).reduce(0, +) / experiment.trafficBasisPoints
         for v in experiment.variants {
             cumulative += v.weight
             if scaled < cumulative { return v.name }

@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import AnalyticsKit
 
@@ -56,6 +57,25 @@ struct ExperimentAssignmentTests {
             #expect(assigner.assignment(for: experiment, userID: "kullanici-42") == first)
         }
         #expect(first != nil)
+    }
+
+    @Test func rampTrafiginArtisiMevcutKullaniciVaryantiniDegistirmez() {
+        // Audit HIGH (docs/08 satır 400 yapışkanlık invariantı): trafik ramp'i (yalnız trafficBasisPoints
+        // artışı, salt sabit) MEVCUT kullanıcıların varyantını DEĞİŞTİRMEMELİ. Bug'da variant seçimi
+        // trafficBasisPoints'e bölünerek ölçekleniyordu → %50→%100 ramp'te dahil kullanıcıların yarısı
+        // variant flip ediyordu (sticky ihlali → sample-ratio-mismatch, paywall/fiyat deneyi KPI bozulur).
+        let atFifty = makeExperiment(trafficBasisPoints: 5000)
+        let atHundred = makeExperiment(trafficBasisPoints: 10000)
+        var checked = 0
+        for index in 0 ..< 4000 {
+            let userID = "user-\(index)"
+            // %50 trafikte DAHİL olan kullanıcı %100'e ramp'te AYNI varyantı korumalı.
+            if let atFiftyVariant = assigner.assignment(for: atFifty, userID: userID) {
+                #expect(assigner.assignment(for: atHundred, userID: userID)?.id == atFiftyVariant.id)
+                checked += 1
+            }
+        }
+        #expect(checked > 500) // anlamlı sayıda dahil kullanıcı doğrulandı
     }
 
     @Test func aktifDegilseVaryantsiz() {
@@ -130,9 +150,37 @@ struct ExperimentAssignmentTests {
         #expect(assigner.assignment(for: experiment, userID: "u1") == nil)
     }
 
+    @Test func negatifWeightVariantiTrafikCalmaz() {
+        // Audit MEDIUM: negatif weight doğrulanmıyordu → [A(2), B(-2), C(2)] totalWeight'i 2 yapıp
+        // scaled'ı hep A'ya düşürüyordu (operatörün pozitif weight verdiği C SIFIR trafik). Clamp ile
+        // B=0 → totalWeight=4 → A ve C dağılımı paylaşır, C aç kalmaz.
+        let experiment = makeExperiment(variants: [
+            ExperimentVariant(id: "a", weight: 2),
+            ExperimentVariant(id: "b", weight: -2),
+            ExperimentVariant(id: "c", weight: 2)
+        ])
+        var counts: [String: Int] = [:]
+        for index in 0 ..< 4000 {
+            if let variant = assigner.assignment(for: experiment, userID: "user-\(index)") {
+                counts[variant.id, default: 0] += 1
+            }
+        }
+        #expect(counts["b", default: 0] == 0) // negatif-weight variant 0 trafik
+        #expect(counts["a", default: 0] > 0) // A trafik alır
+        #expect(counts["c", default: 0] > 0) // C aç kalmaz (bug'da 0'dı)
+    }
+
     @Test func bosVaryantYok() {
         let experiment = makeExperiment(variants: [])
         #expect(assigner.assignment(for: experiment, userID: "u1") == nil)
+    }
+
+    @Test func negatifWeightDecodeVeInitSifiraClamplenir() throws {
+        // Doküman invariantı: weight >= 0 (Experiment.swift:79). decodeIfPresent(Int) ?? 1 negatifi
+        // doğrulamadan kabul ediyordu → decode + designated init clamp eder.
+        let variant = try JSONDecoder().decode(ExperimentVariant.self, from: Data(#"{"id":"b","weight":-5}"#.utf8))
+        #expect(variant.weight == 0)
+        #expect(ExperimentVariant(id: "x", weight: -3).weight == 0)
     }
 }
 

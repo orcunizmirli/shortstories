@@ -84,7 +84,7 @@ public struct ExperimentVariant: Sendable, Equatable, Codable, Identifiable {
 
     public init(id: String, weight: Int = 1, payload: [String: ExperimentValue] = [:]) {
         self.id = id
-        self.weight = weight
+        self.weight = max(0, weight) // weight >= 0 invariantı (negatif → 0; totalWeight/dağılımı bozmasın)
         self.payload = payload
     }
 
@@ -104,7 +104,9 @@ public struct ExperimentVariant: Sendable, Equatable, Codable, Identifiable {
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(String.self, forKey: .id)
-        weight = try container.decodeIfPresent(Int.self, forKey: .weight) ?? 1
+        // weight >= 0 invariantı (satır 79): remote config negatif/bozuk weight verirse 0'a clamp'le →
+        // totalWeight'i bozup deneyi sessizce kapatmasın veya pozitif-weight variant'ı 0 trafiğe düşürmesin.
+        weight = try max(0, container.decodeIfPresent(Int.self, forKey: .weight) ?? 1)
         payload = try container.decodeIfPresent([String: ExperimentValue].self, forKey: .payload) ?? [:]
     }
 

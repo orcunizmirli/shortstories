@@ -15,6 +15,13 @@ public protocol ExperimentAssigning: Sendable {
 /// Server-otoriter override: backend açık bir atama verdiyse (`serverAssignments`), geçerli
 /// olduğu sürece hash yerine o kullanılır — client atama sunucuya tabidir.
 public struct DeterministicExperimentAssigner: ExperimentAssigning {
+    /// Bucket uzayı 0..<10_000 (docs/08 §7.2). Trafik dahil-etme VE varyant seçimi bu modülüsle,
+    /// AYRI hash boyutlarında hesaplanır.
+    static let bucketModulus = 10000
+    /// Varyant seçimi salt namespace'i — trafik dahil-etme bucket'ından İSTATİSTİKSEL BAĞIMSIZ ikinci
+    /// hash boyutu üretir (ramp yalnız dahil-etmeyi etkiler, varyantı değil; docs/08 satır 400).
+    private static let variantSaltNamespace = ":variant"
+
     private let serverAssignments: [String: String]
 
     /// - Parameter serverAssignments: `experimentKey -> variantID`. Sunucu bir kullanıcıyı
@@ -35,12 +42,22 @@ public struct DeterministicExperimentAssigner: ExperimentAssigning {
         let totalWeight = experiment.totalWeight
         guard totalWeight > 0 else { return nil }
 
-        let bucket = Self.bucket(userID: userID, experimentKey: experiment.key, salt: experiment.salt)
-        // trafficBasisPoints dışı → deneye dahil değil (0 ise guard her zaman düşer: bölme yok).
-        guard bucket < experiment.trafficBasisPoints else { return nil }
+        // (1) Trafik dahil-etme: ramp YALNIZ bunu genişletir → dahil olan kullanıcı dahil KALIR.
+        let inclusionBucket = Self.bucket(userID: userID, experimentKey: experiment.key, salt: experiment.salt)
+        // trafficBasisPoints dışı → deneye dahil değil (0 ise guard her zaman düşer).
+        guard inclusionBucket < experiment.trafficBasisPoints else { return nil }
 
-        // Dahil edilen trafiği [0, totalWeight) aralığına ölçekle, ağırlıklı kümülatif yürü.
-        let scaled = bucket * totalWeight / experiment.trafficBasisPoints
+        // (2) Varyant seçimi TRAFİK-BAĞIMSIZ ayrı hash boyutuna dayanır (docs/08 satır 400 yapışkanlık
+        // invariantı): ramp (trafficBasisPoints artışı, salt sabit) MEVCUT kullanıcının varyantını
+        // DEĞİŞTİRMEZ. Sabit modülüsle ölçek → dağılım tBP'den bağımsız; ayrı salt namespace → dahil-etme
+        // bucket'ıyla korelasyonsuz. (Eski kod bucket'ı trafficBasisPoints'e böldüğünden ramp variant flip
+        // ettiriyordu → sample-ratio-mismatch; docs/08 §7.2 satır 386 referans pseudo-kodu da bu hatayı taşıyordu.)
+        let variantBucket = Self.bucket(
+            userID: userID,
+            experimentKey: experiment.key,
+            salt: experiment.salt + Self.variantSaltNamespace
+        )
+        let scaled = variantBucket * totalWeight / Self.bucketModulus
         var cumulative = 0
         for variant in experiment.variants {
             cumulative += variant.weight
@@ -63,6 +80,6 @@ public struct DeterministicExperimentAssigner: ExperimentAssigning {
         let input = Data("\(experimentKey):\(salt):\(userID)".utf8)
         let digest = SHA256.hash(data: input)
         let value = digest.prefix(8).reduce(UInt64(0)) { ($0 << 8) | UInt64($1) }
-        return Int(value % 10000)
+        return Int(value % UInt64(bucketModulus))
     }
 }
