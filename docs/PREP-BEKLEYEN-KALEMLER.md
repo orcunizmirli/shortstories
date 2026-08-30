@@ -176,6 +176,33 @@ BolumListesi scheduled-bölüm MEDIUM); 1'i veri-modeli sınırı gereği ertele
   (`watchedEpisodeIDs(forSeries:)`) → cellState kümeyle türetsin. Port/katman genişletmesi gerektirir,
   değer düşük (kozmetik soluk+tik), izole değil → ayrı pass'e bırakıldı.
 
+### RewardsKit bug-hunt — ertelenen 3 kalem (2026-08-30)
+RewardsKit (CheckIn/OdulMerkezi/Tasks) adversarial bug-hunt'ının 9 kept bulgusundan 3'ü düzeltildi
+(2 commit: check-in refresh generation-guard MEDIUM + claim lastSeen-persist LOW; reconcileClaimed
+günlük-reset unpin MEDIUM); 3'ü App-wiring/port-versiyonlama gerektirdiği için ertelendi:
+- **OdulMerkeziModel hesap-değişiminde reset yok (OdulMerkeziModel.swift:79, MEDIUM CONFIRMED):** model
+  TabCoordinator ile bir kez kurulup uygulama ömrü boyunca yaşar; kimlik/generation guard'ı ve reset yolu
+  YOK. `claimedTaskIDs` (ve `hasLoaded` gate'i nedeniyle bayat `coinBalance`) hesap/oturum değişiminde
+  önceki kimlikten TAŞINIR → yeni hesabın aynı-id görevleri çapraz-hesap `.claimed` sabitlenir (claim
+  edilemez); bakiye başlığı akış-replay'i gelene dek önceki hesabınkini gösterir. **Fix:** App
+  account-switch koordinatörü modeli yeniden yaratsın VEYA `resetForAccountSwitch()` (FavoritesService
+  deseni: claimedTaskIDs/awaitedBalance/checkInState/hasLoaded temizle) wiring'le çağrılsın. App-katmanı
+  wiring gerektirir → ertelendi. İlgili: [[shortseries-project]] SS-132/§575 cross-account deseni.
+- **applyBalance `>= awaited` guard'ı MEŞRU bakiye DÜŞÜŞÜNÜ yutar (OdulMerkeziModel.swift:257, MEDIUM
+  PLAUSIBLE):** awaitedBalance (claim değeri) set iken, gelen bir bakiye DÜŞÜŞÜ (harcama/debit veya
+  hesap-değişimi→daha düşük) `guard balance >= awaited` ile yutulur; awaited HİÇ temizlenmez (yalnız
+  >= değer temizler) → başlık bayat-YÜKSEK değerde DONAR. Exact-match→>= audit fix'i donmayı azalttı ama
+  meşru debit'i açığa çıkardı. **Fix:** value-heuristic yerine cüzdan akışına monoton VERSİYON/sequence
+  eklenip applyBalance yalnız STRICTLY-NEWER sürümü uygulasın (RewardsWalletReading + WalletStore port
+  değişimi) → bayat düşük SEQUENCE'e göre ayrılır, meşru düşük uygulanır. Port versiyonlama gerektirir → ertelendi.
+- **claim/applyAuthoritativeBalance epoch guard yok (OdulMerkeziModel.swift:267/289, MEDIUM/LOW PLAUSIBLE):**
+  claimToday/claimTask `await claim()` ÖNCESİ epoch yakalamaz, SONRASINDA apply-öncesi doğrulamaz →
+  uçuştaki claim yanıtı bir bağlam/hesap değişiminden sonra uygulanınca cross-account/bayat kredi; ayrıca
+  eşzamanlı iki claim'de geç dönen DAHA ESKİ bakiye anlık-görüntüsü yeniyi ezebilir. Yukarıdaki reset
+  (§hesap-değişimi) + akış-versiyonlama ile AYNI altyapıyı paylaşır → o iki fix'le birlikte ele alınacak.
+  (Not: todayReward computed var'ının schedule fallback'i [OdulMerkeziModel.swift:159, LOW] da calendar
+  bugün hücresiyle tutarlı olması için CheckInCycle SAF fallback'ine bağlanmalı — küçük, aynı pass'te.)
+
 ---
 
 ## Kod-içsel (prep gerektirmeyen) kalan iş — ayrı izlenir
