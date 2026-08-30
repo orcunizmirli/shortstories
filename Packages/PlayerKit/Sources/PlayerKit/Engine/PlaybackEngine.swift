@@ -289,13 +289,19 @@ actor PlaybackEngine {
             return
         }
         recoveryAttempts += 1
+        // Resume niyeti, HATA-ÖNCESİ oynatma durumundan türetilir (rol DEĞİL — audit MEDIUM): kullanıcı
+        // bölümü DURAKLATMIŞken imzalı URL süresi dolarsa, recovery sonrası KENDİLİĞİNDEN oynatMAMALI.
+        // `.playing`/`.stalled` = kullanıcı oynatıyordu → devam; `.paused`/`.readyAtFirstFrame` = duraklı/
+        // henüz-oynamadı → duraklı kal; `.loading` (ilk-frame öncesi hata) = niyet yok → rol (aktif→oyna).
+        let intentToResume: Bool = switch machine.state {
+        case .playing, .stalled: true
+        case .paused, .readyAtFirstFrame: false
+        default: currentBufferPolicy == .active
+        }
         apply(.recoveryStarted)
-        // Resume niyeti kurtarma BAŞINDA kurulur (await'lerden ÖNCE): aktif slot reload sonrası kaldığı
-        // yerden oynar. Kritik: bunu await'lerden SONRA koşulsuz set etmek, kurtarma penceresinde (loading)
-        // gelen kullanıcı pause()'unu (pendingPlay=false) EZİYORDU → gizli otomatik resume. Burada kurulunca
-        // pencere-içi pause/play niyeti KORUNUR (son kullanıcı niyeti kazanır; pendingPlay yalnız firstFrame'de
-        // tüketilir).
-        pendingPlay = currentBufferPolicy == .active
+        // Await'lerden ÖNCE kurulur: pencere-içi kullanıcı pause()'u (pendingPlay=false) KORUNUR (son
+        // kullanıcı niyeti kazanır; pendingPlay yalnız firstFrame'de tüketilir).
+        pendingPlay = intentToResume
         let recoveryGeneration = generation
         let savedPosition = await backend.currentPositionSeconds()
         guard generation == recoveryGeneration else { return }
@@ -303,7 +309,9 @@ actor PlaybackEngine {
             let freshURL = try await freshURLProvider(episodeID)
             guard generation == recoveryGeneration else { return }
             currentURL = freshURL
-            pendingResumePosition = savedPosition > 0 ? savedPosition : nil
+            // savedPosition 0 ise (ilk-frame ÖNCESİ hata) TÜKETİLMEMİŞ pending konumu (devam-izleme seek'i)
+            // EZME (audit MEDIUM: aksi halde devam konumu 0'a düşüp bölüm baştan başlar).
+            pendingResumePosition = savedPosition > 0 ? savedPosition : pendingResumePosition
             generation &+= 1
             await backend.load(url: freshURL, bufferPolicy: currentBufferPolicy, generation: generation)
         } catch {

@@ -179,6 +179,41 @@ struct SignedURLRecoveryFlowTests {
         #expect(await engine.currentState() != .playing) // pause korundu → gizli otomatik resume YOK
     }
 
+    @Test func hataOncesiPauseKurtarmaSonrasiKorunur() async {
+        // audit MEDIUM: kullanıcı DURAKLATMIŞken imzalı URL süresi dolarsa recovery sonrası KENDİLİĞİNDEN
+        // oynatMAMALI. Bug: handleFailure pendingPlay'i ROLDEN (buffer-policy) türetiyordu → hata-öncesi
+        // pause EZİLİP gizli otomatik resume oluyordu. Fix: hata-öncesi oynatma durumundan türetilir.
+        let provider = URLProviderSpy(serving: [url2])
+        let (engine, backend) = await playingEngine(provider: provider)
+        await engine.pause()
+        _ = await awaitState(.paused, on: engine)
+
+        backend.emit(.didFail(.playback(.signedURLExpired)))
+        _ = await eventually { backend.calls.contains(.load(url2, .active)) }
+        backend.emit(.firstFrameReady)
+        await settle(engine)
+
+        #expect(await engine.currentState() != .playing) // hata-öncesi pause korundu
+    }
+
+    @Test func ilkFrameOncesiHataDevamKonumunuKorur() async {
+        // audit MEDIUM: ilk-frame ÖNCESİ imzalı URL hatası, TÜKETİLMEMİŞ devam-izleme konumunu (resumePosition)
+        // EZMEMELİ. Bug: pendingResumePosition = savedPosition(=0, henüz oynamadı) > 0 ? .. : nil → nil →
+        // recovery sonrası bölüm 0'dan başlıyordu. Fix: savedPosition 0 ise pending konumu korunur.
+        let provider = URLProviderSpy(serving: [url2])
+        let backend = FakeVideoPlaying()
+        let engine = PlaybackEngine(backend: backend, freshURLProvider: { id in try provider.provide(id) })
+        await engine.prepare(episodeID: episodeID, url: url1, bufferPolicy: .active, resumePosition: 120)
+        backend.setPosition(0) // ilk-frame gelmedi → oynamadı; resume seek ertelendi
+
+        backend.emit(.didFail(.playback(.signedURLExpired))) // ilk-frame ÖNCESİ hata
+        _ = await eventually { backend.calls.contains(.load(url2, .active)) }
+        backend.emit(.firstFrameReady) // recovery başarılı → ertelenen seek tüketilir
+        await settle(engine)
+
+        #expect(backend.calls.contains(.seek(120))) // devam konumu korundu (0'a düşmedi)
+    }
+
     @Test func tazeURLAlinamazsaFailedaDusulur() async {
         let provider = URLProviderSpy(serving: [])
         let (engine, backend) = await playingEngine(provider: provider)
