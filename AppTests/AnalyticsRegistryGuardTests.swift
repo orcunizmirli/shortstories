@@ -45,6 +45,8 @@ final class AnalyticsRegistryGuardTests: XCTestCase {
         "referral_view", "referral_shared", "referral_redeemed",
         // RTG-01 puanlama istemi (App AppComposition+ReviewPrompt)
         "review_prompt_requested",
+        // A/B deney exposure (AnalyticsKit ExperimentClient — SS-154, 08 §7.3; BASE strict tracker'a gider)
+        "ab_exposure",
         // Profil / ayarlar / hesap (ProfileKit)
         "profile_row_tapped", "settings_changed", "push_disabled",
         "link_account_started", "link_account_success", "link_account_failed",

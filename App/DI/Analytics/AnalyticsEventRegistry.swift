@@ -89,6 +89,10 @@ enum AnalyticsEventRegistry {
         "mission_progress",
         "mission_complete",
         "mission_claim",
+        // A/B deney exposure (08 §7.3 — AnalyticsKit `ExperimentClient` bir varyant İLK okunduğunda emit
+        // eder; SS-154). Exposure BASE strict tracker'a gider (decorated değil) → registry'de OLMAZSA ilk
+        // deney maruziyetinde (ör. UnlockSheet'te exp_unlock_sheet variant okuması) strictInDebug crash.
+        "ab_exposure",
         // SS-113/114 rewarded ad mekaniği (08 §3.5 reklam bloğu): RewardsKit `RewardedAdService` emit eder
         // (params: placement, ads_used_today, daily_cap). `unlock_ad` (WalletKit) satır seçimini, bunlar
         // reklam yaşam döngüsünü ölçer. Registry'de OLMAZSA strictInDebug ilk 'Reklam izle'de assertionFailure.
