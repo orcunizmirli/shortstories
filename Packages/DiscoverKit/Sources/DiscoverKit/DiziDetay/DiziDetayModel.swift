@@ -133,7 +133,12 @@ public final class DiziDetayModel {
         // İlerleme bölümü ilk sayfada değilse CTA'yı doğru türetmek için o sayfayı çek —
         // aksi halde resolve() baştan-başlat'a düşer ve PlayerFeed yanlış bölüme girer (§4.4).
         await ensureProgressEpisodeLoaded(progress)
-        ctaTarget = ContinueWatchingTarget.resolve(series: series, episodes: episodes, progress: progress)
+        let target = ContinueWatchingTarget.resolve(series: series, episodes: episodes, progress: progress)
+        // CTA hedef bölümü (izlenen+1) sayfa sınırında SONRAKİ cursor sayfasında olabilir; kilit türetimi
+        // ve primaryCTA yönlendirmesi hedef Episode'unu YÜKLÜ ister → onu da çek. Aksi halde aşağıdaki
+        // guard else'e düşer ve kilitli hedef UnlockSheet atlanarak oynatmaya giderdi (paywall bypass).
+        await ensureEpisodeLoaded(number: target.episodeNumber)
+        ctaTarget = target
 
         var accessible: Set<EpisodeID> = []
         for episode in episodes {
@@ -145,10 +150,12 @@ public final class DiziDetayModel {
         }
         accessibleEpisodeIDs = accessible
 
-        if let target = ctaTarget, let episode = episodes.first(where: { $0.index == target.episodeNumber }) {
+        if let episode = episodes.first(where: { $0.index == target.episodeNumber }) {
             ctaLocked = !accessible.contains(episode.id)
         } else {
-            ctaLocked = false
+            // Hedef bölüm sayfalar tükenmesine rağmen yüklenemedi (ör. ağ hatası) → çözülemeyen kilit
+            // KİLİTLİ varsayılır (güvenli taraf, 05 §12 kural 4); erişilemeyen bölüm oynatmaya gitmesin.
+            ctaLocked = true
         }
     }
 
@@ -163,9 +170,30 @@ public final class DiziDetayModel {
             guard let cursor = episodesCursor, !visitedCursors.contains(cursor) else { return }
             visitedCursors.insert(cursor)
             guard let page = try? await catalog.episodes(seriesId: seriesID, cursor: cursor) else { return }
-            episodes += page.items
+            appendUniqueEpisodes(page.items)
             episodesCursor = page.nextCursor
         }
+    }
+
+    /// CTA hedef bölüm numarasının Episode'u henüz yüklü değilse, bulunana (ya da sayfalar bitene) kadar
+    /// ileri sayfala. `ensureProgressEpisodeLoaded` yalnız İZLENEN bölümü garanti eder; resume hedefi
+    /// (izlenen+1) sayfa sınırında sonraki sayfada olabilir. Tekrarlanan/ilerlemeyen cursor'da durur.
+    private func ensureEpisodeLoaded(number: Int) async {
+        var visitedCursors: Set<String> = []
+        while !episodes.contains(where: { $0.index == number }) {
+            guard let cursor = episodesCursor, !visitedCursors.contains(cursor) else { return }
+            visitedCursors.insert(cursor)
+            guard let page = try? await catalog.episodes(seriesId: seriesID, cursor: cursor) else { return }
+            appendUniqueEpisodes(page.items)
+            episodesCursor = page.nextCursor
+        }
+    }
+
+    /// Sayfa-sınırı örtüşmesi: aynı EpisodeID iki kez `episodes`'a girmesin (ForEach id çakışması,
+    /// bozuk diffing) — AramaModel.loadMore ile simetrik dedup (audit MEDIUM).
+    private func appendUniqueEpisodes(_ items: [Episode]) {
+        let existing = Set(episodes.map(\.id))
+        episodes += items.filter { !existing.contains($0.id) }
     }
 
     // MARK: - Bölüm ızgarası hücre durumu (View bunu çizer)
@@ -199,8 +227,12 @@ public final class DiziDetayModel {
                 "episode_number": .int(target.episodeNumber)
             ]
         )
-        if ctaLocked, let episode = episodes.first(where: { $0.index == target.episodeNumber }) {
-            delegate?.diziDetayRequestsUnlock(intent(for: episode, series: series))
+        if ctaLocked {
+            // Kilitli hedef → UnlockSheet. Hedef Episode yüklenemediyse (ağ) intent kurulamaz → no-op:
+            // kilitli/çözülemeyen bölümü oynatmaya YÖNLENDİRME (güvenli taraf, recompute ctaLocked=true).
+            if let episode = episodes.first(where: { $0.index == target.episodeNumber }) {
+                delegate?.diziDetayRequestsUnlock(intent(for: episode, series: series))
+            }
         } else {
             delegate?.diziDetayStartWatching(
                 seriesID: seriesID,
@@ -280,19 +312,21 @@ public final class DiziDetayModel {
         isLoadingEpisodes = true
         defer { isLoadingEpisodes = false }
         guard let page = try? await catalog.episodes(seriesId: seriesID, cursor: cursor) else { return }
-        episodes += page.items
+        appendUniqueEpisodes(page.items)
         episodesCursor = page.nextCursor
         await recompute()
     }
+}
 
-    // MARK: - İç
+// MARK: - İç yardımcılar (type_body_length: same-file extension gövdeye sayılmaz)
 
-    private func resumePosition(for episode: Episode) -> Double {
+private extension DiziDetayModel {
+    func resumePosition(for episode: Episode) -> Double {
         guard let target = ctaTarget, target.episodeNumber == episode.index else { return 0 }
         return target.startPositionSec
     }
 
-    private func intent(for episode: Episode, series: Series) -> LockedEpisodeIntent {
+    func intent(for episode: Episode, series: Series) -> LockedEpisodeIntent {
         LockedEpisodeIntent(
             seriesID: seriesID,
             episodeID: episode.id,
@@ -302,7 +336,7 @@ public final class DiziDetayModel {
         )
     }
 
-    private func trackDetailView(_ series: Series) {
+    func trackDetailView(_ series: Series) {
         analytics.track(
             "series_detail_view",
             parameters: [
