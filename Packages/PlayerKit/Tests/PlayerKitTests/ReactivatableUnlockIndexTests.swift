@@ -12,17 +12,35 @@ import UIKit
 struct ReactivatableUnlockIndexTests {
     @Test func aktifKartOynatilabilirseIndeksDoner() {
         let items = Fixture.feedItems(count: 5, lockedIndexes: []) // 3 oynatılabilir
-        #expect(PlayerFeedViewController.reactivatableUnlockIndex(newItems: items, lockedIndex: 3) == 3)
+        #expect(PlayerFeedViewController.reactivatableUnlockIndex(newItems: items, lockedEpisodeID: items[3].episode?.id) == 3)
     }
 
-    @Test func lockedIndexNilIseNil() {
+    @Test func lockedEpisodeIDNilIseNil() {
         let items = Fixture.feedItems(count: 5, lockedIndexes: [])
-        #expect(PlayerFeedViewController.reactivatableUnlockIndex(newItems: items, lockedIndex: nil) == nil)
+        #expect(PlayerFeedViewController.reactivatableUnlockIndex(newItems: items, lockedEpisodeID: nil) == nil)
     }
 
     @Test func aktifKartHalaKilitliyseNil() {
         let items = Fixture.feedItems(count: 5, lockedIndexes: [3]) // 3 hâlâ kilitli
-        #expect(PlayerFeedViewController.reactivatableUnlockIndex(newItems: items, lockedIndex: 3) == nil)
+        #expect(PlayerFeedViewController.reactivatableUnlockIndex(newItems: items, lockedEpisodeID: items[3].episode?.id) == nil)
+    }
+
+    @Test func feedYenidenSiralanincaKilitliBolumYeniKonumundanReaktiveEdilir() {
+        // Bulgu #3: kilitliyken feed yeniden sıralanırsa (promo insert/For-You refresh) pozisyonel raw index
+        // YANLIŞ komşu kartı reaktive ederdi. Kimlik-tabanlı: kilitli bölümün id'si yeni listede bulunur →
+        // YENİ konumu döner. e1 başta index 1'de; yeniden sıralamada index 2'ye kayar → 2 dönmeli (1 DEĞİL).
+        let items = Fixture.feedItems(count: 3, lockedIndexes: []) // e0/e1/e2 hepsi oynatılabilir
+        let reordered = [items[2], items[0], items[1]] // e1 artık index 2'de
+        #expect(PlayerFeedViewController
+            .reactivatableUnlockIndex(newItems: reordered, lockedEpisodeID: items[1].episode?.id) == 2)
+    }
+
+    @Test func kilitliBolumFeeddenKaldirilirsaNil() {
+        // Kilitli bölüm yeni listede yoksa (dedup/kaldırma) reaktivasyon dispatch edilmez.
+        let items = Fixture.feedItems(count: 3, lockedIndexes: [])
+        let without1 = [items[0], items[2]]
+        #expect(PlayerFeedViewController
+            .reactivatableUnlockIndex(newItems: without1, lockedEpisodeID: items[1].episode?.id) == nil)
     }
 
     // MARK: - Uçuş-guard'ı (self-review4)
@@ -41,5 +59,14 @@ struct ReactivatableUnlockIndexTests {
 
     @Test func uctaGuardAdayNilIseNil() {
         #expect(PlayerFeedViewController.reactivateDispatchIndex(candidate: nil, reactivatingIndex: 3) == nil)
+    }
+
+    // MARK: - .none idempotent no-op ayrımı (bulgu #2: guard'ı erken temizlememe)
+
+    @Test func idempotentNoOpYalnizNoneIcinTrue() {
+        // handleSettleOutcome bunu `!isIdempotentNoOp` ile kullanır: bağımsız scroll-settle'ın `.none`'ı
+        // uçuştaki reaktivasyon guard'ını (reactivatingIndex) ERKEN temizlemesin → çift-dispatch/çift-video_start yok.
+        #expect(FeedPlaybackDirector.SettleOutcome.none.isIdempotentNoOp)
+        #expect(!FeedPlaybackDirector.SettleOutcome.settledWithoutEpisode.isIdempotentNoOp)
     }
 }

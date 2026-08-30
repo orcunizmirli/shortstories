@@ -258,9 +258,8 @@ public actor PlayerPool {
 // MARK: - Kiralama mekaniği (claim-önce-await)
 
 extension PlayerPool {
-    /// Bölüm için player kirala; bölüm zaten bir slot'ta hazırsa aynı player döner. Claim-önce-await:
-    /// rezervasyon authorize suspension'ından ÖNCE senkron yazılır (reentrancy'de farklı bölümler aynı
-    /// slotu seçemez, aynı bölüm dedup'a takılır); hata/iptalde senkron temizlenir; drain/recycle → iptal.
+    /// Bölüm için player kirala; bölüm zaten bir slot'ta hazırsa aynı player döner. Claim-önce-await: rezervasyon
+    /// authorize suspension'ından ÖNCE senkron yazılır (reentrancy güvenli); hata/iptalde temizlenir; drain → iptal.
     func acquire(
         for episode: Episode,
         atFeedIndex feedIndex: Int,
@@ -318,8 +317,7 @@ extension PlayerPool {
         }
     }
 
-    /// Warm-hit yolu: aynı engine yeniden kullanılır (cold start yok — 04 §3.3). İmzalı URL bayatsa/engine
-    /// `.failed` ise taze yetkiyle YENİDEN hazırlanır; aksi halde `resumePosition` verilmişse seek (04 §12.2).
+    /// Warm-hit: aynı engine (cold start yok — 04 §3.3); bayat URL/`.failed` → taze yetki, aksi halde seek (04 §12.2).
     private func reuseWarmSlot(
         _ slotIndex: Int,
         episode: Episode,
@@ -327,16 +325,17 @@ extension PlayerPool {
         role: SlotRole,
         resumePosition: Double?
     ) async throws -> Lease {
-        // Aktif slotu warm-reuse ile `.warm`'a DÜŞÜRME (audit HIGH): geç prefetch warm(epX) aktif slota
-        // inerse rolü .warm yapar, `demotePreviousActive` (role==.active guard'lı) onu duraklatmaz → çift ses.
-        if !(slotIndex == activeSlot && role == .warm) {
+        // Geç warm AKTİF slota inerse (audit HIGH + #6): rol .warm'a düşmez + taze-auth yeniden hazırlamaz (idle-restart).
+        let isLateWarmOnActive = slotIndex == activeSlot && role == .warm
+        if !isLateWarmOnActive {
             slots[slotIndex].role = role
         }
         slots[slotIndex].feedIndex = feedIndex
+        slots[slotIndex].isAuthorizing = true // #1: reuse boyunca slotu planlayıcıya KAPAT (acquire(F) reclaim edemez)
+        defer { slots[slotIndex].isAuthorizing = false }
         let engine = slots[slotIndex].engine
         let epoch = drainEpoch
-        // Warm-reuse "bitti" latch'ini temizle: tamamlanmış bölüme dönüşte bayat playedToEnd auto-advance'i
-        // yanlış tetiklemesin (audit HIGH). Ağ koşulu değişmiş olabilir → bitrate tavanı yeniden uygulanır.
+        // Warm-reuse "bitti" latch'ini temizle (bayat playedToEnd auto-advance'i önle, audit HIGH) + bitrate tavanı.
         await engine.clearEndedLatch()
         await engine.setPeakBitRateCap(currentPeakBitRateCap())
         var engineFailed = false
@@ -347,10 +346,9 @@ extension PlayerPool {
             if let resumePosition {
                 await engine.resumeSeek(toSeconds: resumePosition) // hazır değilse erteler (audit: devam konumu kaybı)
             }
-        } else {
+        } else if !isLateWarmOnActive {
             let fresh = try await authorization.freshAuthorization(for: episode.id)
-            // Epoch/slot korkuluğu (audit MEDIUM): freshAuthorization uçuştayken drain (epoch artar) ya da
-            // slot geri alındıysa `prepare` öksüz item + KVO gözlemci sızdırır → yazma yapılmaz, iptalle çık.
+            // Epoch/slot korkuluğu (audit MEDIUM): drain (epoch↑) ya da slot geri alındıysa prepare öksüz item sızdırır.
             try Task.checkCancellation()
             try ensureClaimIntact(at: slotIndex, for: episode.id, epoch: epoch)
             await engine.prepare(
@@ -360,6 +358,8 @@ extension PlayerPool {
                 resumePosition: resumePosition
             )
         }
+        // Bulgu #1: happy-path da doğrula (freshAuth dalıyla simetrik) — drain/recycle girdiyse bayat engine lease ETME.
+        try ensureClaimIntact(at: slotIndex, for: episode.id, epoch: epoch)
         return Lease(engine: engine, episodeID: episode.id, slot: slotIndex)
     }
 

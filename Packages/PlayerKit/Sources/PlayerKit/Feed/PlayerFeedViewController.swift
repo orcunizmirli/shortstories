@@ -45,9 +45,9 @@ public final class PlayerFeedViewController: UIViewController {
         let handle: PlaybackHandle
     }
 
-    /// Son settle'da kilitli kalan indeks (04 §9.2 / 02 §4.3.6): unlock sonrası aynı
-    /// kartta oynatmayı yeniden başlatmak için `apply(state:)` bunu tetikler.
-    private var lockedIndex: Int?
+    /// Son settle'da kilitli kalan bölümün KİMLİĞİ (index DEĞİL; feed reorder'a dayanıklı, bulgu #3): unlock sonrası
+    /// `apply(state:)` id'den yeni konumu re-derive edip aynı bölümü reaktive eder (04 §9.2).
+    private var lockedEpisodeID: EpisodeID?
     /// Uçuştaki reaktivasyonun hedef indeksi (self-review4 çift-apply guard'ı) — dispatch'te set, settle'da temizlenir.
     private var reactivatingIndex: Int?
     /// Hız menüsü intent'ine taşınan oturum tercihi (04 §8.2; kalıcılaştırma SS-131).
@@ -144,10 +144,10 @@ public final class PlayerFeedViewController: UIViewController {
         if shouldActivateFirst {
             needsInitialActivation = false
         }
-        let candidate = shouldActivateFirst ? nil : Self.reactivatableUnlockIndex(newItems: newItems, lockedIndex: lockedIndex)
-        // Uçuş-guard'ı (self-review4): aynı kart için reaktivasyon UÇUŞTAYSA tekrar dispatch etme (VIP çift-apply
-        // → çift video_start). Reaktivasyon bitince (başarı/başarısız/kilitli) handleSettleOutcome bunu temizler →
-        // başarısız (transient .failed) durumda sonraki apply retry EDER (lockedIndex hâlâ set + kart playable).
+        let reactivatable = Self.reactivatableUnlockIndex(newItems: newItems, lockedEpisodeID: lockedEpisodeID)
+        let candidate = shouldActivateFirst ? nil : reactivatable
+        // Uçuş-guard'ı (self-review4): aynı kart için reaktivasyon UÇUŞTAYSA tekrar dispatch etme (VIP çift-apply →
+        // çift video_start). Bitince handleSettleOutcome temizler → başarısız (.failed) durumda sonraki apply retry EDER.
         let reactivateIndex = Self.reactivateDispatchIndex(candidate: candidate, reactivatingIndex: reactivatingIndex)
         reactivatingIndex = reactivateIndex ?? reactivatingIndex // yalnız dispatch ederken işaretle
         Task { [weak self, director] in
@@ -269,21 +269,24 @@ public final class PlayerFeedViewController: UIViewController {
     }
 
     func handleSettleOutcome(_ outcome: FeedPlaybackDirector.SettleOutcome, at index: Int) {
-        // Uçuş bitti (başarı/başarısız/kilitli) → guard'ı serbest bırak (başarısızsa sonraki apply retry edebilir).
-        if reactivatingIndex == index {
+        // Uçuş bitti (aktive/kilitli/başarısız/bölümsüz) → reaktivasyon guard'ını serbest bırak. `.none` İDEMPOTENT
+        // no-op'tur (bağımsız scroll-settle) → uçuştaki reaktivasyonun guard'ını ERKEN temizlemesin (bulgu #2:
+        // lockedEpisodeID kalıcıyken sonraki apply İKİNCİ reaktivasyon dispatch eder → çift video_start). Reaktivasyon
+        // kendi sonucu aktive/kilitli/başarısız'dır (idempotency bypass'lı) → guard yine kendi sonucuyla temizlenir.
+        if reactivatingIndex == index, !outcome.isIdempotentNoOp {
             reactivatingIndex = nil
         }
         switch outcome {
         case let .activated(handle, episode):
-            if lockedIndex == index {
-                lockedIndex = nil
+            if lockedEpisodeID == episode.id {
+                lockedEpisodeID = nil
             }
             // Aktif bağlama bölüm-id ile tutulur (hücre dönerse willDisplay yeniden bağlar).
             activeBinding = ActiveBinding(index: index, episodeID: episode.id, handle: handle)
             bindCellIfVisible(handle: handle, at: index)
             delegate?.playerFeed(self, didChangeActiveIndex: index, episode: episode)
         case let .locked(episode):
-            lockedIndex = index // kart kilit durumunu gösterir (02 §4.3.5); UnlockSheet intent'i Coordinator'a
+            lockedEpisodeID = episode.id // kart kilit durumunu gösterir (02 §4.3.5); UnlockSheet intent'i Coordinator'a
             activeBinding = nil
             delegate?.playerFeed(self, didChangeActiveIndex: index, episode: episode)
             if let series = itemAt(index)?.series {
@@ -292,7 +295,7 @@ public final class PlayerFeedViewController: UIViewController {
         case .settledWithoutEpisode:
             // Bölüm taşımayan kart (seriesPromo / ara kartı): aktif indeks değişti, bölüm nil (04 §2.4).
             activeBinding = nil
-            lockedIndex = nil
+            lockedEpisodeID = nil
             delegate?.playerFeed(self, didChangeActiveIndex: index, episode: nil)
         case .failed:
             activeBinding = nil // SS-051 dilimi: sınıflandırılmış hata UI'ı; hücre posterde kalır.

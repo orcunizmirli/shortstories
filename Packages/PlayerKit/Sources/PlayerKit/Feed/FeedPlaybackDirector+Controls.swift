@@ -40,9 +40,13 @@ extension FeedPlaybackDirector {
             offsetSeconds: offsetSeconds,
             durationSeconds: duration
         )
-        if offsetSeconds > 0, target >= duration {
-            suppressNextAutoAdvance = true
-        }
+        // ATAMA (koşullu-set DEĞİL): geri/sona-varmayan seek bastırmayı SIFIRLAR → ileri-sona seek sonrası
+        // geri seek + doğal-son artık meşru auto-advance'i yutmaz (bulgu: bayat-bastırma sızıntısı).
+        suppressNextAutoAdvance = FeedSeekPolicy.suppressesAutoAdvance(
+            offsetSeconds: offsetSeconds,
+            target: target,
+            durationSeconds: duration
+        )
         // Çift-tap ±10 sn: hızlı TOLERANT seek (04 §8.1 / 01 PLR-02); keskin `.zero` yalnız scrubber.
         await handle.seekTolerant(toSeconds: target)
     }

@@ -100,6 +100,14 @@ enum FeedSeekPolicy {
     static func targetSeconds(current: Double, offsetSeconds: Double, durationSeconds: Double) -> Double {
         min(max(current + offsetSeconds, 0), max(durationSeconds, 0))
     }
+
+    /// Seek SONRASI bir sonraki doğal-son auto-advance BASTIRILSIN mı (04 §8.1): yalnız İLERİ seek sona
+    /// (`target >= duration`) kırpıldığında `true` — kullanıcı bilerek sonda bekletilir. Geri/orta/sona-varmayan
+    /// seek `false` döner → çağrı yeri bastırmayı ATAR (koşullu-set DEĞİL), böylece önceki `true` SIFIRLANIR:
+    /// ileri-sona seek sonrası geri seek + doğal-son artık meşru auto-advance'i yutmaz (bayat-bastırma sızıntısı).
+    static func suppressesAutoAdvance(offsetSeconds: Double, target: Double, durationSeconds: Double) -> Bool {
+        offsetSeconds > 0 && target >= durationSeconds
+    }
 }
 
 /// Uzun basma hızı (04 §8.1, 01 PLR-03): basılı tutulduğu sürece 2x; bırakınca

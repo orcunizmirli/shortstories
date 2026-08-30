@@ -140,4 +140,21 @@ struct FeedSeekPolicyTests {
     func backwardSeekClampsToStart() {
         #expect(FeedSeekPolicy.targetSeconds(current: 4, offsetSeconds: -10, durationSeconds: 90) == 0)
     }
+
+    @Test("İleri seek sona kırpılınca auto-advance BASTIRILIR")
+    func forwardSeekToEndSuppresses() {
+        #expect(FeedSeekPolicy.suppressesAutoAdvance(offsetSeconds: 10, target: 60, durationSeconds: 60))
+    }
+
+    @Test("Geri seek auto-advance BASTIRMAZ (sızıntı fix: önceki bastırmayı sıfırlar)")
+    func backwardSeekDoesNotSuppress() {
+        // Bulgu: ileri-sona seek suppress=true yapar; sonraki GERİ seek false döndürüp ATAMAYLA sıfırlamalı,
+        // yoksa geri seek + doğal-son meşru auto-advance'i yutar (kullanıcı sonuna izlediği halde feed durur).
+        #expect(!FeedSeekPolicy.suppressesAutoAdvance(offsetSeconds: -10, target: 50, durationSeconds: 60))
+    }
+
+    @Test("Sona varmayan ileri seek auto-advance BASTIRMAZ")
+    func forwardSeekNotToEndDoesNotSuppress() {
+        #expect(!FeedSeekPolicy.suppressesAutoAdvance(offsetSeconds: 10, target: 30, durationSeconds: 60))
+    }
 }
