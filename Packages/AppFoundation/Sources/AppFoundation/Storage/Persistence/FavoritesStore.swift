@@ -109,6 +109,22 @@ actor FavoritesStore: FavoritesRepository {
         try modelContext.save()
     }
 
+    func rollbackAdd(_ seriesID: SeriesID) throws {
+        // Kalıcı-red PUT: iyimser pendingAdd kaydını sil (favori sunucuda hiç var olmadı).
+        guard let existing = try fetchEntity(seriesId: seriesID.rawValue),
+              existing.syncState == FavoriteSyncState.pendingAdd.rawValue else { return }
+        modelContext.delete(existing)
+        try modelContext.save()
+    }
+
+    func rollbackRemoval(_ seriesID: SeriesID) throws {
+        // Kalıcı-red DELETE: iyimser pendingRemove'u synced'e geri al (favori korunur).
+        guard let existing = try fetchEntity(seriesId: seriesID.rawValue),
+              existing.syncState == FavoriteSyncState.pendingRemove.rawValue else { return }
+        existing.syncState = FavoriteSyncState.synced.rawValue
+        try modelContext.save()
+    }
+
     func deleteAll() throws {
         // Hesap değişiminde (05 §3.3) TÜM kayıtlar (synced + pendingAdd + pendingRemove) silinir.
         // Aktör-izole fetch→delete→save; boş store'da fetch boş döner (no-op).

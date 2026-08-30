@@ -201,6 +201,14 @@ final class GatedFavoritesRepository: FavoritesRepository, @unchecked Sendable {
         try await base.confirmRemoval(seriesID)
     }
 
+    func rollbackAdd(_ seriesID: SeriesID) async throws {
+        try await base.rollbackAdd(seriesID)
+    }
+
+    func rollbackRemoval(_ seriesID: SeriesID) async throws {
+        try await base.rollbackRemoval(seriesID)
+    }
+
     func deleteAll() async throws {
         try await base.deleteAll()
     }
@@ -265,6 +273,14 @@ final class CountingFavoritesRepository: FavoritesRepository, @unchecked Sendabl
 
     func confirmRemoval(_ seriesID: SeriesID) async throws {
         try await base.confirmRemoval(seriesID)
+    }
+
+    func rollbackAdd(_ seriesID: SeriesID) async throws {
+        try await base.rollbackAdd(seriesID)
+    }
+
+    func rollbackRemoval(_ seriesID: SeriesID) async throws {
+        try await base.rollbackRemoval(seriesID)
     }
 
     func deleteAll() async throws {

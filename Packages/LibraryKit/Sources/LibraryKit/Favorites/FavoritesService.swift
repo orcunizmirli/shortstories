@@ -199,6 +199,13 @@ public actor FavoritesService {
             try await remoting.putFavorite(seriesID)
         } catch let error as AppError where error == .network(.offline) {
             return .offline
+        } catch let error as AppError where Self.isPermanentRejection(error) {
+            // Kalıcı red (4xx içerik: seri yok/403/422) → iyimser favoriyi GERİ AL (ürün kararı): süresiz
+            // retry + kalıcı "favorili" yalanı yerine sunucuyla tutarlılık. GEÇİCİ (5xx/timeout/.unexpected)
+            // değil — yalnız kesin kalıcı 4xx (meta-ders: dar sınıflandırma).
+            logger?.error("favorites sync: PUT KALICI red → iyimser add rollback")
+            try? await repository.rollbackAdd(seriesID)
+            return .skipped
         } catch {
             logger?.error("favorites sync: PUT başarısız, pending bırakıldı")
             return .skipped
@@ -220,6 +227,15 @@ public actor FavoritesService {
             try await remoting.deleteFavorite(seriesID)
         } catch let error as AppError where error == .network(.offline) {
             return .offline
+        } catch let error as AppError where Self.isNotFound(error) {
+            // 404: sunucuda zaten yok → idempotent SİLME başarısı; pendingRemove kaydını kalıcı sil.
+            try? await repository.confirmRemoval(seriesID)
+            return .confirmed
+        } catch let error as AppError where Self.isPermanentRejection(error) {
+            // Kalıcı red (4xx: 403/422) → iyimser kaldırmayı GERİ AL (favori korunur; sunucu reddetti).
+            logger?.error("favorites sync: DELETE KALICI red → remove rollback")
+            try? await repository.rollbackRemoval(seriesID)
+            return .skipped
         } catch {
             logger?.error("favorites sync: DELETE başarısız, pending bırakıldı")
             return .skipped
@@ -231,6 +247,20 @@ public actor FavoritesService {
             return .skipped
         }
         return .confirmed
+    }
+
+    // MARK: - Hata sınıflandırma (dar: yalnız KESİN kalıcı 4xx içerik → rollback; geçici DEĞİL)
+
+    /// KALICI red mi (4xx içerik: 400/403/404/409/422 — 429 hariç). 5xx/429/timeout/offline/`.unexpected`/
+    /// `.decoding` GEÇİCİ sayılır (pending kalır, retry). Meta-ders: type-erased/geçici hataları KALICI sayma.
+    static func isPermanentRejection(_ error: AppError) -> Bool {
+        guard case let .network(.server(status)) = error else { return false }
+        return (400 ..< 500).contains(status) && status != 429
+    }
+
+    /// 404 (kaynak yok): DELETE için idempotent başarı (zaten silinmiş).
+    static func isNotFound(_ error: AppError) -> Bool {
+        error == .network(.server(status: 404))
     }
 
     /// Uçuştaki bir eklemenin araya girip silinmesiyle sunucuda kalan hayalet favorileri temizler

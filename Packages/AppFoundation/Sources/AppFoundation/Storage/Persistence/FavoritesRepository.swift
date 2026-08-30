@@ -71,6 +71,15 @@ public protocol FavoritesRepository: Sendable {
     /// Sunucu `DELETE` onayı: `pendingRemove` kaydı kalıcı silinir.
     func confirmRemoval(_ seriesID: SeriesID) async throws
 
+    /// Sunucu `PUT` KALICI reddi (4xx içerik: seri yok/403/422): iyimser `pendingAdd` kaydı SİLİNİR →
+    /// istemci sunucuyla tutarlı kalır (aksi halde süresiz retry + kalıcı "favorili" yalanı). Kayıt
+    /// `pendingAdd` değilse (araya kaldırma girmiş) no-op (idempotent).
+    func rollbackAdd(_ seriesID: SeriesID) async throws
+
+    /// Sunucu `DELETE` KALICI reddi: iyimser `pendingRemove` kaydı `synced`'e GERİ ALINIR (favori korunur;
+    /// sunucu kaldırmayı reddetti). Kayıt `pendingRemove` değilse no-op (idempotent).
+    func rollbackRemoval(_ seriesID: SeriesID) async throws
+
     /// TÜM favori kayıtlarını (synced + pendingAdd + pendingRemove) siler. Hesap DEĞİŞİMİNDE
     /// (misafir→mevcut hesaba geçiş, 05 §3.3) yerel store SIFIRLANIR: yeni hesap önceki misafirin
     /// favorilerini GÖRMEZ ve bekleyen işlemler yeni hesaba SIZMAZ. Boş store'da no-op'tur
