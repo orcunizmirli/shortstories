@@ -296,6 +296,27 @@ buldu — TAMAMI TDD ile düzeltildi (99e7ad3 RewardsKit CI-yeşil + 8d74a4b App
 - **(NOT) isClaiming/claimingTaskID:** re-run doğrulayıcısı bunların defer ile kendi-kendine temizlendiğini
   (kalıcı sızmaz) belirledi → ayrıca reset edilmedi (asıl sızıntı claimFailure/taskClaimFailure idi).
 
+### Oturum-değişikliği self-review-3 — en yeni 5 fix (2026-08-30, HEPSİ DÜZELTİLDİ)
+self-review2 SONRASI eklenen 5 deferred-backlog fix'inin (AnalyticsKit persist / PlayerKit warm→Bool /
+empty-body / nav markers / VIP) 3. adversarial self-review'ı 4 CONFIRMED regresyon buldu — **ÜÇÜ benim
+YENİ fix'lerimin regresyonu** (desen 3. kez kanıtlandı). TAMAMI TDD ile düzeltildi:
+- **Keşfet nav marker/derinlik KIRILGAN (nav fix f47d199 regresyonu; MEDIUM+LOW) → DÜZELTİLDİ (3f2dd2a):**
+  NavigationPath element-peek edilemez, sistem-geri path'i coordinator kodu koşmadan dışarıdan mutate eder →
+  detailMarker bayat + marker.depth==path.count SPOOF'lanabilir → (MEDIUM) dead-tap + DiziDetay çoğaltma;
+  (LOW) query-forward removeLast kullanıcının DiziDetay'ını yıkıcı poplar. **Kök fix:** path NavigationPath→
+  `[AppRoute]` (ProfileCoordinator deseni) → gerçek `path.last`/lastIndex peek; searchStackDepth+detailMarker
+  KALKTI. +3 regresyon testi (sistem-geri simüle).
+- **VIP çift-reaktivasyon (VIP fix 68492ef regresyonu; MEDIUM) → DÜZELTİLDİ (da10d67):** UnlockSheet-çocuğu
+  VIP'te onVIPActivated (tümü) + unlockSheetDidUnlock (tek) aktif kart N'yi İKİ feedState yazımıyla reaktive
+  edebilir. **Kök fix (PlayerKit):** reactivatableUnlockIndex saf+static + TRANSITION korkuluğu (yalnız
+  kilit→açık geçişinde reactivate; previousItems'da zaten playable ise nil) → tüm çift-write'ları savunur.
+- **prepareNext kalıcı-hata her-swipe re-warm (warm→Bool fix e8d9ec7 regresyonu; LOW) → DÜZELTİLDİ (49a504a):**
+  kalıcı hata (4xx/içerik-kaldırıldı) geçiciyle aynı kefede → false → completedWarmups'a girmez → her swipe
+  boşa authorize. **Fix:** catch'te AppError.isRetryable ile ayır (kalıcı→true, geçici→false).
+- **DERS:** self-review'ı kompleks fix'lerin ÜSTÜNE tekrar tekrar koş — her geçiş (2 ve 3) benim ÖNCEKİ
+  fix'imde yeni regresyon buldu. Nav marker/derinlik heuristiği (NavigationPath) temelde kırılgan → `[AppRoute]`
+  peek doğru altitude. Reaktivasyon/idempotency her feedState yazımında değil TRANSITION'da olmalı.
+
 ---
 
 ## Kod-içsel (prep gerektirmeyen) kalan iş — ayrı izlenir
