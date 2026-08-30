@@ -122,6 +122,22 @@ struct WatchHistoryRepositoryTests {
         #expect(pending.map(\.episodeID) == [EpisodeID("ep-1")])
     }
 
+    @Test func mergeKeepsNewerLocalSyncedRecordAgainstStaleServer() async throws {
+        // Audit LOW (synced-newer LWW boşluğu): merge guard'ı yalnız pendingUpload'ı koruyordu; SYNCED
+        // yerel kayıt server merge batch'inden DAHA YENİ ise (out-of-order/bayat server response: t2
+        // ack'lendikten sonra araya giren eski t1) eski server kaydı yeni synced'i EZİYORDU (LWW ihlali).
+        let repo = try makeRepo()
+        try await repo.saveProgress(record("ep-1", position: 90, at: 5000))
+        try await repo.markSynced(uploaded: [record("ep-1", position: 90, at: 5000)]) // t2 synced
+        #expect(try await repo.pendingUploads().isEmpty)
+
+        // Sunucu BAYAT eski t1 döndürür → yeni synced t2'yi EZMEMELİ (watchedAt LWW syncState-bağımsız).
+        try await repo.mergeServerProgress([record("ep-1", position: 20, at: 1000)])
+
+        let read = try await repo.progress(forEpisode: EpisodeID("ep-1"))
+        #expect(read?.positionSec == 90) // synced t2 korundu (bayat t1 düşürüldü)
+    }
+
     @Test func mergeOverwritesOlderLocalRecord() async throws {
         let repo = try makeRepo()
         try await repo.saveProgress(record("ep-1", position: 20, at: 1000))

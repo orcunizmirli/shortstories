@@ -27,8 +27,10 @@ actor WatchHistoryStore: WatchHistoryRepository {
     func mergeServerProgress(_ records: [WatchProgressRecord]) throws {
         for record in records {
             let existing = try fetchEntity(episodeId: record.episodeID.rawValue)
-            // Yerel pendingUpload kaydı daha yeniyse korunur (senkron ONE-WAY yazması ezmez).
-            if let existing, Self.isNewerLocalPending(existing, than: record) {
+            // Yerel kayıt daha yeniyse korunur (watchedAt LWW, syncState-BAĞIMSIZ). pendingUpload'ı korur
+            // (senkron ONE-WAY yazması ezmez) VE synced kaydı da korur: bayat/out-of-order server response
+            // (t2 ack'lendikten sonra araya giren eski t1) daha yeni synced kaydı EZMESİN (05 §3.3 LWW).
+            if let existing, existing.watchedAt > record.watchedAt {
                 continue
             }
             upsert(record, into: existing, syncState: SyncState.synced)
@@ -135,12 +137,6 @@ actor WatchHistoryStore: WatchHistoryRepository {
                 syncState: syncState
             ))
         }
-    }
-
-    /// Yerel kayıt hem `pendingUpload` hem de gelen sunucu kaydından daha yeniyse `true`
-    /// (senkron merge bu kaydı ezmez — 05 §3.3 last-write-wins).
-    private static func isNewerLocalPending(_ entity: WatchProgressEntity, than record: WatchProgressRecord) -> Bool {
-        entity.syncState == SyncState.pendingUpload && entity.watchedAt > record.watchedAt
     }
 
     private static func record(from entity: WatchProgressEntity) -> WatchProgressRecord {
