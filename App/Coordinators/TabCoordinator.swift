@@ -36,10 +36,12 @@ final class TabCoordinator {
     let sharePresenter = SharePresenter()
 
     /// Deep link çözüm analitiği için kompozisyon-kökü tracker'ı (02 §8.4 kural 5 `deeplink_opened`).
+    /// `decoratedAnalytics`: `ab_variants` deney boyutu HER feature event'ine eklenir (08 §1.3/§7.3) —
+    /// `deeplink_opened` de push_open/feature event'leriyle tutarlı olsun (BASE ab_variants'ı düşürürdü).
     private let analytics: any AnalyticsTracking
 
     init(composition: AppComposition) {
-        analytics = composition.dependencies.analytics
+        analytics = composition.decoratedAnalytics
         let walletFlow = WalletFlowCoordinator(composition: composition)
         self.walletFlow = walletFlow
         home = HomeCoordinator(composition: composition, walletFlow: walletFlow)
