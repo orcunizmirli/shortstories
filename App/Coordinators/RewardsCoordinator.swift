@@ -48,10 +48,13 @@ final class RewardsCoordinator {
         accountObserver = Task { [weak self] in
             var lastUserID: String?
             for await state in session.stateUpdates {
-                if let previous = lastUserID, let current = state.userID, previous != current {
+                // lastUserID YALNIZ non-nil'de güncellenir → nil-ara-durumdan (loggedOut) geçen switch
+                // (u1→loggedOut→u2) yakalanır (self-review2; HomeCoordinator ile simetrik).
+                guard let current = state.userID else { continue }
+                if let previous = lastUserID, previous != current {
                     self?.odulMerkeziModel.resetForAccountSwitch()
                 }
-                lastUserID = state.userID
+                lastUserID = current
             }
         }
     }

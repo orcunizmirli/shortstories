@@ -46,4 +46,40 @@ final class AccountSwitchRewardsResetTests: XCTestCase {
         XCTAssertTrue(didReset) // hesap değişimi modeli sıfırladı
         XCTAssertNil(model.checkInState) // hesap-özel state temizlendi
     }
+
+    /// Self-review2 (HomeCoordinator ile simetrik): gözlemci nil-userID ara-durumundan (loggedOut) GEÇEN
+    /// gerçek switch'i (u1→loggedOut→u2) yakalamalı → önceki hesabın check-in/görev state'i sızmasın.
+    func testRewardsSwitchThroughLoggedOutIntermediateStateStillResets() async throws {
+        let session = MockSession(state: .linked(userID: "u1", provider: .apple))
+        let composition = try AppComposition(dependencies: PreviewDependencies(session: session))
+        let tab = TabCoordinator(composition: composition)
+        let model = tab.rewards.odulMerkeziModel
+        model.onAppear()
+        for _ in 0 ..< 1000 where model.loadState == .loading {
+            await Task.yield()
+        }
+        // Baseline u1 (gözlemci lastUserID=u1).
+        session.send(.linked(userID: "u1", provider: .apple))
+        for _ in 0 ..< 50 {
+            await Task.yield()
+        }
+        XCTAssertNotEqual(model.loadState, .loading)
+
+        // u1 → loggedOut (nil ara-durum) → u2: nil'den geçse de switch algılanmalı.
+        session.send(.loggedOut(previousUserID: "u1", provider: .apple))
+        for _ in 0 ..< 50 {
+            await Task.yield()
+        }
+        session.send(.linked(userID: "u2", provider: .apple))
+        var didReset = false
+        for _ in 0 ..< 500 where !didReset {
+            if model.loadState == .loading {
+                didReset = true
+            } else {
+                await Task.yield()
+            }
+        }
+        XCTAssertTrue(didReset) // FIX: nil-ara-durumdan geçen switch yakalandı
+        XCTAssertNil(model.checkInState)
+    }
 }

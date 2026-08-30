@@ -51,6 +51,13 @@ final class ContinueWatchingEntryModel {
         loaded = true
     }
 
+    /// Hesap değişiminde (05 §3.3 / SS-132) A'nın devam-kaydını temizler → B'nin Ana Sayfa'sında A'nın
+    /// banner'ı görünmez (HomeCoordinator switch'te çağırır, ardından B için `load()`).
+    func reset() {
+        item = nil
+        loaded = false
+    }
+
     /// SS-065 "devam et" yüzeyi görünürlük + değer kararı (SAF, yan etkisiz — test hedefi). Kayıt
     /// tamamlanmışsa nil döner (yüzey çizilmez; `ContinueWatchingService` zaten tamamlananları
     /// filtreler, bu ikinci güvenliktir). İlerleme oranı [0,1]'e kırpılır (sıfır süre → 0).

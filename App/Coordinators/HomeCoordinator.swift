@@ -116,17 +116,18 @@ final class HomeCoordinator {
         accountObserver = Task { [weak self] in
             var lastUserID: String?
             for await state in session.stateUpdates {
-                if let previous = lastUserID, let current = state.userID, previous != current {
+                // lastUserID YALNIZ non-nil'de güncellenir → nil-ara-durumdan (loggedOut) geçen switch yakalanır (self-review2).
+                guard let current = state.userID else { continue }
+                if let previous = lastUserID, previous != current {
                     self?.resetForAccountSwitch()
                 }
-                lastUserID = state.userID
+                lastUserID = current
             }
         }
     }
 
     /// Feed hesap-özel durumunu sıfırlar: `.unlocked` işaretleri + A'nın seed'i temizlenir; uçuştaki seed
-    /// resolution'ları `seedGeneration` bump'ıyla düşürülür (last-intent-wins guard'ıyla aynı); remount ile
-    /// PlayerFeedView taze (boş) kurulur (A'nın player'ı yeni hesaba taşınmaz). B sonraki navigasyonda re-seed eder.
+    /// resolution'ları `seedGeneration` bump'ıyla düşürülür; remount ile PlayerFeedView taze (boş) kurulur.
     private func resetForAccountSwitch() {
         seedGeneration &+= 1
         feedViewModel.feedState = FeedState()
@@ -134,6 +135,14 @@ final class HomeCoordinator {
         pendingPlayback = nil
         activeEpisodeID = nil
         feedMountToken &+= 1
+        // Self-review2: A'ya ait TÜM hesap-özel nav/sheet/devam-et yüzeyleri de temizlenmeli (DiziDetay push /
+        // açık sheet / "devam et" banner'ı B'ye taşınmasın).
+        path = NavigationPath()
+        bolumListesiModel = nil
+        speedMenuCurrentRate = nil
+        subtitleChoices = nil
+        continueEntry.reset()
+        Task { [weak self] in await self?.continueEntry.load() } // B'nin devam-kaydını taze yükle
     }
 
     /// SwiftUI köprüsü — Ana Sayfa tab view'ı bunu gömer (delegate = self). `entry`: çözülmüş
