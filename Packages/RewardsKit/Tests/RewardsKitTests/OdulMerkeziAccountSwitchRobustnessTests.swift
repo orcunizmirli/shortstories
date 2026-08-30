@@ -149,14 +149,14 @@ final class FirstCallGatedWallet: RewardsWalletReading, @unchecked Sendable {
     private let lock = NSLock()
     private var balance: Int
     private var firstCallDone = false
-    private let multicast = TestMulticast<Int>()
+    private let multicast = TestMulticast<RewardsBalanceUpdate>()
 
     init(_ balance: Int) {
         self.balance = balance
-        multicast.send(balance)
+        multicast.send(RewardsBalanceUpdate(balance: balance, version: 0))
     }
 
-    func currentBalance() async -> Int {
+    func currentBalance() async -> RewardsBalanceUpdate {
         let shouldGate = lock.withLock { () -> Bool in
             let gateIt = !firstCallDone
             firstCallDone = true
@@ -165,10 +165,10 @@ final class FirstCallGatedWallet: RewardsWalletReading, @unchecked Sendable {
         if shouldGate {
             await gate.wait()
         }
-        return lock.withLock { balance }
+        return lock.withLock { RewardsBalanceUpdate(balance: balance, version: 0) }
     }
 
-    func balanceUpdates() -> AsyncStream<Int> {
+    func balanceUpdates() -> AsyncStream<RewardsBalanceUpdate> {
         multicast.subscribe()
     }
 }

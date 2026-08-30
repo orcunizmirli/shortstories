@@ -24,6 +24,11 @@ public protocol WalletGateway: Sendable {
     /// Bakiye değişim yayını (current-value replay; sheet açıkken canlı güncelleme).
     func balanceUpdates() -> AsyncStream<CoinBalance>
 
+    /// Bakiye + `version` değişim yayını (current-value replay). RewardsKit OdulMerkezi bunu version-
+    /// monotonic uygular; `balanceUpdates`'in versiyonlu ikizidir. Anlık version-okuması için
+    /// `currentSnapshot().version` kullanılır (ayrı metot gerekmez).
+    func versionedBalanceUpdates() -> AsyncStream<VersionedCoinBalance>
+
     /// Entitlement değişim yayını (başka cihazdan VIP aktifleşirse sheet kendini kapatır).
     func entitlementUpdates() -> AsyncStream<EntitlementSnapshot>
 }

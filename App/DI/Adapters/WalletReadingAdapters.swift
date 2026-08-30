@@ -9,8 +9,9 @@ import WalletKit
 // (`CoinBalance`/`SubscriptionStatus`) GÖRMEZ — dönüşüm burada, saf ve izole test edilebilir.
 
 /// RewardsKit `RewardsWalletReading` → WalletKit `WalletGateway`. Coin bakiyesi başlığı için toplam
-/// coin (`purchased + earned`) verir; akışta `CoinBalance` → `Int` map edilir (replay `WalletStore`
-/// tarafından, current-value semantiği korunur).
+/// coin (`purchased + earned`) + `WalletStore` monoton version'ı verir; başlık version-monotonic
+/// uzlaştırılır (bayat düşük değer düşürülür, meşru düşüş uygulanır — 05 §2.5). Akışta versiyonlu
+/// `CoinBalance` → `RewardsBalanceUpdate` map edilir (replay `WalletStore` tarafından).
 struct WalletGatewayRewardsReading: RewardsWalletReading {
     private let gateway: any WalletGateway
 
@@ -18,12 +19,15 @@ struct WalletGatewayRewardsReading: RewardsWalletReading {
         self.gateway = gateway
     }
 
-    func currentBalance() async -> Int {
-        await gateway.currentBalance().totalCoins
+    func currentBalance() async -> RewardsBalanceUpdate {
+        let snapshot = await gateway.currentSnapshot()
+        return RewardsBalanceUpdate(balance: snapshot.balance.totalCoins, version: snapshot.version)
     }
 
-    func balanceUpdates() -> AsyncStream<Int> {
-        AsyncStream<Int>.mapping(gateway.balanceUpdates()) { $0.totalCoins }
+    func balanceUpdates() -> AsyncStream<RewardsBalanceUpdate> {
+        AsyncStream<RewardsBalanceUpdate>.mapping(gateway.versionedBalanceUpdates()) {
+            RewardsBalanceUpdate(balance: $0.balance.totalCoins, version: $0.version)
+        }
     }
 }
 

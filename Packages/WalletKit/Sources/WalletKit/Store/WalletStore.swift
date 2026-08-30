@@ -28,7 +28,8 @@ public actor WalletStore: EntitlementChecking {
     private var accountEpoch = 0
 
     private let entitlementBroadcast = AsyncMulticast<EntitlementSnapshot>()
-    private let balanceBroadcast = AsyncMulticast<CoinBalance>()
+    let balanceBroadcast = AsyncMulticast<CoinBalance>() // versiyonsuz (UI/ProfileKit)
+    let versionedBalanceBroadcast = AsyncMulticast<VersionedCoinBalance>() // versiyonlu ikiz (RewardsKit başlık)
 
     public init(
         remote: any WalletRemoting,
@@ -63,8 +64,7 @@ public actor WalletStore: EntitlementChecking {
 
     /// Hesap-değişiminde (SS-132/§575) yerel cüzdan state'ini SIFIRLAR — önceki hesabın bakiye/abonelik/
     /// açılmış-bölüm state'i yeni hesaba SIZMAZ. Version + subscription guard'ları da sıfırlanır (ilk
-    /// `refresh()` yeni hesabın düşük-version snapshot'ını TAZE uygular); state gözlemcilere yayınlanır.
-    /// `accountEpoch` artışı uçuştaki önceki-hesap yanıtlarını fence eder (audit HIGH).
+    /// `refresh()` düşük-version snapshot'ı TAZE uygular). `accountEpoch` artışı uçuştaki yanıtları fence eder.
     public func reset() {
         accountEpoch &+= 1 // uçuştaki önceki-hesap yanıtlarını fence et (audit HIGH)
         snapshot = Self.initialSnapshot(now: now)
@@ -74,7 +74,7 @@ public actor WalletStore: EntitlementChecking {
         storeKitOptimisticVIP = false
         unlockedEpisodes = []
         pendingUnlock = nil
-        balanceBroadcast.send(snapshot.balance)
+        broadcastBalance(from: snapshot)
         broadcastEntitlement()
     }
 
@@ -261,7 +261,7 @@ public actor WalletStore: EntitlementChecking {
         recordEarnVelocity(from: snapshot, to: incoming)
         snapshot = incoming
         hasServerSnapshot = true
-        balanceBroadcast.send(incoming.balance)
+        broadcastBalance(from: incoming)
     }
 
     /// Kazanç-hızı gözlemi (SS-100): iki SERVER snapshot arası earned-kese ARTIŞI bir kazanç

@@ -57,24 +57,42 @@ final class FakeCheckInService: CheckInService, @unchecked Sendable {
 final class FakeRewardsWallet: RewardsWalletReading, @unchecked Sendable {
     private let lock = NSLock()
     private var balance: Int
-    private let multicast = TestMulticast<Int>()
+    private var version: Int
+    private let multicast = TestMulticast<RewardsBalanceUpdate>()
 
-    init(_ balance: Int = 0) {
+    init(_ balance: Int = 0, version: Int = 0) {
         self.balance = balance
-        multicast.send(balance)
+        self.version = version
+        multicast.send(RewardsBalanceUpdate(balance: balance, version: version))
     }
 
-    /// Testten bakiye değişimi (başka cihazdan satın alma/VIP bonusu) yayınlar.
+    /// Bakiye değişimi (satın alma/VIP bonusu/spend) — MONOTON sonraki version'la yayınlar (WalletStore
+    /// normal işleyişi: her yeni değer daha yüksek version → OdulMerkezi uygular).
     func set(_ newValue: Int) {
-        lock.withLock { balance = newValue }
-        multicast.send(newValue)
+        let update = lock.withLock { () -> RewardsBalanceUpdate in
+            balance = newValue
+            version += 1
+            return RewardsBalanceUpdate(balance: newValue, version: version)
+        }
+        multicast.send(update)
     }
 
-    func currentBalance() async -> Int {
-        lock.withLock { balance }
+    /// AÇIK version'la yayın — BAYAT (düşük/eşit version) emisyon veya replay enjekte etmek için
+    /// (reconciliation testleri). Verbatim: bu overload sonrası `currentBalance()` çağrılmamalıdır.
+    func set(_ newValue: Int, version: Int) {
+        let update = lock.withLock { () -> RewardsBalanceUpdate in
+            balance = newValue
+            self.version = version
+            return RewardsBalanceUpdate(balance: newValue, version: version)
+        }
+        multicast.send(update)
     }
 
-    func balanceUpdates() -> AsyncStream<Int> {
+    func currentBalance() async -> RewardsBalanceUpdate {
+        lock.withLock { RewardsBalanceUpdate(balance: balance, version: version) }
+    }
+
+    func balanceUpdates() -> AsyncStream<RewardsBalanceUpdate> {
         multicast.subscribe()
     }
 }

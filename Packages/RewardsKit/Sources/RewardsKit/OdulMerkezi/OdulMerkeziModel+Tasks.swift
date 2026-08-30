@@ -75,7 +75,7 @@ public extension OdulMerkeziModel {
             let balance = await wallet.currentBalance()
             guard epoch == accountEpoch else { return }
             markTaskClaimed(fresh)
-            applyAuthoritativeBalance(balance)
+            applyAuthoritativeBalance(balance.balance)
         } catch {
             // Kredi VERİLMEZ; son bilinen katalog korunur, kullanıcı tekrar deneyebilir. Hesap-değişimi
             // fence'i (self-review2): switch SONRASI çözülen A görev-claim'inin hatası B'ye YAZILMASIN.

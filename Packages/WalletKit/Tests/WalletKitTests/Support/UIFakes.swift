@@ -35,7 +35,9 @@ final class FakeWalletGateway: WalletGateway, @unchecked Sendable {
     var readGate: (@Sendable () async -> Void)?
     var unlockGate: (@Sendable () async -> Void)?
 
+    private var _version = 0
     private let balanceCast = AsyncMulticast<CoinBalance>()
+    private let versionedBalanceCast = AsyncMulticast<VersionedCoinBalance>()
     private let entitlementCast = AsyncMulticast<EntitlementSnapshot>()
 
     init(
@@ -47,6 +49,7 @@ final class FakeWalletGateway: WalletGateway, @unchecked Sendable {
         _snapshot = snapshot
         _subscription = subscription
         balanceCast.send(balance)
+        versionedBalanceCast.send(VersionedCoinBalance(balance: balance, version: 0))
     }
 
     func currentBalance() async -> CoinBalance {
@@ -93,14 +96,23 @@ final class FakeWalletGateway: WalletGateway, @unchecked Sendable {
         balanceCast.subscribe()
     }
 
+    func versionedBalanceUpdates() -> AsyncStream<VersionedCoinBalance> {
+        versionedBalanceCast.subscribe()
+    }
+
     func entitlementUpdates() -> AsyncStream<EntitlementSnapshot> {
         entitlementCast.subscribe()
     }
 
     /// Test kancaları
     func pushBalance(_ balance: CoinBalance) {
-        lock.withLock { _balance = balance }
+        let version = lock.withLock { () -> Int in
+            _balance = balance
+            _version += 1
+            return _version
+        }
         balanceCast.send(balance)
+        versionedBalanceCast.send(VersionedCoinBalance(balance: balance, version: version))
     }
 
     func pushEntitlement(_ snapshot: EntitlementSnapshot) {

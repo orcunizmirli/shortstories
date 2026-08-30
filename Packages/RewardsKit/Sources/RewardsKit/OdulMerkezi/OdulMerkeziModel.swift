@@ -89,9 +89,10 @@ public final class OdulMerkeziModel {
     private var loadTask: Task<Void, Never>?
     /// İlk (tam) yükleme tamamlandı mı — sonraki tazeleme yalnız check-in + görev çeker (07 §4.4).
     private var hasLoaded = false
-    /// Claim/409 sonrası beklenen OTORİTER bakiye; bayat akış değeri bunu EZEMEZ (coin-kaybı, 06 §5.2),
-    /// akış değere yakalayınca temizlenir (Fix 1: coinBalance reconciliation).
-    private var awaitedBalance: Int?
+    /// Uygulanmış en yüksek cüzdan-akış version'ı (audit MEDIUM applyBalance donması): applyBalance yalnız
+    /// STRICTLY-NEWER version'ı uygular (bayat düşük değer düşürülür, meşru spend uygulanır). Claim iyimser
+    /// gösterir, version bump ETMEZ → sonraki (daha yüksek version) akış onaylar. Snapshot yokken `Int.min`.
+    private var lastAppliedBalanceVersion = Int.min
     /// Check-in state generation'ı — her OTORİTER yazımda (claim başarı/409) artar. refreshCheckIn'i
     /// status() await'i öncesi yakalar/apply öncesi karşılaştırır: araya giren claim bayat pre-claim
     /// status'ü düşürür (sahte streak_break + buton regresyonu; tek actor-hop → TOCTOU'suz).
@@ -199,7 +200,8 @@ public final class OdulMerkeziModel {
         let balance = await wallet.currentBalance()
         let progress = await taskProgress.currentProgress()
         guard epoch == accountEpoch else { return } // hesap-değişimi fence'i (uçuştaki load → yeni hesaba yazma)
-        coinBalance = balance
+        coinBalance = balance.balance
+        lastAppliedBalanceVersion = balance.version // baseline: sonraki replay (aynı version) düşürülür
         liveProgress = progress
         await refreshTasks()
         await refreshCheckIn()
@@ -246,8 +248,8 @@ public final class OdulMerkeziModel {
         let progressUpdates = taskProgress.progressUpdates()
         await withTaskGroup(of: Void.self) { group in
             group.addTask { [weak self] in
-                for await balance in balances {
-                    await self?.applyBalance(balance)
+                for await update in balances {
+                    await self?.applyBalance(update)
                 }
             }
             group.addTask { [weak self] in
@@ -258,21 +260,19 @@ public final class OdulMerkeziModel {
         }
     }
 
-    private func applyBalance(_ balance: Int) {
-        // Fix 1 + audit MEDIUM: OTORİTER awaited bakiye varken BAYAT (awaited-ALTI) akış değeri onu EZMESİN;
-        // `>=` (exact yerine): awaited yeniden yayılmazsa yeni değer donmasın (bayat-alt yine düşürülür).
-        if let awaited = awaitedBalance {
-            guard balance >= awaited else { return }
-            awaitedBalance = nil
-        }
-        coinBalance = balance
+    private func applyBalance(_ update: RewardsBalanceUpdate) {
+        // audit MEDIUM (donma fix): yalnız STRICTLY-NEWER version uygulanır → bayat düşük değer (pre-claim
+        // replay) düşürülür, MEŞRU düşüş (spend, daha yüksek version) uygulanır. Value-heuristic (`>= awaited`)
+        // çoklu-stale ile meşru-spend'i ayıramadığından başlık bayat-YÜKSEK DONUYORDU (bu fix'in özü).
+        guard update.version > lastAppliedBalanceVersion else { return }
+        lastAppliedBalanceVersion = update.version
+        coinBalance = update.balance
     }
 
-    /// OTORİTER bakiye kredisi (claim/409 sonrası): başlığı günceller + akışın bu değere yakalamasını
-    /// bekler — araya giren BAYAT akış krediyi ezemez (Fix 1). Görev claim akışı (`+Tasks`) da kullanır → `internal`.
+    /// OTORİTER bakiye kredisi (claim/409 sonrası): başlığı İYİMSER günceller (server yanıtından); version bump
+    /// ETMEZ → sonraki (daha yüksek version) akış onaylar, bayat akış krediyi EZEMEZ. `+Tasks` da kullanır.
     func applyAuthoritativeBalance(_ balance: Int) {
         coinBalance = balance
-        awaitedBalance = balance
     }
 
     private func applyLiveProgress(_ progress: [RewardTask.Kind: Int]) {
@@ -312,7 +312,7 @@ public final class OdulMerkeziModel {
             let balance = await wallet.currentBalance()
             guard epoch == accountEpoch else { return }
             applyClaimedCheckInState(fresh) // generation bump + son-görülen streak persist
-            applyAuthoritativeBalance(balance)
+            applyAuthoritativeBalance(balance.balance)
         } catch {
             // Kredi VERİLMEZ; kullanıcı retry. #5 fence: switch SONRASI çözülen A hatası B'ye YAZILMASIN.
             guard epoch == accountEpoch else { return }
@@ -383,7 +383,7 @@ public extension OdulMerkeziModel {
         checkInGeneration += 1
         checkInState = nil
         coinBalance = 0
-        awaitedBalance = nil
+        lastAppliedBalanceVersion = Int.min // yeni hesap: baseline sıfırla → ilk load version'ı yakalar
         catalog = RewardTaskCatalog()
         catalogLoadedOnce = false
         liveProgress = [:]

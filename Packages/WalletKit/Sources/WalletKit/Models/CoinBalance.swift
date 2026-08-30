@@ -23,6 +23,19 @@ public struct CoinBalance: Sendable, Equatable {
     public static let zero = CoinBalance(purchasedCoins: 0, earnedCoins: 0)
 }
 
+/// Bakiye + `WalletStore` monoton `version`'ı (05 §2.5 out-of-order guard). Bakiye başlığını version'a
+/// göre uzlaştıran tüketiciler (RewardsKit OdulMerkezi: yalnız STRICTLY-NEWER version uygulanır → bayat
+/// düşük değer düşürülür, meşru düşüş uygulanır) için gereklidir. Snapshot yokken `version == Int.min`.
+public struct VersionedCoinBalance: Sendable, Equatable {
+    public let balance: CoinBalance
+    public let version: Int
+
+    public init(balance: CoinBalance, version: Int) {
+        self.balance = balance
+        self.version = version
+    }
+}
+
 /// Bir harcamanın kese-bazlı dökümü ve sonuç bakiyesi. Harcama önceliği **earned önce**
 /// (kanon §5; 06 §2.4): önce kazanılmış coin, yetmezse purchased. Sunucu bu önceliği
 /// otoritatif uygular; bu saf fonksiyon istemcinin **iyimser** (optimistic) ön-düşümü içindir.

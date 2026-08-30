@@ -29,11 +29,12 @@ struct OdulMerkeziReconciliationTests {
         )
     }
 
-    // MARK: - Fix 1: coinBalance reconciliation (bayat akış değeri claim kredisini EZMEZ)
+    // MARK: - audit MEDIUM: coinBalance version-monotonic reconciliation (bayat EZMEZ; DONMA yok)
 
     @Test func staleBalanceStreamDoesNotOverwriteClaimedBalance() async {
-        // Claim yeni bakiye kredilere (320, otoriter). Cüzdan HENÜZ yakalamadan bayat 300'ü tekrar
-        // yayınlarsa (replay) bu değer 320'yi EZMEMELİ (coin-kaybı riski, 06 §5.2 "eski değer yeniyi ezmez").
+        // Claim başlığı 320'ye çeker (otoriter; version bump YOK → baseline 0'da kalır). Cüzdan HENÜZ
+        // yakalamadan pre-claim değerini (300, version 0 ≤ baseline) yeniden yayınlarsa version-guard
+        // DÜŞÜRÜR → 320 korunur (coin-kaybı riski, 06 §5.2 "eski değer yeniyi ezmez").
         let claimed = CheckInState.mock(cycleDay: 3, todayClaimed: true, streakDays: 3)
         let wallet = FakeRewardsWallet(300)
         let service = FakeCheckInService(
@@ -46,20 +47,20 @@ struct OdulMerkeziReconciliationTests {
 
         let observer = Task { await model.observeUpdates() }
         defer { observer.cancel() }
-        _ = await eventually { model.coinBalance == 300 } // abonelik aktif (300 replay edildi)
+        _ = await eventually { model.coinBalance == 300 } // ilk load 300 yazdı; abonelik aktif
 
         await model.claimToday()
         #expect(model.coinBalance == 320) // otoriter kredi
 
-        wallet.set(300) // BAYAT pre-claim değeri yeniden yayınlandı (cüzdan claim'i henüz işlemedi)
+        wallet.set(300, version: 0) // BAYAT pre-claim emisyonu (version ≤ baseline) — cüzdan claim'i işlemedi
         let dropped = await eventually { model.coinBalance == 300 }
-        #expect(dropped == false) // bayat değer düşürüldü, 320 korunur
+        #expect(dropped == false) // version-guard bayat değeri düşürdü, 320 korunur
         #expect(model.coinBalance == 320)
     }
 
-    @Test func balanceStreamResumesAfterClaimCatchUp() async {
-        // Guard "sonsuza kadar yok say" DEĞİL: cüzdan claim değerine yakalayınca (320) canlı akış devam
-        // eder ve gerçek sonraki değişim (ör. başka ekranda harcama → 280) uygulanır.
+    @Test func newerVersionValuesApplyAfterClaim() async {
+        // Guard "sonsuza kadar yok say" DEĞİL: claim SONRASI daha yüksek version'lı emisyonlar uygulanır —
+        // cüzdan claim değerine yakalar (320, version 1) sonra gerçek değişim (280, version 2) başlığa geçer.
         let claimed = CheckInState.mock(cycleDay: 3, todayClaimed: true, streakDays: 3)
         let wallet = FakeRewardsWallet(300)
         let service = FakeCheckInService(
@@ -76,18 +77,16 @@ struct OdulMerkeziReconciliationTests {
         await model.claimToday()
         #expect(model.coinBalance == 320)
 
-        wallet.set(320) // cüzdan yakaladı → guard temizlenir
-        _ = await eventually { model.coinBalance == 320 }
-        wallet.set(280) // gerçek sonraki değişim → uygulanır
+        wallet.set(320) // cüzdan yakaladı (version 1 > baseline 0) → uygulanır (görünür değişim yok)
+        wallet.set(280) // gerçek sonraki değişim (version 2) → uygulanır
         let applied = await eventually { model.coinBalance == 280 }
         #expect(applied)
     }
 
-    @Test func newerBalanceStreamValueClearsGuardAndApplies() async {
-        // Audit MEDIUM: awaited (claim değeri) HİÇ yeniden yayılmazsa (409 read broadcast tetiklemez /
-        // version-guard snapshot'ı düşürür) EXACT-MATCH guard kalıcı DONUYORDU: awaited'i ATLAYAN yeni
-        // otoriter değer (görev/VIP/ad kredisi → daha YÜKSEK) düşürülüp başlık sonraki tüm güncellemeleri
-        // yutuyordu. `>=` guard bunu uygular ve guard'ı temizler (bayat-ALT değer yine düşürülür).
+    @Test func legitSpendAppliesAfterClaimDespiteLowerBalance() async {
+        // DONMA fix (bu fix'in ÖZÜ): claim başlığı 320'ye çekti (version bump YOK). Kullanıcı başka ekranda
+        // harcadı → cüzdan DAHA DÜŞÜK bakiye + DAHA YÜKSEK version yayınlar (200, version 1). Eski `>= awaited`
+        // sezgisi `200 >= 320` = false → DÜŞÜRÜR → başlık 320'de KALICI DONARDI. Version-guard: uygular.
         let claimed = CheckInState.mock(cycleDay: 3, todayClaimed: true, streakDays: 3)
         let wallet = FakeRewardsWallet(300)
         let service = FakeCheckInService(
@@ -102,15 +101,10 @@ struct OdulMerkeziReconciliationTests {
         _ = await eventually { model.coinBalance == 300 }
 
         await model.claimToday()
-        #expect(model.coinBalance == 320) // awaited = 320
+        #expect(model.coinBalance == 320)
 
-        // awaited (320) HİÇ yayılmaz; doğrudan DAHA YÜKSEK bir değer (350: görev/VIP/ad kredisi) gelir.
-        wallet.set(350)
-        let applied = await eventually { model.coinBalance == 350 }
-        #expect(applied) // exact-match donmadan uygulanır
-
-        wallet.set(400) // guard temizlendi → sonraki değer de uygulanır
-        #expect(await eventually { model.coinBalance == 400 })
+        wallet.set(200) // MEŞRU harcama: düşük bakiye + yüksek version → DONMADAN uygulanmalı
+        #expect(await eventually { model.coinBalance == 200 })
     }
 
     // MARK: - Fix 2: 409 ALREADY_CLAIMED bakiye tazeler (otoriter cüzdandan)
