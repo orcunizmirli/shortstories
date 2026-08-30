@@ -21,6 +21,35 @@ struct SeriesWire: Decodable, Sendable {
     let localeInfo: LocaleInfoWire
     let updatedAt: Date
 
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        title = try container.decode(String.self, forKey: .title)
+        synopsis = try container.decode(String.self, forKey: .synopsis)
+        coverURL = try container.decode(URL.self, forKey: .coverURL)
+        bannerURL = try container.decodeIfPresent(URL.self, forKey: .bannerURL)
+        // Çevresel koleksiyonlar (genres/tags) LOSSY: tek bozuk/eksik alt-eleman TÜM seriyi düşürmesin
+        // (05 §12/4 decode-robustness; PageWire.items/DiscoverWire.collections ile simetrik). Liste
+        // yolunda geçerli seri komple kaybolmaz, detay yolunda (/series/{id}, lossy DEĞİL) tam-ekran
+        // hataya dönüşmez. Çekirdek alanlar (title/cover/erişim/sayımlar) STRICT — onlarsız seri kullanılamaz.
+        genres = try container.decodeLossyArray(GenreWire.self, forKey: .genres)
+        tags = try container.decodeLossyArray(TagWire.self, forKey: .tags)
+        episodeCount = try container.decode(Int.self, forKey: .episodeCount)
+        releasedEpisodeCount = try container.decode(Int.self, forKey: .releasedEpisodeCount)
+        freeEpisodeCount = try container.decode(Int.self, forKey: .freeEpisodeCount)
+        releaseState = try container.decode(Series.ReleaseState.self, forKey: .releaseState)
+        nextEpisodeAt = try container.decodeIfPresent(Date.self, forKey: .nextEpisodeAt)
+        stats = try container.decode(SeriesStatsWire.self, forKey: .stats)
+        localeInfo = try container.decode(LocaleInfoWire.self, forKey: .localeInfo)
+        updatedAt = try container.decode(Date.self, forKey: .updatedAt)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, title, synopsis, coverURL, bannerURL, genres, tags
+        case episodeCount, releasedEpisodeCount, freeEpisodeCount
+        case releaseState, nextEpisodeAt, stats, localeInfo, updatedAt
+    }
+
     func toDomain() -> Series {
         Series(
             id: SeriesID(id),
