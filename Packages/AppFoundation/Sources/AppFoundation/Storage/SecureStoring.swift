@@ -42,4 +42,31 @@ public extension SecureStoring {
     func setString(_ value: String, forKey key: SecureStoreKey) throws {
         try setData(Data(value.utf8), forKey: key)
     }
+
+    /// Birden çok anahtarı ATOMİK yazar (best-effort): önce mevcut değerler yedeklenir, sonra tümü yazılır;
+    /// HERHANGİ biri koparsa YEDEKLERE geri alınır → keychain "torn" (yarı-yazılmış) durumda KALMAZ (ya
+    /// hepsi-yeni ya hepsi-eski). Native Keychain transaction YOK; rollback yazması da koparsa (nadir) tam
+    /// garanti değildir, ama yaygın torn-write'ı (linkSession snapshot↔token ayrışması) engeller. Anahtarlar
+    /// AYRI kalır (okuyucular değişmez); yalnız yazım atomikleşir.
+    func setAtomically(_ writes: [(key: SecureStoreKey, data: Data)]) throws {
+        var previous: [(key: SecureStoreKey, data: Data?)] = []
+        previous.reserveCapacity(writes.count)
+        for (key, _) in writes {
+            previous.append((key, try? data(forKey: key)))
+        }
+        do {
+            for (key, value) in writes {
+                try setData(value, forKey: key)
+            }
+        } catch {
+            for (key, prev) in previous {
+                if let prev {
+                    try? setData(prev, forKey: key)
+                } else {
+                    try? removeData(forKey: key)
+                }
+            }
+            throw error
+        }
+    }
 }

@@ -49,6 +49,34 @@ struct SessionManagerLinkSessionTests {
         #expect(snapshot == StoredSessionSnapshot(userID: "usr_ab12cd", provider: .apple))
     }
 
+    @Test func linkSessionSnapshotTornWriteTokenlariAtomikGeriAlir() throws {
+        // audit MEDIUM: snapshot yazımı koparsa refresh/access GERİ ALINIR → "guest snapshot + linked token"
+        // ayrışması olmaz (setAtomically). Seed guest oturumu; arm ile snapshot yazımı koparılır.
+        let store = WriteFailingSecureStore(failWriteFor: .sessionSnapshot)
+        try store.backing.setString("rt_guest", forKey: .refreshToken)
+        try store.backing.setString("at_guest", forKey: .accessToken)
+        try store.backing.setData(
+            JSONEncoder().encode(StoredSessionSnapshot(userID: "guest-1", provider: nil)),
+            forKey: .sessionSnapshot
+        )
+        let tornManager = SessionManager(
+            apiClient: MockAPIClient(),
+            secureStore: store,
+            clientInfo: SessionClientInfo(platform: "ios", appVersion: "1.0.0", locale: "en-US")
+        )
+        store.arm() // bundan sonra snapshot yazımı kopar
+
+        tornManager.linkSession(userID: "u2", provider: .apple, accessToken: "at_linked", refreshToken: "rt_linked")
+
+        // Atomik rollback: refresh/access GUEST değerlere geri döndü (torn "linked token + guest snapshot" YOK).
+        #expect(try store.string(forKey: .refreshToken) == "rt_guest")
+        #expect(try store.string(forKey: .accessToken) == "at_guest")
+        let snapData = try #require(try store.data(forKey: .sessionSnapshot))
+        #expect(try JSONDecoder().decode(StoredSessionSnapshot.self, from: snapData).userID == "guest-1")
+        // Bellek-içi durum yine linked (canlı oturum doğru; relaunch re-auth ile kalıcılaşır).
+        #expect(tornManager.state == .linked(userID: "u2", provider: .apple))
+    }
+
     @Test func linkSessionStateUpdatesYayinlar() async throws {
         try await bootstrapGuest()
         var iterator = manager.stateUpdates.makeAsyncIterator()

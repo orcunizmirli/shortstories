@@ -112,21 +112,20 @@ public final class SessionManager: SessionManaging {
         // Uçuştaki misafir bootstrap yanıtını fence et: bu link, o yanıttan SONRA gelirse yanıt bu
         // linked token'ları ezmemeli (audit MEDIUM). MainActor senkron → yakalama+kontrol atomik.
         sessionGeneration &+= 1
-        // Keychain yazımı best-effort: başarısızlığı bellek-içi yükseltmeyi ENGELLEMEZ (canlı durum
-        // yayını asıl amaçtır). REFRESH ÖNCE (performRefresh kalıbı): access'ten önce yazılır ve YAZIMI
-        // KOPARSA access YAZILMAZ → "yeni access + eski refresh" saatli bombası (access dolunca eski
-        // refresh'le kalıcı logout) önlenir; refresh yazıldıysa access best-effort'tur (koparsa sonraki
-        // 401 taze refresh'le self-heal). Snapshot en son (relaunch kimlik ayracı).
+        // Keychain yazımı best-effort: başarısızlığı bellek-içi yükseltmeyi ENGELLEMEZ (canlı durum yayını
+        // asıl amaç). 3 anahtar (refresh/access/snapshot) ATOMİK yazılır (`setAtomically`): herhangi biri
+        // koparsa TÜMÜ yedeklere geri alınır → torn-write YOK (audit MEDIUM: snapshot-torn "guest snapshot +
+        // linked token" ayrışması engellenir; eskiden refresh-önce sıralaması yalnız token-torn'u kapatıyordu).
         do {
-            try secureStore.setString(refreshToken, forKey: .refreshToken)
-            try? secureStore.setString(accessToken, forKey: .accessToken)
             let snapshot = StoredSessionSnapshot(userID: userID, provider: provider)
-            if let data = try? JSONEncoder().encode(snapshot) {
-                try? secureStore.setData(data, forKey: .sessionSnapshot)
-            }
+            try secureStore.setAtomically([
+                (.refreshToken, Data(refreshToken.utf8)),
+                (.accessToken, Data(accessToken.utf8)),
+                (.sessionSnapshot, JSONEncoder().encode(snapshot))
+            ])
         } catch {
-            // Refresh yazımı koptu → access/snapshot YAZILMAZ (torn "yeni access + eski refresh" önlenir);
-            // keychain eski tutarlı halde kalır. Bellek-içi yükseltme yine yapılır (canlı oturum doğru).
+            // Atomik yazım koptu → keychain yedeklere geri alındı (tutarlı eski hal; torn YOK). Bellek-içi
+            // yükseltme yine yapılır (canlı oturum doğru; relaunch'ta re-auth ile kalıcılaşır).
         }
         // Tekrar-idempotent: durum zaten hedefse gereksiz yayın YAPILMAZ (abonelere kopya .linked
         // gönderilmez).
