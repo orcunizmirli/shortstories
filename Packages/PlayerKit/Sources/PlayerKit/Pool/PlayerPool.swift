@@ -2,13 +2,9 @@ import AppFoundation
 import ContentKit
 import Foundation
 
-/// 3–5 player instance'lık havuz (04 §3, 03 §7.1 — kanonik actor). Player'lar
-/// hücrelere değil feed indeksine bağlanır; hücreler yeniden kullanılırken
-/// player'lar havuzda yaşar ve ASLA deallocate edilmez (04 §3.3 kural 1).
-///
-/// Public yüzey yalnız kompozisyon kökünün gördüğü `init`'tir (04 §2.4).
-/// Operasyonlar (`activate`/`prepareNext`/`recycle`/`acquire`/`Lease`/
-/// `advanceWindow`/`drain`) PlayerKit-internal'dır — feed VC aynı modülde yaşar (C2).
+/// 3–5 player instance'lık havuz (04 §3, 03 §7.1 — kanonik actor). Player'lar hücrelere değil feed
+/// indeksine bağlanır; hücreler yeniden kullanılırken player'lar havuzda yaşar ve ASLA deallocate edilmez
+/// (04 §3.3 kural 1). Public yüzey yalnız `init` (04 §2.4); operasyonlar PlayerKit-internal (feed VC C2).
 public actor PlayerPool {
     /// Slot kiralama makbuzu (PlayerKit-internal — 04 §3.3): engine referansı
     /// modül dışına sızmaz.
@@ -253,12 +249,9 @@ public actor PlayerPool {
 // MARK: - Kiralama mekaniği (claim-önce-await)
 
 extension PlayerPool {
-    /// Bölüm için player kirala. Bölüm zaten bir slot'ta hazırsa aynı player döner.
-    ///
-    /// Claim-önce-await: rezervasyon authorize suspension'ından ÖNCE senkron yazılır —
-    /// reentrancy altında farklı bölümler aynı slotu seçemez, aynı bölüm dedup'a takılır.
-    /// Başarısızlık/iptalde rezervasyon senkron temizlenir; drain/recycle araya girdiyse
-    /// iptalle temiz çıkılır.
+    /// Bölüm için player kirala; bölüm zaten bir slot'ta hazırsa aynı player döner. Claim-önce-await:
+    /// rezervasyon authorize suspension'ından ÖNCE senkron yazılır (reentrancy'de farklı bölümler aynı
+    /// slotu seçemez, aynı bölüm dedup'a takılır); hata/iptalde senkron temizlenir; drain/recycle → iptal.
     func acquire(
         for episode: Episode,
         atFeedIndex feedIndex: Int,
@@ -316,9 +309,8 @@ extension PlayerPool {
         }
     }
 
-    /// Warm-hit yolu: aynı engine yeniden kullanılır (cold start yok — 04 §3.3). İmzalı URL bayatsa (04
-    /// §6.4 kural 4) veya engine `.failed` ise taze yetkiyle YENİDEN hazırlanır (süresi geçmiş yetkiyle
-    /// oynatma başlatılmaz, ölü engine'e lease dönmez); aksi halde `resumePosition` verilmişse seek (04 §12.2).
+    /// Warm-hit yolu: aynı engine yeniden kullanılır (cold start yok — 04 §3.3). İmzalı URL bayatsa/engine
+    /// `.failed` ise taze yetkiyle YENİDEN hazırlanır; aksi halde `resumePosition` verilmişse seek (04 §12.2).
     private func reuseWarmSlot(
         _ slotIndex: Int,
         episode: Episode,
@@ -326,13 +318,17 @@ extension PlayerPool {
         role: SlotRole,
         resumePosition: Double?
     ) async throws -> Lease {
-        slots[slotIndex].role = role
+        // Aktif slotu warm-reuse ile `.warm`'a DÜŞÜRME (audit HIGH): geç prefetch warm(epX) aktif slota
+        // inerse rolü .warm yapar, `demotePreviousActive` (role==.active guard'lı) onu duraklatmaz → çift ses.
+        if !(slotIndex == activeSlot && role == .warm) {
+            slots[slotIndex].role = role
+        }
         slots[slotIndex].feedIndex = feedIndex
         let engine = slots[slotIndex].engine
+        let epoch = drainEpoch
         // Warm-reuse "bitti" latch'ini temizle: tamamlanmış bölüme dönüşte bayat playedToEnd auto-advance'i
-        // yanlış tetiklemesin (audit HIGH) — sağlıklı yol prepare çağırmaz, latch aksi halde true kalırdı.
+        // yanlış tetiklemesin (audit HIGH). Ağ koşulu değişmiş olabilir → bitrate tavanı yeniden uygulanır.
         await engine.clearEndedLatch()
-        // Aktivasyon anında ağ koşulu değişmiş olabilir; tavan yeniden uygulanır (04 §6.3).
         await engine.setPeakBitRateCap(currentPeakBitRateCap())
         var engineFailed = false
         if case .failed = await engine.currentState() {
@@ -344,6 +340,10 @@ extension PlayerPool {
             }
         } else {
             let fresh = try await authorization.freshAuthorization(for: episode.id)
+            // Epoch/slot korkuluğu (audit MEDIUM): freshAuthorization uçuştayken drain (epoch artar) ya da
+            // slot geri alındıysa `prepare` öksüz item + KVO gözlemci sızdırır → yazma yapılmaz, iptalle çık.
+            try Task.checkCancellation()
+            try ensureClaimIntact(at: slotIndex, for: episode.id, epoch: epoch)
             await engine.prepare(
                 episodeID: episode.id,
                 url: fresh.playbackURL,

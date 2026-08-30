@@ -139,6 +139,27 @@ struct PlayerPoolTests {
         #expect(firstBackend.calls.contains(.applyBufferPolicy(.idle))) // 1 sn'e düşür
     }
 
+    @Test func gecWarmReuseAktifSlotuWarmaDusurmez() async throws {
+        // audit HIGH: geç gelen prefetch warm(epX), epX tam aktif slota otururken bu slota inerse rolü
+        // .warm yapıp demotePreviousActive'i (role==.active guard'lı) atlatıyor → aktif slot duraklatılmaz
+        // → iki slot aynı anda oynar (çift ses). Aktif slot warm-reuse'da .active KALMALI.
+        let harness = makePool()
+        let (pool, box) = (harness.pool, harness.box)
+        let active = Fixture.episode(id: "e1")
+        _ = try await pool.activate(active, atFeedIndex: 0)
+
+        await pool.prepareNext(active, atFeedIndex: 0) // aktif bölümün geç warm-reuse'u
+
+        let ids = await pool.snapshotEpisodeIDs()
+        let roles = await pool.snapshotRoles()
+        let activeIndex = try #require(ids.firstIndex(of: active.id))
+        #expect(roles[activeIndex] == .active) // .warm'a düşmemeli
+
+        // Kanıt: sonraki aktife geçişte önceki (hâlâ .active) DURAKLATILIR.
+        _ = try await pool.activate(Fixture.episode(id: "e2"), atFeedIndex: 1)
+        #expect(box.backends[activeIndex].calls.contains(.pause))
+    }
+
     @Test func doluHavuzdaEnUzakSlotGeriAlinir() async throws {
         let harness = makePool(size: 3)
         let (pool, box) = (harness.pool, harness.box)
