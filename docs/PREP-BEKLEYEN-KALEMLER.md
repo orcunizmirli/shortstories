@@ -180,23 +180,26 @@ günlük-reset unpin MEDIUM); 3'ü App-wiring/port-versiyonlama gerektirdiği i�
   account-switch koordinatörü modeli yeniden yaratsın VEYA `resetForAccountSwitch()` (FavoritesService
   deseni: claimedTaskIDs/awaitedBalance/checkInState/hasLoaded temizle) wiring'le çağrılsın. App-katmanı
   wiring gerektirir → ertelendi. İlgili: [[shortseries-project]] SS-132/§575 cross-account deseni.
-- **applyBalance `>= awaited` guard'ı MEŞRU bakiye DÜŞÜŞÜNÜ yutar (OdulMerkeziModel.swift:257, MEDIUM
-  PLAUSIBLE):** awaitedBalance (claim değeri) set iken, gelen bir bakiye DÜŞÜŞÜ (harcama/debit veya
-  hesap-değişimi→daha düşük) `guard balance >= awaited` ile yutulur; awaited HİÇ temizlenmez (yalnız
-  >= değer temizler) → başlık bayat-YÜKSEK değerde DONAR. Exact-match→>= audit fix'i donmayı azalttı ama
-  meşru debit'i açığa çıkardı. **Fix:** value-heuristic yerine cüzdan akışına monoton VERSİYON/sequence
-  eklenip applyBalance yalnız STRICTLY-NEWER sürümü uygulasın (RewardsWalletReading + WalletStore port
-  değişimi) → bayat düşük SEQUENCE'e göre ayrılır, meşru düşük uygulanır. Port versiyonlama gerektirir → ertelendi.
-  **VERSİYONLAMA GEREKLİLİĞİ KANITLANDI (2026-08-30, kullanıcı MEDIUM-refactor kararı sonrası denendi):** contained
-  ONE-SHOT awaited (ilk-swallow sonra temizle) denendi → `staleBalanceStreamDoesNotOverwriteClaimedBalance` testini
-  KIRDI. Kök neden: load() coinBalance'ı hemen set edip eventually'yi erken döndürünce observeUpdates REPLAY değeri
-  claim'DEN SONRA gelir → İKİ stale-altı emisyon (replay + set); one-shot ilkini yutup ikincisini uygular (claim'i
-  ezer). value-heuristic (>=, one-shot) ÇOKLU-stale ↔ meşru-spend'i AYIRAMAZ; yalnız MONOTON VERSİYON ayırır (stale =
-  version ≤ claim-baseline; spend = version > baseline). **İki-kaynaklı sorun:** claim kredisi RESPONSE'tan
-  (versiyonsuz), bakiye STREAM'den (WalletStore version-guard'lı) gelir → tam çözüm claim'i de versiyonlamalı VEYA
-  claim→WalletStore-write ile TEK-KAYNAĞA indirmeli. Subtle 3-paket (WalletKit version-expose + RewardsKit port +
-  App adapter + OdulMerkezi + test fake'leri) → self-review'lı ODAKLI görev olarak yapılmalı (oturum-sonu acele
-  regresyon riski; bu oturum self-review zinciri 4× subtle-fix regresyonu yakaladı). Mevcut `>=` guard KORUNDU.
+- **applyBalance version-monotonic (donma fix) — TAMAMLANDI (2026-08-31, commit'ler 5e3395e + a072bb4).**
+  value-heuristic (`>= awaited`) yerine WalletStore monoton `version`'ı (05 §2.5) tüketiciye taşındı;
+  OdulMerkezi yalnız STRICTLY-NEWER version uygular (bayat replay düşer, meşru spend uygulanır → DONMA yok).
+  WalletKit: `VersionedCoinBalance` + `WalletGateway.versionedBalanceUpdates()` (additive; `broadcastBalance(from:)`
+  iki multicast'i aynı snapshot'tan besler). RewardsKit: `currentBalance() -> RewardsBalanceUpdate`, awaitedBalance
+  kaldırıldı. App adapter versioned akış + `currentSnapshot().version`. **Self-review (2. görüş agent) cross-account
+  poison regresyonu buldu → `guard hasLoaded` ile kapatıldı (version'lar hesaba özel; canlı stream yalnız otoriter
+  baseline sonrası uygulanır).** TDD revert-verify (freeze + poison testleri). Residual accepted-LOW'lar:
+  - **BULGU 2 (LOW, accepted):** 409 kolları (claimToday/claimTask) `applyAuthoritativeBalance`'ı `lastApplied`'ı
+    bump ETMEZ → araya giren ara-version stream emisyonu 1-frame eski değere döndürüp düzelebilir (transient
+    flicker). Eventual-consistency ile uyumlu. Fix (409'da `applyBalance(update)` kullan) applyBalance'ı `internal`
+    yapmayı gerektirir (+Tasks ayrı dosya) → görünürlük genişletme + over-engineering riski; ertelendi.
+  - **BULGU 3 (not, fragility):** WalletStore.applyWallet `>=` (eşit-version yeniden yayınlar) vs OdulMerkezi `>`
+    (eşit düşürür). Monoton-version sözleşmesi altında eşit version ⇒ eşit bakiye → kayıp yok. Sunucu sözleşme
+    ihlaliyle (aynı version farklı bakiye) OdulMerkezi ilkini, versiyonsuz ProfilKit ikincisini gösterirdi — istemci
+    regresyonu değil, kırılganlık notu.
+  - **BULGU 4 (test-fake fidelity, LOW):** `FakeWalletGateway.currentSnapshot()` sabit fixture version'ı döner,
+    `pushBalance` ayrı `_version` (0,1,2…) yayar → App-adapter testinde currentBalance vs stream version'ları
+    ayrık olabilir. Üretim hatası değil (OdulMerkezi FakeRewardsWallet ile koşar, o tutarlı). Şu an version'a
+    dayanan App-adapter testi yok → latent; ileride adapter version testi eklenirse fake hizalanmalı.
 - **claim/applyAuthoritativeBalance epoch guard yok (OdulMerkeziModel.swift:267/289, MEDIUM/LOW PLAUSIBLE):**
   claimToday/claimTask `await claim()` ÖNCESİ epoch yakalamaz, SONRASINDA apply-öncesi doğrulamaz →
   uçuştaki claim yanıtı bir bağlam/hesap değişiminden sonra uygulanınca cross-account/bayat kredi; ayrıca
