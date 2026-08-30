@@ -26,13 +26,16 @@ public final class BolumListesiModel {
         public let title: String?
         public let isPlayable: Bool
         public let isCurrent: Bool
+        /// Henüz yayınlanmadı (publishedAt gelecekte/nil) → takvim hücresi; oynatılamaz, seçim no-op.
+        public let isScheduled: Bool
 
-        public init(id: EpisodeID, number: Int, title: String?, isPlayable: Bool, isCurrent: Bool) {
+        public init(id: EpisodeID, number: Int, title: String?, isPlayable: Bool, isCurrent: Bool, isScheduled: Bool) {
             self.id = id
             self.number = number
             self.title = title
             self.isPlayable = isPlayable
             self.isCurrent = isCurrent
+            self.isScheduled = isScheduled
         }
     }
 
@@ -44,6 +47,7 @@ public final class BolumListesiModel {
     private let currentEpisodeID: EpisodeID?
     private let catalog: any CatalogServicing
     private let entitlement: any EntitlementChecking
+    private let now: @Sendable () -> Date
     private weak var delegate: (any BolumListesiDelegate)?
 
     public init(
@@ -51,13 +55,15 @@ public final class BolumListesiModel {
         currentEpisodeID: EpisodeID?,
         catalog: any CatalogServicing,
         entitlement: any EntitlementChecking,
-        delegate: (any BolumListesiDelegate)?
+        delegate: (any BolumListesiDelegate)?,
+        now: @escaping @Sendable () -> Date = { Date() }
     ) {
         seriesTitle = series.title
         seriesID = series.id
         self.currentEpisodeID = currentEpisodeID
         self.catalog = catalog
         self.entitlement = entitlement
+        self.now = now
         self.delegate = delegate
     }
 
@@ -67,6 +73,7 @@ public final class BolumListesiModel {
         loadState = .loading
         do {
             let page = try await catalog.episodes(seriesId: seriesID, cursor: nil)
+            let clock = now()
             var derived: [Row] = []
             for episode in page.items {
                 // `||` sağ-tarafı autoclosure'dır (async çağrı barındıramaz) → entitlement kontrolü
@@ -76,12 +83,16 @@ public final class BolumListesiModel {
                 } else {
                     await entitlement.hasAccess(to: episode.id)
                 }
+                // Yayın durumu (DiziDetay ile simetrik, 05 §2.2): yayınlanmamış (scheduled) bölüm entitled
+                // olsa bile OYNATILAMAZ — akışı yok, feed'e geçirilse kırık oynatma; scheduled göstergesi çizilir.
+                let isPublished = episode.isPublished(at: clock)
                 derived.append(Row(
                     id: episode.id,
                     number: episode.index,
                     title: episode.title,
-                    isPlayable: entitled,
-                    isCurrent: episode.id == currentEpisodeID
+                    isPlayable: isPublished && entitled,
+                    isCurrent: episode.id == currentEpisodeID,
+                    isScheduled: !isPublished
                 ))
             }
             rows = derived
@@ -92,7 +103,9 @@ public final class BolumListesiModel {
     }
 
     /// Bir bölüme dokunuldu → App'e ilet (feed o bölüme geçer; kilitliyse orada UnlockSheet açılır).
+    /// Yayınlanmamış (scheduled) bölüm no-op (DiziDetay.selectEpisode ile simetrik): akışı yok.
     public func selectEpisode(_ row: Row) {
+        guard !row.isScheduled else { return }
         delegate?.bolumListesiDidSelectEpisode(number: row.number, in: seriesID)
     }
 

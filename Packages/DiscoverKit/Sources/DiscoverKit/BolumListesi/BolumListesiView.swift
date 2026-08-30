@@ -71,7 +71,12 @@ public struct BolumListesiView: View {
                             .foregroundStyle(row.isCurrent ? DSColors.overlayForeground : DSColors.textPrimary)
                     )
                     .aspectRatio(1, contentMode: .fit)
-                if !row.isPlayable {
+                if row.isScheduled {
+                    Image(systemName: "calendar")
+                        .font(DSTypography.caption)
+                        .foregroundStyle(DSColors.textSecondary)
+                        .padding(DSSpacing.xs)
+                } else if !row.isPlayable {
                     Image(systemName: "lock.fill")
                         .font(DSTypography.caption)
                         .foregroundStyle(DSColors.textSecondary)
@@ -79,6 +84,13 @@ public struct BolumListesiView: View {
                 }
             }
         }
-        .accessibilityLabel("Bölüm \(row.number)\(row.isPlayable ? "" : ", kilitli")\(row.isCurrent ? ", şu an" : "")")
+        .accessibilityLabel("Bölüm \(row.number)\(cellStatusLabel(row))\(row.isCurrent ? ", şu an" : "")")
+    }
+
+    private func cellStatusLabel(_ row: BolumListesiModel.Row) -> String {
+        if row.isScheduled {
+            return ", yakında"
+        }
+        return row.isPlayable ? "" : ", kilitli"
     }
 }

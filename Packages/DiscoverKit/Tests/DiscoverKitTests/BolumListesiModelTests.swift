@@ -1,5 +1,6 @@
 import AppFoundation
 import ContentKit
+import Foundation
 import Testing
 @testable import DiscoverKit
 
@@ -25,14 +26,16 @@ struct BolumListesiModelTests {
         catalog: SpyCatalog,
         entitlement: FakeEntitlements = FakeEntitlements(),
         currentEpisodeID: EpisodeID? = nil,
-        delegate: DelegateSpy = DelegateSpy()
+        delegate: DelegateSpy = DelegateSpy(),
+        now: @escaping @Sendable () -> Date = { Date() }
     ) -> BolumListesiModel {
         BolumListesiModel(
             series: Fixtures.series(id: "s1", title: "Aşk"),
             currentEpisodeID: currentEpisodeID,
             catalog: catalog,
             entitlement: entitlement,
-            delegate: delegate
+            delegate: delegate,
+            now: now
         )
     }
 
@@ -101,6 +104,41 @@ struct BolumListesiModelTests {
 
         #expect(model.loadState == .error)
         #expect(model.rows.isEmpty)
+    }
+
+    @Test func scheduledBolumOynatilamazVeSecimNoOp() async {
+        // Audit MEDIUM: load() yayın durumunu (isPublished) kontrol etmiyordu → yayınlanmamış (scheduled)
+        // bölüm 'oynatılabilir' türetiliyor, scheduled göstergesi olmadan; dokununca feed yayında-olmayan
+        // bölüme geçip kırık oynatma. Fix: published değilse isPlayable=false + isScheduled + select no-op.
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let catalog = SpyCatalog()
+        catalog.setEpisodes(.success(Page(items: [
+            Fixtures.episode(
+                seriesID: "s1",
+                index: 5,
+                access: .free,
+                publishedAt: Date(timeIntervalSince1970: 1_600_000_000)
+            ),
+            // Bölüm 6: gelecekte yayınlanacak (scheduled) ama free erişim.
+            Fixtures.episode(
+                seriesID: "s1",
+                index: 6,
+                access: .free,
+                publishedAt: Date(timeIntervalSince1970: 1_800_000_000)
+            )
+        ], nextCursor: nil, ttlSec: nil)))
+        let delegate = DelegateSpy()
+        let model = make(catalog: catalog, delegate: delegate, now: { now })
+
+        await model.load()
+
+        #expect(model.rows[0].isPlayable) // bölüm 5 yayınlanmış + free
+        #expect(!model.rows[0].isScheduled)
+        #expect(!model.rows[1].isPlayable) // bölüm 6 scheduled → oynatılamaz
+        #expect(model.rows[1].isScheduled)
+
+        model.selectEpisode(model.rows[1])
+        #expect(delegate.selected.isEmpty) // scheduled seçim no-op
     }
 
     @Test func selectEpisodeDelegateyeIletir() async {
