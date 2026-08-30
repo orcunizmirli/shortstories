@@ -133,14 +133,13 @@ gereği ertelendi:
 ### PlayerKit bug-hunt — ertelenen 1 kalem (2026-08-30)
 PlayerKit engine/pool/feed bug-hunt'ının 7 bulgusundan 6'sı düzeltildi (3 commit: warm-reuse fence
 HIGH+MEDIUM, recovery-intent MEDIUM×2, settle snapshot-kayması MEDIUM×2); 1'i ertelendi:
-- **Başarısız prefetch "completed warmup" sayılıyor (PrefetchController.swift:151, LOW):** `warm`/
-  `prepareNext` geçici authorize hatasını (5xx/timeout) yutup normal dönüyor → `taskCompleted` onu
-  `completedWarmups`'a ekliyor → o bölüm pencere-içi kaldıkça bir daha WARM EDİLMİYOR (ağ dönse bile
-  swipe'ta cold-start spinner) + bandwidth telemetrisi over-count. NON-INVARIANT (kullanıcı swipe'ta
-  activate gerçek authorize yapar, doğru oynar — yalnız cold). Fix `EpisodeWarming.warm`'ı Void→Bool
-  ("tamamlandı; retry etme") yapmayı gerektirir (protokol + PrefetchController + fake warmer'a yayılır);
-  başarıda/kilitlide true, geçici hatada false → completedWarmups'a yalnız true'da eklenir. Değer düşük
-  (efficiency/telemetry), izole değil → ayrı pass'e bırakıldı.
+- **Başarısız prefetch "completed warmup" sayılıyor (LOW) → DÜZELTİLDİ (e8d9ec7):** `warm`/`prepareNext`
+  geçici authorize hatasını (5xx/timeout) yutup normal dönüyor, `taskCompleted` onu `completedWarmups`'a
+  ekliyordu → bölüm pencere-içi kaldıkça bir daha WARM EDİLMİYOR (cold-start spinner) + telemetri over-count.
+  Fix: `EpisodeWarming.warm` + `FeedPlaybackPooling.prepareNext` Void→Bool (başarı/kilitli true, geçici
+  hata/iptal false); completedWarmups + recordWarmupCompleted YALNIZ true'da. `prepareNext @discardableResult`
+  (mevcut çağıranlar korunur). TDD: geciciHataAlanWarmPencereIciYenidenDenenir (revert-verify) +
+  basariliWarmYenidenDenenmez. 271 PlayerKit testi yeşil.
 
 ### LibraryKit/ProfileKit bug-hunt — ertelenen 2 kalem (2026-08-30)
 Kütüphane (favoriler/devam-et) + Profil bug-hunt'ının 5 bulgusundan 3'ü düzeltildi (3 commit:
