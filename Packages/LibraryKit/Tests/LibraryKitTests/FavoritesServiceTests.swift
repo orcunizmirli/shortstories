@@ -26,6 +26,25 @@ struct FavoritesServiceTests {
         #expect(try await service.pendingSyncCount() == 1)
     }
 
+    @Test func resetForAccountSwitchClearsCompensatingDeletes() async throws {
+        // audit MEDIUM (§575 cross-account): hesap-değişiminde DURABLE telafi-DELETE'ler temizlenmezse
+        // sonraki synchronize onları YENİ hesabın token'ıyla flush edip başka hesaptan favori siler.
+        let store = InMemoryCompensatingDeleteStore()
+        store.save([SeriesID("x")]) // önceki hesaptan kalan durable telafi-DELETE
+        let remoting = FakeFavoritesRemoting()
+        let service = try FavoritesService(
+            repository: makeRepo(),
+            remoting: remoting,
+            compensatingDeleteStore: store
+        )
+
+        await service.resetForAccountSwitch()
+        try await service.synchronize() // yeni hesap token'ıyla
+
+        #expect(remoting.deleteCalls.isEmpty) // x YENİ hesaba DELETE olarak flush EDİLMEZ
+        #expect(store.load().isEmpty) // durable store da temizlendi (app-kill'de dirilmez)
+    }
+
     @Test func toggleReturnsNewState() async throws {
         let service = try makeService(repo: makeRepo())
         let on = try await service.toggleFavorite(SeriesID("s-1"))

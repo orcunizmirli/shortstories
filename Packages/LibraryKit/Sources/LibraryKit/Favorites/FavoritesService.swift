@@ -43,6 +43,19 @@ public actor FavoritesService {
         compensatingDeletes = compensatingDeleteStore.load()
     }
 
+    // MARK: - Hesap-değişimi (§575)
+
+    /// Hesap-değişiminde TÜM yerel favori-niyetini SIFIRLAR: telafi-DELETE'ler (bellek-içi + DURABLE store),
+    /// uçuştaki eklemeler ve resync bayrağı. Aksi halde önceki hesabın telafi-DELETE'i yeni hesabın
+    /// token'ıyla flush edilip BAŞKA hesaptan favori siler (audit MEDIUM cross-account). Repository kayıtları
+    /// çağıran katmanda `deleteAll` edilir; bu, o katmanın ATLADIĞI hesap-agnostik niyet durumunu temizler.
+    public func resetForAccountSwitch() {
+        compensatingDeletes.removeAll()
+        compensatingDeleteStore.save(compensatingDeletes)
+        inFlightAdds.removeAll()
+        needsResync = false
+    }
+
     // MARK: - Okuma
 
     /// Görünür favori mi (`pendingRemove` hariç — repository sözleşmesi).

@@ -29,12 +29,11 @@ protocol AccountSwitchDataCoordinating: Sendable {
 }
 
 /// Canlı `AccountSwitchDataCoordinating` (05 §3.3/§575). Flush + refetch tek-kaynak servislerin
-/// (`ContinueWatchingService`/`FavoritesService`) `synchronize()`'ıyla yürür (synchronize önce
-/// bekleyenleri PUSH eder, sonra sunucu geçmişini PULL edip birleştirir); reset AppFoundation
-/// repository `deleteAll()`'larıyla. TÜM adımlar BEST-EFFORT (`try?`): hesap değişimi bilinçli bir
-/// kullanıcı kararıdır (`willDiscardGuestData` ile uyarılır) ve yerel-veri temizliği asıl güvenlik
+/// `synchronize()`'ıyla yürür (önce bekleyenleri PUSH, sonra sunucu geçmişini PULL+birleştir); reset
+/// AppFoundation repository `deleteAll()`'larıyla. TÜM adımlar BEST-EFFORT (`try?`): hesap değişimi
+/// bilinçli kullanıcı kararıdır (`willDiscardGuestData` uyarır) ve yerel-veri temizliği asıl güvenlik
 /// amacıdır — ağ hatası akışı bloklamamalı. Flush başarısızsa `pendingUpload` kalır (veri kaybolmaz),
-/// reset onu bilinçli olarak siler (yeni hesap misafir verisini görmez).
+/// reset onu bilinçli siler (yeni hesap misafir verisini görmez).
 struct LiveAccountSwitchDataCoordinator: AccountSwitchDataCoordinating {
     private let continueWatching: ContinueWatchingService
     private let favorites: FavoritesService
@@ -67,14 +66,16 @@ struct LiveAccountSwitchDataCoordinator: AccountSwitchDataCoordinating {
     func flushPendingGuestData() async {
         // switch ÖNCESİ misafir token'ıyla: bekleyen misafir kayıtları misafir hesabına PUSH edilir.
         try? await continueWatching.synchronize()
-        try? await favorites.synchronize()
+        try? await favorites.synchronize() // best-effort
     }
 
     func resetLocalUserData() async {
-        // switch SONRASI: yerel kullanıcı verisi tamamen silinir → yeni hesap misafir verisini görmez
-        // ve sonraki senkron misafir pending'lerini yeni hesaba yükleyemez (hesaplar-arası kirlenme yok).
+        // switch SONRASI: yerel kullanıcı verisi tamamen silinir (hesaplar-arası kirlenme yok).
         try? await watchHistoryRepository.deleteAll()
         try? await favoritesRepository.deleteAll()
+        // FavoritesService DURABLE telafi-DELETE niyeti deleteAll'ın ATLADIĞI ayrı katman → temizlenmezse
+        // önceki hesabın DELETE'i yeni hesaptan favori siler (audit MEDIUM cross-account).
+        await favorites.resetForAccountSwitch()
         // Cüzdan da sıfırlanmalı: aksi halde bakiye/VIP/açılmış-bölüm state'i yeni hesaba sızar (§575).
         await resetWallet()
     }
@@ -83,8 +84,7 @@ struct LiveAccountSwitchDataCoordinator: AccountSwitchDataCoordinating {
         // reset SONRASI yeni hesap token'ıyla: sunucu durumu PULL edilir (push edilecek pending yok).
         try? await continueWatching.synchronize()
         try? await favorites.synchronize()
-        // Yeni hesabın otoritatif cüzdan snapshot'ını çek (reset sonrası boş state taze doldurulur).
-        await refreshWallet()
+        await refreshWallet() // yeni hesabın otoritatif cüzdan snapshot'ı (reset sonrası taze doldurulur)
     }
 }
 
