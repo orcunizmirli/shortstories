@@ -111,6 +111,17 @@ struct CheckInCycleTests {
         #expect(CheckInCycle().calendar(for: nil).isEmpty)
     }
 
+    @Test func todayRewardIsServerAuthoritativeElseTableFallback() {
+        // Server dolu → onu kullanır; server 0 verince (vermedi) schedule/tablo fallback (buton etiketi
+        // takvim bugün hücresiyle TEK kaynak — tutarsızlık yok).
+        let cycle = CheckInCycle()
+        #expect(cycle.todayReward(for: .mock(cycleDay: 3, todayReward: 35)) == 35) // server-otoriter
+        #expect(cycle.todayReward(for: .mock(cycleDay: 3, todayReward: 0)) == 20) // gün 3 tablo fallback
+        // Schedule entry yoksa varsayılan tabloya düşer.
+        let noSchedule = CheckInState.mock(cycleDay: 5, todayReward: 0, schedule: [])
+        #expect(cycle.todayReward(for: noSchedule) == 30) // gün 5 varsayılan tablo (defaultRewards[4])
+    }
+
     @Test func calendarMarksPastTodayUpcoming() {
         let cycle = CheckInCycle()
         let state = CheckInState(

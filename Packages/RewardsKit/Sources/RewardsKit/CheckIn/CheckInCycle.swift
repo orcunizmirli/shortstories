@@ -125,8 +125,9 @@ public struct CheckInCycle: Sendable, Equatable {
             let coins: Int
             let claimed: Bool
             if isToday {
-                // Server-otoriter bugün hücresi: buton (todayClaimed) ile ortak kaynak; schedule fallback.
-                coins = state.todayReward > 0 ? state.todayReward : (entry?.coins ?? reward(forCycleDay: day))
+                // Server-otoriter bugün hücresi: buton (todayClaimed/todayReward) ile ORTAK kaynak
+                // (`todayReward(for:)`) → schedule fallback tek yerde, tutarsızlık yok.
+                coins = todayReward(for: state)
                 claimed = state.todayClaimed
             } else {
                 coins = entry?.coins ?? reward(forCycleDay: day)
@@ -135,6 +136,15 @@ public struct CheckInCycle: Sendable, Equatable {
             let status: CheckInDayCell.Status = claimed ? .claimed : (isToday ? .today : .upcoming)
             return CheckInDayCell(day: day, coins: coins, status: status, isBonus: isStreakBonusDay(cycleDay: day))
         }
+    }
+
+    /// Bugünün ödülü (buton etiketi "Ödülü Al · N coin" + takvim bugün hücresi TEK kaynak, 07 §3.2):
+    /// SERVER-OTORİTER (`state.todayReward`); server vermedi (`<= 0`) ise schedule girdisine, o da yoksa
+    /// varsayılan ödül tablosuna düşer. Böylece buton etiketi takvim bugün hücresiyle ÇELİŞMEZ.
+    public func todayReward(for state: CheckInState) -> Int {
+        guard state.todayReward <= 0 else { return state.todayReward }
+        let entry = state.schedule.first { $0.day == state.cycleDay }
+        return entry?.coins ?? reward(forCycleDay: state.cycleDay)
     }
 
     /// İstemcinin ilk kez gördüğü streak kırılmasını tespit eder (08 §3.5). Kırılma tespiti

@@ -160,9 +160,10 @@ public final class OdulMerkeziModel {
         checkInState.map { cycle.isStreakBonusDay(cycleDay: $0.cycleDay) } ?? false
     }
 
-    /// Bugünün ödülü (buton etiketi "Ödülü Al · N coin").
+    /// Bugünün ödülü (buton etiketi "Ödülü Al · N coin") — takvim bugün hücresiyle TEK kaynak
+    /// (`cycle.todayReward`): server-otoriter + schedule/tablo fallback (server 0 verince buton 0 göstermesin).
     public var todayReward: Int {
-        checkInState?.todayReward ?? 0
+        checkInState.map { cycle.todayReward(for: $0) } ?? 0
     }
 
     // MARK: - Yaşam döngüsü

@@ -8,28 +8,6 @@ import Testing
 @MainActor
 @Suite("SS-110/111 OdulMerkeziModel")
 struct OdulMerkeziModelTests {
-    private func makeModel(
-        service: FakeCheckInService = FakeCheckInService(),
-        wallet: FakeRewardsWallet = FakeRewardsWallet(100),
-        taskCatalog: FakeTaskCatalog = FakeTaskCatalog(),
-        taskProgress: FakeTaskProgress = FakeTaskProgress(),
-        rewardClaiming: FakeRewardClaiming = FakeRewardClaiming(),
-        analytics: MockAnalytics = MockAnalytics(),
-        flags: MockFeatureFlags = MockFeatureFlags(),
-        delegate: RewardsDelegateSpy = RewardsDelegateSpy()
-    ) -> OdulMerkeziModel {
-        OdulMerkeziModel(
-            checkInService: service,
-            wallet: wallet,
-            taskCatalog: taskCatalog,
-            taskProgress: taskProgress,
-            rewardClaiming: rewardClaiming,
-            analytics: analytics,
-            featureFlags: flags,
-            delegate: delegate
-        )
-    }
-
     // MARK: - Yükleme + durum
 
     @Test func onAppearTracksScreenView() async {
@@ -256,6 +234,19 @@ struct OdulMerkeziModelTests {
         #expect(model.claimCelebration == 1)
     }
 
+    @Test func todayRewardFallsBackToTableWhenServerReturnsZero() async {
+        // Audit LOW: todayReward computed var 'checkInState?.todayReward ?? 0' idi (schedule fallback YOK)
+        // oysa takvim bugün hücresi todayReward<=0'da tabloya düşer (CheckInCycle.swift:129) → server
+        // todayReward=0 verince buton '0 coin' gösterirken takvim tablo değerini gösteriyordu (tutarsız).
+        // Fix: cycle.todayReward(for:) tek kaynak (server-otoriter + tablo fallback).
+        let service = FakeCheckInService(status: .success(.mock(cycleDay: 3, todayReward: 0, streakDays: 3)))
+        let model = makeModel(service: service)
+        model.onAppear()
+        await model.pendingWork()
+        #expect(model.todayReward == 20) // tablo günü 3 fallback (0 değil)
+        #expect(model.calendar.first { $0.status == .today }?.coins == 20) // takvim bugün hücresiyle tutarlı
+    }
+
     // MARK: - Streak kırılması analitiği
 
     @Test func streakBreakEmittedWhenStreakDropsOnRefresh() async {
@@ -298,5 +289,31 @@ struct OdulMerkeziModelTests {
         await model.pendingWork()
         model.openCoinStore()
         #expect(spy.coinStore == 1)
+    }
+}
+
+// MARK: - Test kurucusu (type_body_length: same-file extension gövdeye sayılmaz)
+
+private extension OdulMerkeziModelTests {
+    func makeModel(
+        service: FakeCheckInService = FakeCheckInService(),
+        wallet: FakeRewardsWallet = FakeRewardsWallet(100),
+        taskCatalog: FakeTaskCatalog = FakeTaskCatalog(),
+        taskProgress: FakeTaskProgress = FakeTaskProgress(),
+        rewardClaiming: FakeRewardClaiming = FakeRewardClaiming(),
+        analytics: MockAnalytics = MockAnalytics(),
+        flags: MockFeatureFlags = MockFeatureFlags(),
+        delegate: RewardsDelegateSpy = RewardsDelegateSpy()
+    ) -> OdulMerkeziModel {
+        OdulMerkeziModel(
+            checkInService: service,
+            wallet: wallet,
+            taskCatalog: taskCatalog,
+            taskProgress: taskProgress,
+            rewardClaiming: rewardClaiming,
+            analytics: analytics,
+            featureFlags: flags,
+            delegate: delegate
+        )
     }
 }
