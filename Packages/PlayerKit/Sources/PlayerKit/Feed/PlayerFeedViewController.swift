@@ -281,27 +281,24 @@ public final class PlayerFeedViewController: UIViewController {
             if lockedIndex == index {
                 lockedIndex = nil
             }
-            // Aktif bağlama bölüm-id ile tutulur: hücre dönerse willDisplay yeniden bağlar.
+            // Aktif bağlama bölüm-id ile tutulur (hücre dönerse willDisplay yeniden bağlar).
             activeBinding = ActiveBinding(index: index, episodeID: episode.id, handle: handle)
             bindCellIfVisible(handle: handle, at: index)
             delegate?.playerFeed(self, didChangeActiveIndex: index, episode: episode)
         case let .locked(episode):
-            // Kart kilit durumunu zaten gösterir (02 §4.3.5); UnlockSheet intent'i Coordinator'a.
-            lockedIndex = index
+            lockedIndex = index // kart kilit durumunu gösterir (02 §4.3.5); UnlockSheet intent'i Coordinator'a
             activeBinding = nil
             delegate?.playerFeed(self, didChangeActiveIndex: index, episode: episode)
             if let series = itemAt(index)?.series {
                 delegate?.playerFeed(self, didReachLockedEpisode: episode, in: series)
             }
         case .settledWithoutEpisode:
-            // Bölüm taşımayan kart (seriesPromo / dizi-sonu ara kartı): aktif indeks
-            // değişti, bölüm nil (04 §2.4 PlayerFeedDelegate sözleşmesi).
+            // Bölüm taşımayan kart (seriesPromo / ara kartı): aktif indeks değişti, bölüm nil (04 §2.4).
             activeBinding = nil
             lockedIndex = nil
             delegate?.playerFeed(self, didChangeActiveIndex: index, episode: nil)
         case .failed:
-            // SS-051 dilimi: sınıflandırılmış hata UI'ı (toast + tekrar dene). Hücre posterde kalır.
-            activeBinding = nil
+            activeBinding = nil // SS-051 dilimi: sınıflandırılmış hata UI'ı; hücre posterde kalır.
         case .none:
             break
         }
@@ -309,11 +306,15 @@ public final class PlayerFeedViewController: UIViewController {
 
     private func bindCellIfVisible(handle: PlaybackHandle, at index: Int) {
         let indexPath = IndexPath(item: index, section: 0)
-        // Hücre görünürse hemen bağla; değilse willDisplay activeBinding üzerinden
-        // (bölüm-id ile) bağlar — ayrı bir pendingBind slot'u tutulmaz (bulgu 4/6).
-        if let cell = collectionView?.cellForItem(at: indexPath) as? PlayerCell {
-            cell.bind(handle: handle)
-        }
+        // Hücre görünürse hemen bağla; değilse willDisplay activeBinding üzerinden (bölüm-id ile) bağlar.
+        guard let cell = collectionView?.cellForItem(at: indexPath) as? PlayerCell else { return }
+        // Bölüm-id doğrulaması (audit MEDIUM): snapshot kaydıysa hücre başka bölümü gösterebilir → guard.
+        guard FeedCellBindPolicy.shouldBindActiveHandle(
+            cellEpisodeID: itemAt(index)?.episode?.id,
+            cellBoundEpisodeID: cell.boundEpisodeID,
+            activeEpisodeID: handle.episodeID
+        ) else { return }
+        cell.bind(handle: handle)
     }
 
     private func itemAt(_ index: Int) -> FeedItem? {

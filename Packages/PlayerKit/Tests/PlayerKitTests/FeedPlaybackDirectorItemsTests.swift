@@ -26,6 +26,24 @@ struct DirectorItemsTests {
         #expect(await harness.director.currentActiveIndex == 1)
     }
 
+    @Test("activate uçuştayken updateItems araya girerse activeIndex bölüm-id'sinden türetilir")
+    func settleReDerivesActiveIndexWhenItemsShiftDuringActivate() async {
+        // audit MEDIUM: performSettle activeIndex'i HAM `index` param'ından set ediyordu. activate'in
+        // authorize penceresinde updateItems araya girip bölümü kaydırırsa (For-You refresh / promo insert /
+        // dedup), activeIndex bayat kalıp auto-advance YANLIŞ karttan ilerliyordu. Deterministik kanca ile
+        // activate uçuştayken snapshot kaydırılır; activeIndex bölüm-id'sinden yeniden türetilmeli.
+        let items = Fixture.feedItems(count: 4) // e0..e3
+        let harness = await makeDirector(items: items)
+        let shifted = [items[0], items[2], items[3]] // e2 index 2 → 1
+        harness.pool.setOnActivate { [director = harness.director] in
+            await director.updateItems(shifted) // activate uçuştayken snapshot kayması
+        }
+
+        _ = await harness.director.settle(at: 2, startType: .tap, now: harness.clock.now)
+
+        #expect(await harness.director.currentActiveIndex == 1) // ham 2 DEĞİL, e2'nin güncel konumu
+    }
+
     @Test("updateItems: aktif bölüm listede kalıyorsa indeks korunur (append-only)")
     func updateItemsKeepsActiveIndexWhenPrefixStable() async {
         // Append-only sayfalama (sunucu sıralaması otoritatif): deduped prefix indeks-

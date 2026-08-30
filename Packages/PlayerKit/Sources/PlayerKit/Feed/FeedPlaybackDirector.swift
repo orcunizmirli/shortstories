@@ -236,7 +236,10 @@ private extension FeedPlaybackDirector {
         do {
             let handle = try await pool.activate(episode, atFeedIndex: index, resumePosition: resumePosition)
             activeHandle = handle
-            activeIndex = index
+            // activeIndex bölüm-id'sinden yeniden türetilir (audit MEDIUM): activate'in authorize
+            // penceresinde `updateItems` araya girip bölümü kaydırdıysa (For-You refresh / promo insert /
+            // dedup), ham `index` BAYAT kalır ve auto-advance YANLIŞ indeksten ilerlerdi → güncel konum.
+            activeIndex = items.firstIndex(where: { $0.episode?.id == episode.id }) ?? index
             notifiedLockedIndex = nil
             suppressNextAutoAdvance = false
             // Kilitli karttan mute'lanmış olabilecek slot bu bölümde açılır (02 §4.3.7).

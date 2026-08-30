@@ -88,6 +88,9 @@ final class RecordingFeedPool: FeedPlaybackPooling, @unchecked Sendable {
     private var delayNanoseconds: UInt64 = 0
     private var enginesByEpisode: [EpisodeID: PlaybackEngine] = [:]
     private var backendsByEpisode: [EpisodeID: FakeVideoPlaying] = [:]
+    /// activate uçuştayken (authorize suspension'ı taklidi) BİR KEZ çalışan kanca — testler araya
+    /// `updateItems` sokup snapshot-kayması yarışını deterministik kurar (wall-clock YOK).
+    private var onActivate: (@Sendable () async -> Void)?
 
     var calls: [Call] {
         lock.withLock { recorded }
@@ -99,6 +102,11 @@ final class RecordingFeedPool: FeedPlaybackPooling, @unchecked Sendable {
 
     func setActivateDelay(nanoseconds: UInt64) {
         lock.withLock { delayNanoseconds = nanoseconds }
+    }
+
+    /// activate uçuştayken bir kez çalışacak kancayı ayarlar (çalıştıktan sonra temizlenir).
+    func setOnActivate(_ hook: (@Sendable () async -> Void)?) {
+        lock.withLock { onActivate = hook }
     }
 
     func backend(for episodeID: EpisodeID) -> FakeVideoPlaying? {
@@ -116,6 +124,15 @@ final class RecordingFeedPool: FeedPlaybackPooling, @unchecked Sendable {
     ) async throws -> PlaybackHandle {
         lock.withLock {
             recorded.append(.activate(episode.id, feedIndex: feedIndex, resumePosition: resumePosition))
+        }
+        // Uçuş-içi kanca (bir kez): activate await'i sırasında araya girme fırsatı — snapshot-kayması yarışı.
+        let hook = lock.withLock { () -> (@Sendable () async -> Void)? in
+            let captured = onActivate
+            onActivate = nil
+            return captured
+        }
+        if let hook {
+            await hook()
         }
         let delay = lock.withLock { delayNanoseconds }
         if delay > 0 {
