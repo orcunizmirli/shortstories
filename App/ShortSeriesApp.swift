@@ -48,6 +48,10 @@ struct ShortSeriesApp: App {
                 .onChange(of: scenePhase) { _, phase in
                     if phase == .active {
                         Task { await coordinator.pushService.refreshRegistration() }
+                    } else if phase == .background {
+                        // 08 §7.3: bu oturumun deney maruz kalmalarını kalıcı kıl → dönen kullanıcı
+                        // `first_exposure` şişmesi engellenir (KPI doğruluğu).
+                        coordinator.composition.persistExposedExperiments()
                     }
                 }
         }

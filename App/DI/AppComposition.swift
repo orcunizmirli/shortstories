@@ -94,6 +94,9 @@ final class AppComposition {
         experimentClient
     }
 
+    /// Exposure geçmişi deposu (08 §7.3): launch'ta `previouslyExposed` tohum + scenePhase-bg persist.
+    let exposedExperimentsStore: UserDefaultsExposedExperimentsStore
+
     init(dependencies: any Dependencies, earnVelocityRecorder: (any EarnVelocityRecording)? = nil) throws {
         self.dependencies = dependencies
         let apiClient = dependencies.apiClient
@@ -107,6 +110,7 @@ final class AppComposition {
         remoteConfig = config.remoteConfig
         experimentClient = config.client
         decoratedAnalytics = config.decorated
+        exposedExperimentsStore = config.exposedExperimentsStore
 
         catalog = CatalogAPI(client: apiClient)
         search = SearchAPI(client: apiClient)

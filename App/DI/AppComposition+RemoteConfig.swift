@@ -19,21 +19,37 @@ extension AppComposition {
         let remoteConfig: any RemoteConfigProviding
         let client: ExperimentClient
         let decorated: ExperimentDimensionTracker
+        /// Exposure geçmişi deposu — App bunu tutar, scenePhase-bg'de `client.exposedExperimentKeys`'i persist eder.
+        let exposedExperimentsStore: UserDefaultsExposedExperimentsStore
     }
 
     /// Remote config istemcisi + deney grafiğini BİRLİKTE kurar. Cache'li config (freeze-per-launch,
     /// 03 §11) deney atamalarını + `minSupportedVersion`'ı besler; taze fetch Splash'ta bir sonraki
     /// launch'a yazılır. `decoratedAnalytics` BASE'i sarar (§7.3 exposure BASE'e gider). userID = deviceID
-    /// (Keychain kalıcı → sticky atama). TODO(F2): `previouslyExposed` persist (scenePhase bg).
+    /// (Keychain kalıcı → sticky atama). `previouslyExposed` `UserDefaultsExposedExperimentsStore`'dan
+    /// tohumlanır; scenePhase-bg persist `AppComposition.persistExposedExperiments()`.
     static func makeConfigGraph(dependencies: any Dependencies) -> ConfigGraph {
         let remoteConfig = RemoteConfigClient(apiClient: dependencies.apiClient, logger: dependencies.logger)
         let deviceID = (try? dependencies.secureStore.string(forKey: .deviceID)) ?? ""
         // Cache'li server atamaları (yoksa boş → pasif/kontrol, exposure yok) → köprü → deney istemcisi.
         let bridge = RemoteExperimentBridge(assignments: remoteConfig.cachedConfig()?.experiments ?? [])
-        let client = bridge.makeExperimentClient(analytics: dependencies.analytics, userID: deviceID)
+        // Exposure geçmişi (kalıcı) → `previouslyExposed` tohumu: DÖNEN kullanıcı `first_exposure=true` DÜŞMEZ.
+        let exposedStore = UserDefaultsExposedExperimentsStore()
+        let client = bridge.makeExperimentClient(
+            analytics: dependencies.analytics, userID: deviceID, previouslyExposed: exposedStore.load()
+        )
         // `abVariants` closure `@Sendable` (`ExperimentClient` `@unchecked Sendable`, kilitli okuma).
         let decorated = ExperimentDimensionTracker(base: dependencies.analytics, abVariants: { client.abVariantsParameter() })
-        return ConfigGraph(remoteConfig: remoteConfig, client: client, decorated: decorated)
+        return ConfigGraph(
+            remoteConfig: remoteConfig, client: client, decorated: decorated, exposedExperimentsStore: exposedStore
+        )
+    }
+
+    /// scenePhase `.background` → bu oturumda maruz kalınan deney anahtarlarını kalıcı depoya birleştirir
+    /// (08 §7.3). Bir sonraki launch `previouslyExposed` olarak okur → DÖNEN kullanıcı `first_exposure`
+    /// yanlışça `true` DÜŞMEZ. Boş oturumda (exposure yok) yazma yapılmaz.
+    func persistExposedExperiments() {
+        exposedExperimentsStore.merge(experimentClient.exposedExperimentKeys)
     }
 
     // MARK: - Tüketici yüzeyi (Splash fetch + force-update verisi)
