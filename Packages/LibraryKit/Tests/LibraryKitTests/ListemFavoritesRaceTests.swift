@@ -45,6 +45,47 @@ struct ListemFavoritesRaceTests {
         // Guard olmadan A bayat [x,y]'yi yazıp y'yi silineni DİRİLTİRDİ (count 2); guard ile düşürülür.
         #expect(model.favorites.count == 1)
     }
+
+    @Test func overlappingLoadContinueDoesNotResurrectCompleted() async throws {
+        // Audit MEDIUM (loadFavorites simetriği): örtüşen iki loadContinue sıra-dışı commit'lerse, sync ile
+        // tamamlanıp Devam Et'ten düşen bir bölüm bayat listeyle dirilir. Generation guard eskimişi düşürür.
+        let history = try ContinueWatchingService(
+            repository: PersistenceStore(inMemory: true).makeWatchHistoryRepository(),
+            remoting: FakeWatchProgressRemoting()
+        )
+        try await history.recordProgress(Fixtures.progress(episode: "e1", series: "s1", at: 100))
+        try await history.recordProgress(Fixtures.progress(episode: "e2", series: "s2", at: 200))
+        let gate = SeriesInfoGate()
+        let catalog = GatedCatalog(
+            base: FakeLibraryCatalog(infos: [SeriesID("s1"): Fixtures.info("s1"), SeriesID("s2"): Fixtures.info("s2")]),
+            gate: gate
+        )
+        let favorites = try FavoritesService(
+            repository: PersistenceStore(inMemory: true).makeFavoritesRepository(),
+            remoting: FakeFavoritesRemoting()
+        )
+        let model = ListemModel(
+            favoritesService: favorites,
+            continueWatchingService: history,
+            catalog: catalog,
+            analytics: MockAnalytics(),
+            delegate: ListemDelegateSpy()
+        )
+
+        async let loadA: Void = model.load(.continueWatching) // [e1,e2] okur, seriesInfo BLOKLANIR
+        await gate.waitForArrival()
+        // e1 tamamlandı → Devam Et'ten düşer (yalnız incomplete gösterilir).
+        try await history.recordProgress(Fixtures.progress(episode: "e1", series: "s1", completed: true, at: 9000))
+        await model.load(.continueWatching) // B: taze [e2] okur ve commit eder (A hâlâ bloklu)
+        #expect(model.continueItems.count == 1)
+
+        await gate.open() // A serbest → A EN SON commit; guard eskimiş jetonu düşürür
+        await loadA
+
+        // Guard olmadan A bayat [e1,e2]'yi yazıp tamamlanan e1'i DİRİLTİRDİ; guard ile düşürülür.
+        #expect(model.continueItems.count == 1)
+        #expect(!model.continueItems.contains { $0.episodeID == EpisodeID("e1") })
+    }
 }
 
 // MARK: - İlk seriesInfo çağrısını bloklayan kapı (sonrakiler geçer) + gated katalog

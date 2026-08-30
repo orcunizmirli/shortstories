@@ -49,6 +49,7 @@ public final class ListemModel {
     /// Favori yükleme jetonu (audit MEDIUM): örtüşen iki loadFavorites sıra-dışı commit edip yeni-silinmiş
     /// bir favoriyi diriltmesin — eski yükleme await'ten dönünce jeton eskimişse commit'i düşürülür.
     private var favoritesLoadGeneration = 0
+    private var continueLoadGeneration = 0
     private var appeared = false
     private var loadTask: Task<Void, Never>?
 
@@ -154,6 +155,8 @@ public final class ListemModel {
     }
 
     private func loadContinue() async {
+        continueLoadGeneration += 1
+        let generation = continueLoadGeneration
         if continueItems.isEmpty {
             continueState = .loading
         }
@@ -167,6 +170,10 @@ public final class ListemModel {
         async let infosTask = catalog.seriesInfo(ids: records.map(\.seriesID))
         async let numbersTask = catalog.episodeNumbers(ids: records.map(\.episodeID))
         let (infos, numbers) = await (infosTask, numbersTask)
+        // Üstü örtülen/eski yükleme yeni durumu EZMESİN (loadFavorites simetrisi, audit MEDIUM): sonradan
+        // başlayan bir loadContinue jetonu artırdıysa bu (eski) commit düşürülür → tamamlanıp listeden
+        // düşen bölüm bayat snapshot'la Devam Et'e dirilmez.
+        guard generation == continueLoadGeneration else { return }
         // await sırasında araya giren hideContinueItem'ı da uygula (filter race, audit LOW): commit-anı filtresi.
         continueItems = records
             .filter { !hiddenEpisodeIDs.contains($0.episodeID) }
