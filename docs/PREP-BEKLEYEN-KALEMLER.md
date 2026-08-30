@@ -203,6 +203,21 @@ günlük-reset unpin MEDIUM); 3'ü App-wiring/port-versiyonlama gerektirdiği i�
   (Not: todayReward computed var'ının schedule fallback'i [OdulMerkeziModel.swift:159, LOW] da calendar
   bugün hücresiyle tutarlı olması için CheckInCycle SAF fallback'ine bağlanmalı — küçük, aynı pass'te.)
 
+### ContentKit bug-hunt — ertelenen 1 kalem (2026-08-30)
+ContentKit (Wire decode/Models/API) adversarial bug-hunt'ının 3 kept bulgusundan 2'si düzeltildi
+(2 commit: SeriesWire genres/tags lossy MEDIUM + boş-string nextCursor normalize LOW); 1'i cross-package
+(AppFoundation APIClient) olduğu için ertelendi:
+- **200 + boş gövde → sessiz boş son-sayfa (PageWire.swift:14 / AppFoundation APIClient, LOW):** PageWire
+  ve DiscoverWire TÜM alanları opsiyonel/lossy olduğundan `{}`'dan ve BOŞ gövdeden başarıyla decode olur.
+  APIClient.performOnce boş-gövde kısa-devresi (`data.isEmpty` → `decodeEmptyBody(as:)` → `{}` fallback)
+  204 uçları için tasarlandı ama içerik uçlarının tümü-opsiyonel wire'larını da yakalar: bir CDN/proxy
+  `/feed` veya `/discover`'ın N. sayfasına 200 + 0-bayt (truncation/bozuk-cache) dönerse → Page(items:[],
+  nextCursor:nil) → isLastPage=true → sayfalama SESSİZCE durur (yarım feed "bitti" sanılır) / Keşfet
+  sessizce boşalır; hata/retry YOK. Self-healing (sonraki fetch düzeltir), crash/para/güvenlik yok → LOW.
+  **Fix:** decodeEmptyBody yalnız GERÇEKTEN gövdesiz uçlar (EmptyResponse) için geçerli olmalı; içerik
+  Response tipleri için 200 + boş gövde bir decode HATASI sayılmalı (retry/hata yüzeyi). AppFoundation
+  APIClient (cross-package, shared infra) değişimi gerektirir → ayrı pass'e bırakıldı.
+
 ---
 
 ## Kod-içsel (prep gerektirmeyen) kalan iş — ayrı izlenir
