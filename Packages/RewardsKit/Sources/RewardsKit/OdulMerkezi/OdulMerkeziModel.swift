@@ -89,9 +89,8 @@ public final class OdulMerkeziModel {
     private var loadTask: Task<Void, Never>?
     /// İlk (tam) yükleme tamamlandı mı — sonraki tazeleme yalnız check-in + görev çeker (07 §4.4).
     private var hasLoaded = false
-    /// Uygulanmış en yüksek cüzdan-akış version'ı (audit MEDIUM applyBalance donması): applyBalance yalnız
-    /// STRICTLY-NEWER version'ı uygular (bayat düşük değer düşürülür, meşru spend uygulanır). Claim iyimser
-    /// gösterir, version bump ETMEZ → sonraki (daha yüksek version) akış onaylar. Snapshot yokken `Int.min`.
+    /// Uygulanmış en yüksek cüzdan-akış version'ı (audit MEDIUM donma fix): applyBalance yalnız STRICTLY-NEWER
+    /// version uygular; claim version bump ETMEZ (sonraki akış onaylar). Snapshot yokken `Int.min`.
     private var lastAppliedBalanceVersion = Int.min
     /// Check-in state generation'ı — her OTORİTER yazımda (claim başarı/409) artar. refreshCheckIn'i
     /// status() await'i öncesi yakalar/apply öncesi karşılaştırır: araya giren claim bayat pre-claim
@@ -200,8 +199,9 @@ public final class OdulMerkeziModel {
         let balance = await wallet.currentBalance()
         let progress = await taskProgress.currentProgress()
         guard epoch == accountEpoch else { return } // hesap-değişimi fence'i (uçuştaki load → yeni hesaba yazma)
+        // KOŞULSUZ (version-guard'sız): hesaplar-arası version monoton değil → baseline sıfırlanır (yeni hesabı self-heal).
         coinBalance = balance.balance
-        lastAppliedBalanceVersion = balance.version // baseline: sonraki replay (aynı version) düşürülür
+        lastAppliedBalanceVersion = balance.version
         liveProgress = progress
         await refreshTasks()
         await refreshCheckIn()
@@ -261,16 +261,16 @@ public final class OdulMerkeziModel {
     }
 
     private func applyBalance(_ update: RewardsBalanceUpdate) {
-        // audit MEDIUM (donma fix): yalnız STRICTLY-NEWER version uygulanır → bayat düşük değer (pre-claim
-        // replay) düşürülür, MEŞRU düşüş (spend, daha yüksek version) uygulanır. Value-heuristic (`>= awaited`)
-        // çoklu-stale ile meşru-spend'i ayıramadığından başlık bayat-YÜKSEK DONUYORDU (bu fix'in özü).
+        // Cross-account poison guard (self-review): canlı stream yalnız otoriter baseline (load) SONRASI uygulanır
+        // → switch penceresinde bayat eski-hesap emisyonu (hesaplar-arası version monoton değil) poison'lamaz.
+        guard hasLoaded else { return }
+        // audit MEDIUM (donma fix): yalnız STRICTLY-NEWER version uygulanır (bayat replay düşer, MEŞRU spend uygulanır).
         guard update.version > lastAppliedBalanceVersion else { return }
         lastAppliedBalanceVersion = update.version
         coinBalance = update.balance
     }
 
-    /// OTORİTER bakiye kredisi (claim/409 sonrası): başlığı İYİMSER günceller (server yanıtından); version bump
-    /// ETMEZ → sonraki (daha yüksek version) akış onaylar, bayat akış krediyi EZEMEZ. `+Tasks` da kullanır.
+    /// OTORİTER bakiye kredisi (claim/409): başlığı İYİMSER günceller; version bump ETMEZ → sonraki akış onaylar.
     func applyAuthoritativeBalance(_ balance: Int) {
         coinBalance = balance
     }

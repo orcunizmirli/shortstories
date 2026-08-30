@@ -98,6 +98,33 @@ struct OdulMerkeziAccountSwitchRobustnessTests {
         #expect(model.coinBalance == 500) // B'nin bakiyesi yüklendi
     }
 
+    /// 2b) Cross-account poison (self-review, version-monotonic fix): version'lar HESABA ÖZEL → hesaplar
+    /// arası MONOTON DEĞİL. Canlı balance stream YALNIZ otoriter baseline (load) kurulduktan sonra uygulanır
+    /// (`guard hasLoaded`): switch penceresinde (resetForAccountSwitch sonrası, reload'dan ÖNCE) düşen bayat
+    /// ESKİ-hesap emisyonu (yüksek version) lastApplied'ı poison'layıp yeni hesabın DÜŞÜK-version bakiyesini
+    /// kalıcı düşürMEZ. (Eski value-based last-wins bunu yaşamazdı; version-guard bu koruma olmadan getirirdi.)
+    @Test func staleStreamDuringSwitchWindowDoesNotPoisonBaseline() async {
+        let service = GatedCheckInService(
+            status: .mock(cycleDay: 3, todayClaimed: false, streakDays: 3),
+            claim: .mock(coins: 0, coinBalance: 0, checkin: .mock(cycleDay: 3, todayClaimed: false, streakDays: 3))
+        )
+        let wallet = FakeRewardsWallet(500) // hesap A: (500, v0)
+        let model = makeModel(service: service, wallet: wallet)
+        model.onAppear()
+        await model.pendingWork() // A yüklendi: coinBalance=500, hasLoaded=true
+        let observer = Task { await model.observeUpdates() }
+        defer { observer.cancel() }
+        wallet.set(600) // observer CANLI olduğunu KANITLA (reset ÖNCESİ `if !hasLoaded` kontrolünü geçsin →
+        _ = await eventually { model.coinBalance == 600 } // reset sonrası reload TETİKLEMESİN, poison'ı okumasın)
+
+        model.resetForAccountSwitch() // hasLoaded=false, coinBalance=0, lastApplied=Int.min
+
+        wallet.set(999, version: 101) // POISON: eski-hesap bayat yüksek-version emisyonu (switch penceresi)
+        let poisoned = await eventually { model.coinBalance == 999 }
+        #expect(poisoned == false) // hasLoaded=false → canlı stream yok sayıldı; poison uygulanmadı
+        #expect(model.coinBalance == 0)
+    }
+
     /// 3) YERLEŞMİŞ (settled) claimFailure hesap değişiminde temizlenmeli (A'nın banner'ı B'de görünmesin).
     @Test func accountSwitchClearsSettledClaimFailure() async {
         let service = GatedCheckInService(
