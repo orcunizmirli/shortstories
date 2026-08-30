@@ -219,14 +219,13 @@ ContentKit (Wire decode/Models/API) adversarial bug-hunt'ının 3 kept bulgusund
 AnalyticsKit (Experiment assignment/override/exposure) adversarial bug-hunt'ının 5 kept bulgusundan 3'ü
 düzeltildi (2 commit: variant-seçimi trafik-bağımsız HIGH + negatif-weight clamp MEDIUM; ab_variants
 format break→continue LOW); 2'si App-wiring/spec-config olduğu için ertelendi:
-- **makeExperimentClient previouslyExposed beslenmiyor (App/DI/AppComposition+RemoteConfig.swift:33, LOW
-  CONFIRMED):** ExperimentClient `previouslyExposed` parametresini destekliyor (kalıcı exposure geçmişi)
-  ama App composition HİÇ beslemyor (default []) ve exposure'lar hiçbir yere persist edilmiyor → her
-  oturumda `ab_exposure.first_exposure=true` düşer → DÖNEN kullanıcılar için "deneye ilk maruz kalma"
-  KPI'si kalıcı ŞİŞİRİLİR (win-back/funnel analizi bozulur). **Fix:** exposed (exp_key,variant) çiftlerini
-  UserDefaults'a persist eden bir store + composition'da makeExperimentClient'a previouslyExposed besle
-  (RTG-01 ReviewPromptState / LastSeenStreakStore deseni). App-katmanı wiring + yeni store gerektirir →
-  ertelendi. İlgili: [[shortseries-project]] App/DI composition.
+- **makeExperimentClient previouslyExposed beslenmiyor (LOW) → DÜZELTİLDİ (c36ddb2):** ExperimentClient
+  `previouslyExposed` + `exposedExperimentKeys` zaten hazır+test-kaplıydı; eksik App-wiring'di → her oturum
+  `first_exposure=true` düşüp DÖNEN kullanıcı KPI'sini şişiriyordu. Fix (LastSeenStreakStore deseni):
+  `UserDefaultsExposedExperimentsStore` (load/merge, deviceID-scoped tek anahtar) → makeConfigGraph launch'ta
+  `load()`→previouslyExposed tohumlar, scenePhase `.background` `AppComposition.persistExposedExperiments()`
+  birikimli merge eder. TDD: `ExposedExperimentsPersistenceTests` (store round-trip + cross-session dönen-kullanıcı
+  first_exposure=false). 2 App testi lokal yeşil.
 - **Duplicate variant id tespit edilmez (Experiment.swift:49, LOW PLAUSIBLE) → DÜZELTİLDİ (f254bea):**
   aynı id'li iki variant → `variant(withID:)` `first`'ü döner ama hash bucketing SONRAKİ duplike'yi
   seçebilir → aynı raporlanan id FARKLI payload'a eşlenirdi. Fix: Experiment yapımda `dedupedByID` (İLK'i
@@ -276,6 +275,29 @@ refreshTasks/runRefresh fence #3/#4 aynı accountEpoch commit'inde). 2'si dar-ed
   impactful günlük-reset bug'ını (unbounded pin) kapatmak için bu nadir edge'i kabul etti (net-pozitif).
   **Fix (istenirse):** claimedTaskIDs'i periyot/gün-anahtarıyla scope'la (server .claimed→.claimable
   regresyonuna karşı dayanıklı). Nadir server-inconsistency → ertelendi.
+
+### Oturum-değişikliği self-review-2 — accountEpoch fence + feed reset (2026-08-30, HEPSİ DÜZELTİLDİ)
+Bir önceki self-review SONRASI eklenen YENİ kompleks concurrency değişikliklerinin (accountEpoch fence +
+feed reset) ikinci adversarial self-review'ı (2 paralel run) 5 CONFIRMED + 1 PLAUSIBLE gerçek regresyon/boşluk
+buldu — TAMAMI TDD ile düzeltildi (99e7ad3 RewardsKit CI-yeşil + 8d74a4b App lokal-yeşil):
+- **refreshCheckIn CATCH generation-fence'siz (MEDIUM):** başarı yolu guard'lıydı, catch koşulsuz loadState
+  yazıyordu → başarılı claim SONRASI uçuştaki status() THROW ederse para-ekranı tam-ekran hataya kırılırdı
+  (buton regresyonu throw yolundan) + switch throw yolunda B sahte hataya düşerdi. Fix: catch'e generation guard.
+- **resetForAccountSwitch loadTask iptal/serbest bırakmıyordu (MEDIUM):** switch uçuştaki İLK yüklemeye denk
+  gelirse loadTask non-nil kalır → B döndüğünde onAppear→startRefreshIfIdle reload'u boğulur → sonsuz .loading
+  (retry butonu yok). Fix: reset loadTask.cancel()+nil; runRefresh bayat görev loadTask'ı EZMESİN.
+- **YERLEŞMİŞ claimFailure/taskClaimFailure cross-account sızıntı (MEDIUM):** A'nın başarısız-claim hata
+  banner'ı B ekranında görünürdü (load/refresh temizlemez) + generic-catch'ler epoch-fence'siz → switch
+  SONRASI çözülen A hatası B'ye yazılırdı. Fix: reset ikisini temizler + iki generic-catch'e epoch guard.
+- **App gözlemci nil-userID ARA-DURUM switch kaçağı (MEDIUM, paywall bypass):** Home+Rewards gözlemcileri
+  lastUserID'yi koşulsuz güncelliyordu → loggedOut'ta nil'e set ediyor, sonraki farklı-hesap re-auth'u
+  (u1→loggedOut→u2) switch sanmıyordu → A'nın .unlocked feedState'i B'ye sızardı. Fix: lastUserID yalnız
+  non-nil'de güncellenir (her iki koordinatörde simetrik).
+- **Home reset eksik kapsam + continueEntry cross-account (MEDIUM/LOW):** path/bolumListesiModel/speedMenu/
+  subtitle + "devam et" banner'ı (continueEntry) B'ye taşınıyordu. Fix: resetForAccountSwitch hepsini temizler;
+  ContinueWatchingEntryModel.reset() + B-reload.
+- **(NOT) isClaiming/claimingTaskID:** re-run doğrulayıcısı bunların defer ile kendi-kendine temizlendiğini
+  (kalıcı sızmaz) belirledi → ayrıca reset edilmedi (asıl sızıntı claimFailure/taskClaimFailure idi).
 
 ---
 
