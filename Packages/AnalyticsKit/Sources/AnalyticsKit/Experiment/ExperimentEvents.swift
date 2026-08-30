@@ -23,14 +23,16 @@ public enum ABVariants {
     /// `experimentKey -> variantID` haritasını kanonik düzleştirilmiş string'e çevirir.
     /// Deterministik: anahtara göre sıralı, `"a:v1,b:control"` biçimi. 100 karakteri aşarsa (çok deney)
     /// yalnız TAM sığan atamalar dahil edilir (yarım variant yok) — aksi halde tüm `ab_variants`
-    /// parametresi backend'de sessizce düşerdi (audit LOW).
+    /// parametresi backend'de sessizce düşerdi (audit LOW). Aşan bir girdi ATLANIR (`continue`) ve
+    /// sıralamada SONRAKİ sığabilecek (kısa) atamalar korunur — `break` sonraki kısa atamaları da düşürüp
+    /// o deneyi ab_variants'tan eksik bırakırdı.
     public static func format(_ assignments: [String: String]) -> String {
         var result = ""
         for (key, value) in assignments.sorted(by: { $0.key < $1.key }) {
             let entry = "\(key):\(value)"
             let candidate = result.isEmpty ? entry : "\(result),\(entry)"
             if candidate.count > maxLength {
-                break
+                continue
             }
             result = candidate
         }

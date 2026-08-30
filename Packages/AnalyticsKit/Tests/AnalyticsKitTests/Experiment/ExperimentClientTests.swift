@@ -134,4 +134,19 @@ struct ABVariantsTests {
         // Sınır içindeyse hiçbir şey kırpılmaz.
         #expect(ABVariants.format(["a": "v1", "b": "control"]) == "a:v1,b:control")
     }
+
+    @Test func formatUzunGirdiyiAtlarSonrakiSiganiKorur() {
+        // Audit LOW: 100 karakteri aşan İLK girdide 'break' ediliyordu → sıralamada SONRAKİ sığabilecek
+        // (kısa) atamalar da atlanıyordu (bir deney ab_variants'tan eksik). Fix: aşan atlanır (continue),
+        // sığan sonrakiler korunur.
+        let assignments = [
+            "a": String(repeating: "x", count: 90), // "a:" + 90 = 92 (sığar)
+            "m": String(repeating: "y", count: 20), // ",m:" + 20 = 23 → 115 (taşar)
+            "z": "v" // ",z:v" = 4 → 96 (m atlanınca sığar)
+        ]
+        let out = ABVariants.format(assignments)
+        #expect(out.contains("z:v")) // sonraki sığan korundu (break'te düşerdi)
+        #expect(!out.contains("m:")) // taşan atlandı
+        #expect(out.count <= 100)
+    }
 }
