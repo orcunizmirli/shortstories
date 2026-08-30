@@ -186,6 +186,10 @@ public final class DiziDetayModel {
             guard let page = try? await catalog.episodes(seriesId: seriesID, cursor: cursor) else { return }
             appendUniqueEpisodes(page.items)
             episodesCursor = page.nextCursor
+            // Sayfa index'leri artan; bu sayfanın maks index'i hedefi GEÇTİYSE hedef ya bu sayfada geldi ya
+            // da index boşluğu (kaldırılmış bölüm / releasedEpisodeCount aşımı) → sonraki sayfalarda YOK.
+            // Tüm sayfaları tam-taramayı bırak (audit LOW: aşırı fetch koruması).
+            if let maxIndex = page.items.map(\.index).max(), maxIndex >= number { return }
         }
     }
 
@@ -227,13 +231,13 @@ public final class DiziDetayModel {
                 "episode_number": .int(target.episodeNumber)
             ]
         )
-        if ctaLocked {
-            // Kilitli hedef → UnlockSheet. Hedef Episode yüklenemediyse (ağ) intent kurulamaz → no-op:
-            // kilitli/çözülemeyen bölümü oynatmaya YÖNLENDİRME (güvenli taraf, recompute ctaLocked=true).
-            if let episode = episodes.first(where: { $0.index == target.episodeNumber }) {
-                delegate?.diziDetayRequestsUnlock(intent(for: episode, series: series))
-            }
+        if ctaLocked, let episode = episodes.first(where: { $0.index == target.episodeNumber }) {
+            // Kilitli VE hedef Episode yüklü → UnlockSheet intent (coin fiyatı vb. buradan).
+            delegate?.diziDetayRequestsUnlock(intent(for: episode, series: series))
         } else {
+            // Açık hedef VEYA hedef Episode yüklenemedi (ağ hatası, ctaLocked güvenli-taraf true): server-
+            // otoriter oynatma dene — entitled ise oynar, kilitliyse feed authorize REDDEDER → paywall geç
+            // gösterilir (backstop). Sessiz DEAD-BUTTON değil (self-review: entitled kullanıcıyı kilitlemesin).
             delegate?.diziDetayStartWatching(
                 seriesID: seriesID,
                 episodeNumber: target.episodeNumber,
