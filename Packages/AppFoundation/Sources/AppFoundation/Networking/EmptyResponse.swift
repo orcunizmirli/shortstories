@@ -10,14 +10,12 @@ public struct EmptyResponse: Decodable, Sendable, Equatable {
 }
 
 public extension JSONDecoder {
-    /// 204/boş-gövde sözleşmesi: boş yanıt gövdesini `init(from:)` çağırmadan (sahte EOF hatası
-    /// üretmeden) çözer. `EmptyResponse` doğrudan üretilir; tüm alanları opsiyonel olan (boştan
-    /// decode edilebilen) tipler `{}` üzerinden çözülür. Gövde GEREKTİREN bir tipe boş gövde
-    /// gelirse `nil` döner — çağıran bunu gerçek bir decoding hatası olarak ele alır.
-    func decodeEmptyBody<T: Decodable>(as type: T.Type) -> T? {
-        if let empty = EmptyResponse() as? T {
-            return empty
-        }
-        return try? decode(type, from: Data("{}".utf8))
+    /// 204/boş-gövde sözleşmesi: boş yanıt gövdesini YALNIZ gerçek gövdesiz uçlar (`EmptyResponse`) için
+    /// `init(from:)` çağırmadan (sahte EOF hatası üretmeden) çözer. İÇERİK tipleri (tüm alanları opsiyonel
+    /// olsalar bile) boş gövdede `nil` döner → çağıran bunu gerçek decoding hatası sayar. Aksi halde bir
+    /// içerik ucuna 200 + boş gövde (CDN truncation/bozuk-cache) gelince `{}` fallback'i sessizce all-nil
+    /// değer üretip "boş son sayfa" (yarım feed "bitti") sanılmasına yol açardı (audit LOW).
+    func decodeEmptyBody<T: Decodable>(as _: T.Type) -> T? {
+        EmptyResponse() as? T
     }
 }

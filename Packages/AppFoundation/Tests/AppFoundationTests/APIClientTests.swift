@@ -24,6 +24,30 @@ private struct GetTestEndpoint: Endpoint {
     }
 }
 
+/// TÜM alanları opsiyonel içerik tipi (ContentKit PageWire/DiscoverWire deseni) — `{}`'dan başarıyla
+/// decode EDİLEBİLİR; 200 + BOŞ gövde gelirse (CDN truncation/bozuk-cache) sessizce all-nil değer üretip
+/// "boş son sayfa" sanılmasını test eder (fix: boş gövde bu tip için decode HATASI olmalı).
+private struct AllOptionalPayload: Codable, Equatable {
+    let a: String?
+    let b: Int?
+}
+
+private struct AllOptionalEndpoint: Endpoint {
+    typealias Response = AllOptionalPayload
+    var retry = RetryPolicy(maxRetries: 0, baseDelay: .milliseconds(1))
+    var path: String {
+        "/optional"
+    }
+
+    var method: HTTPMethod {
+        .get
+    }
+
+    var retryPolicy: RetryPolicy {
+        retry
+    }
+}
+
 private struct PostTestEndpoint: Endpoint {
     typealias Response = TestPayload
     var idempotency: String?
@@ -243,6 +267,19 @@ extension URLProtocolStubSerialTests {
 
             await #expect(throws: AppError.network(.decoding)) {
                 _ = try await client.send(GetTestEndpoint())
+            }
+        }
+
+        @Test func bosGovdeTumAlanlariOpsiyonelIcerikTipiDecodingHatasiVerir() async {
+            // 200 + BOŞ gövde + tüm-alanları-opsiyonel içerik tipi: `{}` fallback'i SESSİZCE all-nil değer
+            // üretip "boş son sayfa" (yarım feed "bitti") sanılmasına yol açardı → artık decode HATASI
+            // (retry/hata yüzeyi). YALNIZ gerçek gövdesiz uçlar (EmptyResponse) boş gövdede başarı döner.
+            URLProtocolStub.setHandler { request in
+                (URLProtocolStub.httpResponse(for: request, status: 200), Data())
+            }
+
+            await #expect(throws: AppError.network(.decoding)) {
+                _ = try await client.send(AllOptionalEndpoint())
             }
         }
 
