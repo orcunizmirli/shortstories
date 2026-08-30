@@ -57,15 +57,21 @@ struct PlayerPoolTests {
     }
 
     @Test func warmAuthorizeHataSinifinaGoreRetryKarariDoner() async {
-        // self-review3: KALICI hata (4xx/içerik, isRetryable=false) → true (completedWarmups'a girer, her swipe'ta
-        // boşa authorize önlenir); GEÇİCİ (5xx/timeout) → false (ağ dönünce pencere-içi yeniden ısındırılabilir).
+        // KALICI içerik hatası (4xx, isRetryable=false) → true (completedWarmups'a girer, boşa authorize önlenir).
         let permanent = makePool()
         permanent.service.setFailure(.network(.server(status: 404)))
         #expect(await permanent.pool.prepareNext(Fixture.episode(id: "e2"), atFeedIndex: 1) == true)
 
+        // GEÇİCİ ağ (5xx/timeout) → false (ağ dönünce pencere-içi yeniden ısındırılabilir).
         let transient = makePool()
         transient.service.setFailure(.network(.timeout))
         #expect(await transient.pool.prepareNext(Fixture.episode(id: "e2"), atFeedIndex: 1) == false)
+
+        // self-review4: `.unexpected` (slot-çekişme gibi geçici altyapı) isRetryable=false AMA re-warm edilmeli
+        // (sticky-cold olmasın) → false.
+        let contention = makePool()
+        contention.service.setFailure(.unexpected(underlying: "geri alınabilir slot yok"))
+        #expect(await contention.pool.prepareNext(Fixture.episode(id: "e2"), atFeedIndex: 1) == false)
     }
 
     @Test func warmHitAktivasyondaYenidenYuklemeYapilmaz() async throws {

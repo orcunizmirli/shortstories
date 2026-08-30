@@ -48,6 +48,8 @@ public final class PlayerFeedViewController: UIViewController {
     /// Son settle'da kilitli kalan indeks (04 §9.2 / 02 §4.3.6): unlock sonrası aynı
     /// kartta oynatmayı yeniden başlatmak için `apply(state:)` bunu tetikler.
     private var lockedIndex: Int?
+    /// Uçuştaki reaktivasyonun hedef indeksi (self-review4 çift-apply guard'ı) — dispatch'te set, settle'da temizlenir.
+    private var reactivatingIndex: Int?
     /// Hız menüsü intent'ine taşınan oturum tercihi (04 §8.2; kalıcılaştırma SS-131).
     private var currentPreferredRate = 1.0
 
@@ -142,9 +144,12 @@ public final class PlayerFeedViewController: UIViewController {
         if shouldActivateFirst {
             needsInitialActivation = false
         }
-        let reactivateIndex = shouldActivateFirst
-            ? nil
-            : Self.reactivatableUnlockIndex(newItems: newItems, previousItems: previousItems, lockedIndex: lockedIndex)
+        let candidate = shouldActivateFirst ? nil : Self.reactivatableUnlockIndex(newItems: newItems, lockedIndex: lockedIndex)
+        // Uçuş-guard'ı (self-review4): aynı kart için reaktivasyon UÇUŞTAYSA tekrar dispatch etme (VIP çift-apply
+        // → çift video_start). Reaktivasyon bitince (başarı/başarısız/kilitli) handleSettleOutcome bunu temizler →
+        // başarısız (transient .failed) durumda sonraki apply retry EDER (lockedIndex hâlâ set + kart playable).
+        let reactivateIndex = Self.reactivateDispatchIndex(candidate: candidate, reactivatingIndex: reactivatingIndex)
+        reactivatingIndex = reactivateIndex ?? reactivatingIndex // yalnız dispatch ederken işaretle
         Task { [weak self, director] in
             await director.updateItems(newItems)
             guard let self else { return }
@@ -169,18 +174,6 @@ public final class PlayerFeedViewController: UIViewController {
         guard rate != lastAppliedPlaybackRate else { return }
         lastAppliedPlaybackRate = rate
         Task { [director] in await director.setPreferredRate(rate) }
-    }
-
-    /// Kilitli aktif kart oynatılabilir olduysa indeksini döner (SS-050). TRANSITION korkuluğu (self-review3):
-    /// YALNIZ kilit→açık geçişinde reactivate — aktif kart açıkken gelen İKİNCİ yazım (VIP çift-apply) N'yi
-    /// TEKRAR reactivate etmesin (çift video_start/playhead sıçraması). SAF+static (test hedefi).
-    static func reactivatableUnlockIndex(newItems: [FeedItem], previousItems: [FeedItem], lockedIndex: Int?) -> Int? {
-        guard let lockedIndex, newItems.indices.contains(lockedIndex),
-              newItems[lockedIndex].episode?.access.isPlayableWithoutUnlock == true
-        else { return nil }
-        let wasPlayable = previousItems.indices.contains(lockedIndex)
-            && previousItems[lockedIndex].episode?.access.isPlayableWithoutUnlock == true
-        return wasPlayable ? nil : lockedIndex
     }
 
     private func renderSnapshot(previousItems: [FeedItem] = []) {
@@ -276,6 +269,10 @@ public final class PlayerFeedViewController: UIViewController {
     }
 
     func handleSettleOutcome(_ outcome: FeedPlaybackDirector.SettleOutcome, at index: Int) {
+        // Uçuş bitti (başarı/başarısız/kilitli) → guard'ı serbest bırak (başarısızsa sonraki apply retry edebilir).
+        if reactivatingIndex == index {
+            reactivatingIndex = nil
+        }
         switch outcome {
         case let .activated(handle, episode):
             if lockedIndex == index {
