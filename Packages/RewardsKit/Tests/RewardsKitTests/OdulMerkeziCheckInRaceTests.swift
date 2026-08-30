@@ -54,6 +54,45 @@ struct OdulMerkeziCheckInRaceTests {
         #expect(model.canClaimToday == false) // buton geri AÇILMADI
         #expect(!analytics.events.contains { $0.name == "checkin_streak_break" }) // SAHTE kırılma yok
     }
+
+    @Test func claimInFlightDuringAccountSwitchDoesNotWriteOldAccountData() async {
+        // Self-review HIGH: claim UÇUŞTAYKEN resetForAccountSwitch olursa (hesap switch), A hesabının claim
+        // yanıtı (bakiye/checkin/lastSeenStreak) B state'ine YAZILMAMALI (accountEpoch fence). refreshCheckIn
+        // generation-guard'ı bu yolu KAPSAMIYORDU.
+        let store = InMemoryLastSeenStreakStore(nil)
+        let service = GatedCheckInService(
+            status: .mock(cycleDay: 3, todayClaimed: false, streakDays: 3),
+            claim: .mock(coins: 20, coinBalance: 999, checkin: .mock(cycleDay: 4, todayClaimed: true, streakDays: 4))
+        )
+        let model = OdulMerkeziModel(
+            checkInService: service,
+            wallet: FakeRewardsWallet(100),
+            taskCatalog: FakeTaskCatalog(),
+            taskProgress: FakeTaskProgress(),
+            rewardClaiming: FakeRewardClaiming(),
+            analytics: MockAnalytics(),
+            featureFlags: MockFeatureFlags(),
+            delegate: RewardsDelegateSpy(),
+            lastSeenStreakStore: store
+        )
+        model.onAppear()
+        await model.pendingWork() // A yüklendi: streak 3, loadState .loaded
+        #expect(model.coinBalance == 100)
+
+        service.armClaim()
+        async let claim: Void = model.claimToday() // claim() gate'te bloklanır
+        await service.claimGate.waitForArrival()
+
+        model.resetForAccountSwitch() // hesap değişimi — accountEpoch bump
+
+        await service.claimGate.release() // claim A'nın yanıtıyla (999/streak4) çözülür
+        await claim
+
+        // A'nın yanıtı DÜŞÜRÜLDÜ (reset değerleri korunur, cross-account sızıntı yok).
+        #expect(model.coinBalance == 0) // 999 DEĞİL
+        #expect(model.checkInState == nil) // streak4 DEĞİL
+        #expect(store.lastSeenStreak() == nil) // A'nın streak4'ü persist EDİLMEDİ
+    }
 }
 
 // MARK: - Gate'li check-in servisi (status()'ü deterministik bloklar; claim() serbest geçer)
@@ -62,10 +101,13 @@ struct OdulMerkeziCheckInRaceTests {
 /// tazeleme ↔ claim sıralama yarışını duvar-saati beklemesi OLMADAN deterministik kurar (CI flake yok).
 final class GatedCheckInService: CheckInService, @unchecked Sendable {
     let gate = OneShotGate()
+    /// claim() çağrısını bloklayan ayrı kapı — claim-uçuştayken-switch yarışı için.
+    let claimGate = OneShotGate()
     private let lock = NSLock()
     private var statusResult: CheckInState
     private var claimResult: CheckInClaimResult
     private var armed = false
+    private var armedClaim = false
 
     init(status: CheckInState, claim: CheckInClaimResult) {
         statusResult = status
@@ -74,6 +116,10 @@ final class GatedCheckInService: CheckInService, @unchecked Sendable {
 
     func arm() {
         lock.withLock { armed = true }
+    }
+
+    func armClaim() {
+        lock.withLock { armedClaim = true }
     }
 
     func status() async throws -> CheckInState {
@@ -85,7 +131,11 @@ final class GatedCheckInService: CheckInService, @unchecked Sendable {
     }
 
     func claim() async throws -> CheckInClaimResult {
-        lock.withLock { claimResult }
+        let isArmed = lock.withLock { armedClaim }
+        if isArmed {
+            await claimGate.wait()
+        }
+        return lock.withLock { claimResult }
     }
 }
 

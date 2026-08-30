@@ -24,11 +24,14 @@ public extension OdulMerkeziModel {
     /// Görev kataloğunu tazeler (07 §4.4: her açılışta + claim sonrası). Best-effort — hata son
     /// bilinen kataloğu korur ve ekran hatası ÜRETMEZ (görevler check-in'e göre ikincildir).
     internal func refreshTasks() async {
+        let epoch = accountEpoch
         do {
             let fresh = try await RewardTaskCatalog(
                 tasks: taskCatalog.tasks(),
                 rewardedAdEnabled: rewardedAdCardVisible // F2 gate: flag KAPALI iken watchAd düşer (SS-113)
             )
+            // Hesap-değişimi fence'i: A'nın kataloğu B'ye uygulanmasın (switch araya girdiyse).
+            guard epoch == accountEpoch else { return }
             applyLoadedCatalog(fresh)
         } catch {
             // İkincil yüzey: son bilinen katalog kalır, kullanıcı check-in'i görmeye devam eder.
@@ -50,8 +53,11 @@ public extension OdulMerkeziModel {
         claimingTaskID = id
         taskClaimFailure = nil
         defer { claimingTaskID = nil }
+        let epoch = accountEpoch
         do {
             let result = try await rewardClaiming.claimTask(id: id)
+            // Hesap-değişimi fence'i: görev claim uçuştayken switch olduysa A'nın yanıtını B'ye YAZMA.
+            guard epoch == accountEpoch else { return }
             // SERVER-OTORİTER kredi: bakiye ve görev YALNIZ server yanıtından (optimistik DEĞİL).
             applyAuthoritativeBalance(result.coinBalance) // Fix 1: bayat akış bu krediyi ezemez
             markTaskClaimed(result.task) // Fix 4: yerel .claimed kaydı (bayat .claimable geri döndürmez)
@@ -65,8 +71,11 @@ public extension OdulMerkeziModel {
         } catch let RewardClaimError.notClaimable(fresh) {
             // 409 MISSION_NOT_CLAIMABLE: görevi sessizce senkronla, hata gösterme (idempotent tekrar).
             // Kredi ZATEN düşmüş olabilir → başlığı otoriter cüzdandan tazele (Fix 2: bayat başlık kalmasın).
+            guard epoch == accountEpoch else { return } // hesap-değişimi fence'i
+            let balance = await wallet.currentBalance()
+            guard epoch == accountEpoch else { return }
             markTaskClaimed(fresh)
-            await applyAuthoritativeBalance(wallet.currentBalance())
+            applyAuthoritativeBalance(balance)
         } catch {
             // Kredi VERİLMEZ; son bilinen katalog korunur, kullanıcı tekrar deneyebilir.
             taskClaimFailure = TaskClaimFailure(taskID: id, reason: Self.claimFailure(for: error))
@@ -129,5 +138,22 @@ public extension OdulMerkeziModel {
             claimedTaskIDs.contains(task.id) && task.state != .claimed ? task.markingClaimed() : task
         }
         return RewardTaskCatalog(tasks: reconciled, rewardedAdEnabled: rewardedAdCardVisible)
+    }
+}
+
+// MARK: - İç: hata eşleme (OdulMerkeziModel.swift'ten taşındı — file_length; Self.x ile erişilir)
+
+extension OdulMerkeziModel {
+    static func loadFailure(for error: Error) -> LoadState {
+        isConnectivity(error) ? .offline : .failed
+    }
+
+    static func claimFailure(for error: Error) -> ClaimFailure {
+        isConnectivity(error) ? .offline : .generic
+    }
+
+    private static func isConnectivity(_ error: Error) -> Bool {
+        guard case let AppError.network(networkError) = error else { return false }
+        return networkError == .offline || networkError == .timeout
     }
 }
