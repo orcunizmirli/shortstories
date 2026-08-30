@@ -203,16 +203,13 @@ günlük-reset unpin MEDIUM); 3'ü App-wiring/port-versiyonlama gerektirdiği i�
 ContentKit (Wire decode/Models/API) adversarial bug-hunt'ının 3 kept bulgusundan 2'si düzeltildi
 (2 commit: SeriesWire genres/tags lossy MEDIUM + boş-string nextCursor normalize LOW); 1'i cross-package
 (AppFoundation APIClient) olduğu için ertelendi:
-- **200 + boş gövde → sessiz boş son-sayfa (PageWire.swift:14 / AppFoundation APIClient, LOW):** PageWire
-  ve DiscoverWire TÜM alanları opsiyonel/lossy olduğundan `{}`'dan ve BOŞ gövdeden başarıyla decode olur.
-  APIClient.performOnce boş-gövde kısa-devresi (`data.isEmpty` → `decodeEmptyBody(as:)` → `{}` fallback)
-  204 uçları için tasarlandı ama içerik uçlarının tümü-opsiyonel wire'larını da yakalar: bir CDN/proxy
-  `/feed` veya `/discover`'ın N. sayfasına 200 + 0-bayt (truncation/bozuk-cache) dönerse → Page(items:[],
-  nextCursor:nil) → isLastPage=true → sayfalama SESSİZCE durur (yarım feed "bitti" sanılır) / Keşfet
-  sessizce boşalır; hata/retry YOK. Self-healing (sonraki fetch düzeltir), crash/para/güvenlik yok → LOW.
-  **Fix:** decodeEmptyBody yalnız GERÇEKTEN gövdesiz uçlar (EmptyResponse) için geçerli olmalı; içerik
-  Response tipleri için 200 + boş gövde bir decode HATASI sayılmalı (retry/hata yüzeyi). AppFoundation
-  APIClient (cross-package, shared infra) değişimi gerektirir → ayrı pass'e bırakıldı.
+- **200 + boş gövde → sessiz boş son-sayfa (LOW) → DÜZELTİLDİ (df45ed3):** PageWire/DiscoverWire tüm-opsiyonel
+  olduğundan `{}` ve BOŞ gövdeden başarıyla decode oluyordu; decodeEmptyBody `{}` fallback'i 204 uçları için
+  tasarlanmıştı ama içerik uçlarını da yakalıyordu → CDN/proxy 200 + 0-bayt (truncation) dönerse Page(items:[],
+  nextCursor:nil) → isLastPage=true → sayfalama sessizce durur / Keşfet boşalır. **Fix:** decodeEmptyBody
+  YALNIZ EmptyResponse için boş-gövde başarısı döner; içerik tipleri (tüm-opsiyonel olsa bile) nil → APIClient
+  zaten `throw .decoding` (retry/hata yüzeyi). EmptyResponse-typealias 204 uçları DEĞİŞMEZ. TDD:
+  bosGovdeTumAlanlariOpsiyonelIcerikTipiDecodingHatasiVerir (RED→GREEN). 314 AppFoundation testi yeşil.
 
 ### AnalyticsKit bug-hunt — ertelenen 2 kalem (2026-08-30)
 AnalyticsKit (Experiment assignment/override/exposure) adversarial bug-hunt'ının 5 kept bulgusundan 3'ü
