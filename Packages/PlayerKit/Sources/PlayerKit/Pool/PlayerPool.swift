@@ -148,8 +148,7 @@ public actor PlayerPool {
             return false
         } catch {
             logger.error("PlayerPool: prefetch başarısız episodeID=\(episode.id.rawValue)")
-            // self-review3/4: KALICI içerik hatası (4xx/decoding/auth) → true (completedWarmups, boşa authorize
-            // önlenir); geçici → false. `.unexpected` (slot-çekişme GEÇİCİ altyapı) isRetryable=false olsa da re-warm.
+            // self-review3/4: KALICI içerik hatası (4xx/decode/auth) → true (boşa authorize önlenir); geçici → false.
             guard let appError = error as? AppError, !appError.isRetryable else { return false }
             guard case .unexpected = appError else { return true }
             return false // .unexpected: geçici slot-çekişme → pencere-içi yeniden ısındırılabilir
@@ -346,7 +345,8 @@ extension PlayerPool {
             if let resumePosition {
                 await engine.resumeSeek(toSeconds: resumePosition) // hazır değilse erteler (audit: devam konumu kaybı)
             }
-        } else if !isLateWarmOnActive {
+        } else if engineFailed || !isLateWarmOnActive {
+            // #6: aktif slota geç warm YALNIZ engine CANLIYKEN atlanır (idle-restart); `.failed` ise taze-auth KURTAR.
             let fresh = try await authorization.freshAuthorization(for: episode.id)
             // Epoch/slot korkuluğu (audit MEDIUM): drain (epoch↑) ya da slot geri alındıysa prepare öksüz item sızdırır.
             try Task.checkCancellation()

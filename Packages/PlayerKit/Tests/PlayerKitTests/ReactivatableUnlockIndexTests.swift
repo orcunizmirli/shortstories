@@ -60,13 +60,4 @@ struct ReactivatableUnlockIndexTests {
     @Test func uctaGuardAdayNilIseNil() {
         #expect(PlayerFeedViewController.reactivateDispatchIndex(candidate: nil, reactivatingIndex: 3) == nil)
     }
-
-    // MARK: - .none idempotent no-op ayrımı (bulgu #2: guard'ı erken temizlememe)
-
-    @Test func idempotentNoOpYalnizNoneIcinTrue() {
-        // handleSettleOutcome bunu `!isIdempotentNoOp` ile kullanır: bağımsız scroll-settle'ın `.none`'ı
-        // uçuştaki reaktivasyon guard'ını (reactivatingIndex) ERKEN temizlemesin → çift-dispatch/çift-video_start yok.
-        #expect(FeedPlaybackDirector.SettleOutcome.none.isIdempotentNoOp)
-        #expect(!FeedPlaybackDirector.SettleOutcome.settledWithoutEpisode.isIdempotentNoOp)
-    }
 }

@@ -45,8 +45,7 @@ public final class PlayerFeedViewController: UIViewController {
         let handle: PlaybackHandle
     }
 
-    /// Son settle'da kilitli kalan bölümün KİMLİĞİ (index DEĞİL; feed reorder'a dayanıklı, bulgu #3): unlock sonrası
-    /// `apply(state:)` id'den yeni konumu re-derive edip aynı bölümü reaktive eder (04 §9.2).
+    /// Son settle'da kilitli kalan bölümün KİMLİĞİ (index DEĞİL; reorder-dayanıklı, #3): unlock'ta id'den re-derive (04 §9.2).
     private var lockedEpisodeID: EpisodeID?
     /// Uçuştaki reaktivasyonun hedef indeksi (self-review4 çift-apply guard'ı) — dispatch'te set, settle'da temizlenir.
     private var reactivatingIndex: Int?
@@ -147,7 +146,7 @@ public final class PlayerFeedViewController: UIViewController {
         let reactivatable = Self.reactivatableUnlockIndex(newItems: newItems, lockedEpisodeID: lockedEpisodeID)
         let candidate = shouldActivateFirst ? nil : reactivatable
         // Uçuş-guard'ı (self-review4): aynı kart için reaktivasyon UÇUŞTAYSA tekrar dispatch etme (VIP çift-apply →
-        // çift video_start). Bitince handleSettleOutcome temizler → başarısız (.failed) durumda sonraki apply retry EDER.
+        // çift video_start). Reaktivasyon bitince (apply Task) guard temizlenir → başarısız durumda sonraki apply retry EDER.
         let reactivateIndex = Self.reactivateDispatchIndex(candidate: candidate, reactivatingIndex: reactivatingIndex)
         reactivatingIndex = reactivateIndex ?? reactivatingIndex // yalnız dispatch ederken işaretle
         Task { [weak self, director] in
@@ -159,6 +158,12 @@ public final class PlayerFeedViewController: UIViewController {
             } else if let reactivateIndex {
                 // 04 §9.2 / 02 §4.3.6: kilit açıldı, kart yerinde oynatmaya başlar.
                 let outcome = await self.director.reactivateAfterUnlock(at: reactivateIndex, now: Date())
+                // Uçuş-guard'ı YALNIZ reaktivasyonun KENDİ tamamlanmasında temizlenir (self-review: bağımsız scroll-settle
+                // DEĞİL) — HER sonuç (.none-bounds/iptal dahil) temizler → takılma yok, self-heal retry; çift-dispatch guard'ı
+                // ayrı.
+                if reactivatingIndex == reactivateIndex {
+                    reactivatingIndex = nil
+                }
                 handleSettleOutcome(outcome, at: reactivateIndex)
             }
         }
@@ -269,13 +274,8 @@ public final class PlayerFeedViewController: UIViewController {
     }
 
     func handleSettleOutcome(_ outcome: FeedPlaybackDirector.SettleOutcome, at index: Int) {
-        // Uçuş bitti (aktive/kilitli/başarısız/bölümsüz) → reaktivasyon guard'ını serbest bırak. `.none` İDEMPOTENT
-        // no-op'tur (bağımsız scroll-settle) → uçuştaki reaktivasyonun guard'ını ERKEN temizlemesin (bulgu #2:
-        // lockedEpisodeID kalıcıyken sonraki apply İKİNCİ reaktivasyon dispatch eder → çift video_start). Reaktivasyon
-        // kendi sonucu aktive/kilitli/başarısız'dır (idempotency bypass'lı) → guard yine kendi sonucuyla temizlenir.
-        if reactivatingIndex == index, !outcome.isIdempotentNoOp {
-            reactivatingIndex = nil
-        }
+        // NOT: reaktivasyon uçuş-guard'ı (reactivatingIndex) BURADA temizlenmez (bulgu #2: bağımsız scroll-settle bu yola
+        // düşüp guard'ı ERKEN temizlerdi) — yalnız reaktivasyonun KENDİ çağrı yerinde (apply Task) temizlenir.
         switch outcome {
         case let .activated(handle, episode):
             if lockedEpisodeID == episode.id {
