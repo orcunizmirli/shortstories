@@ -35,6 +35,14 @@ public struct AccountSummary: Sendable, Equatable {
         }
     }
 
+    public var isSessionExpired: Bool {
+        if case .sessionExpired = kind {
+            true
+        } else {
+            false
+        }
+    }
+
     public var provider: AuthProvider? {
         switch kind {
         case .guest: nil

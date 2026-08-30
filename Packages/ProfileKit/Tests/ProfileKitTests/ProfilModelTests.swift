@@ -182,6 +182,31 @@ struct ProfilModelTests {
         #expect(!restored) // geç emission bayat coin'i geri getirmedi
     }
 
+    @Test func reauthenticationAfterSessionExpiryRestoresWalletFromCache() async {
+        // Audit MEDIUM (SS-132 simetriği — sticky-clear GERİ ALINMIYOR): sessionExpired'da observeSession
+        // cüzdanı KALICI boşaltır. Yeniden giriş AYNI hesaba döner → WalletStore.reset ETMEZ →
+        // summaryUpdates emit ETMEZ → observeWallet restore edemez; observeSession'ın çıkış dalı da
+        // restore etmezdi → cüzdan Profil'de KALICI boş kalırdı ("yeniden giriş" sonrası 0 coin / VIP yok).
+        // Fix: sessionExpired'dan ÇIKIŞTA display otoriter cache'e (currentSummary) yeniden senkronlanır.
+        let wallet = FakeWalletSummary(WalletSummary(coinBalance: 500, isVIP: true, vipRenewalDate: Date()))
+        let session = MockSession(state: .linked(userID: "u1", provider: .google))
+        let model = makeModel(session: session, wallet: wallet, delegate: ProfileDelegateSpy())
+        model.onAppear()
+        await model.pendingWork()
+
+        let observer = Task { await model.observeUpdates() }
+        defer { observer.cancel() }
+        _ = await eventually { model.wallet.coinBalance == 500 } // canlı replay yerleşsin
+        session.send(.loggedOut(previousUserID: "u1", provider: .google)) // session düştü → sticky-clear
+        _ = await eventually { model.wallet.coinBalance == 0 } // temizlik onaylandı
+
+        // Yeniden giriş: AYNI hesaba .linked — cüzdan portu YENİ emission YAPMAZ (WalletStore reset yok).
+        session.send(.linked(userID: "u1", provider: .google))
+        let restored = await eventually { model.wallet.coinBalance == 500 && model.wallet.isVIP }
+        #expect(restored) // cache'ten (currentSummary) cüzdan geri yüklendi — kalıcı boş kalmaz
+        #expect(model.account.isLinked)
+    }
+
     @Test func sessionLiveUpdateReflected() async {
         let session = MockSession(state: .guest(userID: "g1"))
         let model = makeModel(session: session, delegate: ProfileDelegateSpy())
