@@ -15,6 +15,10 @@ public protocol LastSeenStreakStoring: Sendable {
 
     /// Güncel server streak'ini kalıcı kılar (bir sonraki açılışın karşılaştırma tabanı).
     func setLastSeenStreak(_ value: Int)
+
+    /// Kalıcı değeri temizler (yok → `nil`). Hesap değişiminde çağrılır: anahtar hesap-AGNOSTİK
+    /// olduğundan önceki hesabın streak tabanı yeni hesaba SIZMASIN (cold-launch sahte `checkin_streak_break`).
+    func reset()
 }
 
 /// Kalıcı olmayan varsayılan (App bir `UserDefaults` adaptörü bağlayana kadar; init varsayılanı —
@@ -34,5 +38,9 @@ public final class InMemoryLastSeenStreakStore: LastSeenStreakStoring, @unchecke
 
     public func setLastSeenStreak(_ value: Int) {
         lock.withLock { self.value = value }
+    }
+
+    public func reset() {
+        lock.withLock { value = nil }
     }
 }

@@ -103,14 +103,12 @@ public final class OdulMerkeziModel {
     /// İlk (tam) yükleme tamamlandı mı — sonraki tazeleme bakiye/ilerleme yeniden okumadan check-in +
     /// görev çeker (07 §4/§4.4).
     private var hasLoaded = false
-    /// Claim/409 sonrası beklenen OTORİTER bakiye. Bayat akış değeri bunu EZEMEZ (coin-kaybı riski,
-    /// 06 §5.2 "eski değer yeniyi ezmez"); akış bu değere yakaladığında temizlenir ve canlı akış devam
-    /// eder. Fix 1: coinBalance reconciliation.
+    /// Claim/409 sonrası beklenen OTORİTER bakiye; bayat akış değeri bunu EZEMEZ (coin-kaybı, 06 §5.2),
+    /// akış değere yakalayınca temizlenir (Fix 1: coinBalance reconciliation).
     private var awaitedBalance: Int?
-    /// Check-in state generation'ı — her OTORİTER yazımda (claim başarı/409) artırılır. `refreshCheckIn`
-    /// bunu `status()` await'inden ÖNCE yakalar, apply'dan ÖNCE karşılaştırır: await sırasında araya giren
-    /// bir claim generation'ı bump'larsa bayat pre-claim status DÜŞÜRÜLÜR (sahte streak_break + buton
-    /// regresyonu önlenir). Tek actor-hop karşılaştırma → TOCTOU'suz.
+    /// Check-in state generation'ı — her OTORİTER yazımda (claim başarı/409) artar. refreshCheckIn'i
+    /// status() await'i öncesi yakalar/apply öncesi karşılaştırır: araya giren claim bayat pre-claim
+    /// status'ü düşürür (sahte streak_break + buton regresyonu; tek actor-hop → TOCTOU'suz).
     private var checkInGeneration = 0
 
     public init(
@@ -215,13 +213,29 @@ public final class OdulMerkeziModel {
         await refreshCheckIn()
     }
 
+    /// Hesap değişiminde (05 §3.3) hesap-ÖZEL bellek-içi durumu sıfırlar (model TabCoordinator ömrü boyunca
+    /// yaşar → sıfırlanmazsa SS-132 cross-account: sahte streak_break, yanlış .claimed pin, bayat coinBalance).
+    /// generation bump uçuştakini fence eder; hasLoaded=false tam-yükletir; kalıcı lastSeenStreak temizlenir.
+    public func resetForAccountSwitch() {
+        checkInGeneration += 1
+        checkInState = nil
+        coinBalance = 0
+        awaitedBalance = nil
+        catalog = RewardTaskCatalog()
+        catalogLoadedOnce = false
+        liveProgress = [:]
+        claimedTaskIDs.removeAll()
+        hasLoaded = false
+        loadState = .loading
+        lastSeenStreakStore.reset()
+    }
+
     private func refreshCheckIn() async {
         let generation = checkInGeneration
         do {
             let state = try await checkInService.status()
-            // Uçuştaki status(), await sırasında araya giren bir claim'in TAZE state'ini EZMESİN: claim
-            // generation'ı bump'lar → bayat pre-claim status düşürülür (sahte checkin_streak_break + buton
-            // regresyonu önlenir). Claim zaten loadState=.loaded + otoriter checkInState yazdı.
+            // Uçuştaki status() await sırasında araya giren claim generation'ı bump'larsa bayat pre-claim
+            // status'ü düşür (sahte checkin_streak_break + buton regresyonu; claim zaten .loaded + state yazdı).
             guard generation == checkInGeneration else { return }
             applyLoadedState(state)
             loadState = .loaded
@@ -259,12 +273,9 @@ public final class OdulMerkeziModel {
     }
 
     private func applyBalance(_ balance: Int) {
-        // Fix 1 + audit MEDIUM: claim/409 sonrası beklenen OTORİTER bakiye varken yalnız BAYAT (awaited'in
-        // ALTINDAKI, claim öncesi in-flight) akış değeri onu EZMESİN. Akış otoriter değere YETİŞİNCE ya da
-        // AŞINCA (eşzamanlı yeni kredi: görev/VIP/ad) guard temizlenir → canlı güncelleme devam eder.
-        // EXACT-match guard, awaited hiç yeniden yayılmazsa (409 read broadcast tetiklemez / version-guard
-        // snapshot'ı düşürür) kalıcı DONUYORDU: awaited'i atlayan yeni değer düşürülüp başlık sonraki tüm
-        // güncellemeleri yutuyordu. `>=` bunu önler (bayat-ALT değer yine düşürülür).
+        // Fix 1 + audit MEDIUM: claim/409 sonrası beklenen OTORİTER bakiye varken BAYAT (awaited-ALTI, claim
+        // öncesi in-flight) akış değeri onu EZMESİN; akış değere yetişince/aşınca guard temizlenir. `>=`
+        // (exact yerine): awaited hiç yeniden yayılmazsa yeni değer donmasın (bayat-alt yine düşürülür).
         if let awaited = awaitedBalance {
             guard balance >= awaited else { return }
             awaitedBalance = nil
@@ -339,11 +350,9 @@ public final class OdulMerkeziModel {
         analytics.track("screen_view", parameters: ["screen_name": .string("odul_merkezi")])
     }
 
-    /// Claim (başarı/409) OTORİTER check-in state'ini uygular: checkInState yazılır, generation bump'lanır
-    /// (uçuştaki refreshCheckIn bayat status'ü düşürsün) ve son-görülen streak KALICI kılınır. Son'u
-    /// olmadan claim sonrası app-kill → cold-launch, önceki (bayat, daha düşük) tabana göre yanlış
-    /// `checkin_streak_break` previousStreakLength'i raporlardı (08 §3.5 KPI doğruluğu, Fix 7). Kırılma
-    /// tespiti YAPMAZ — claim bir "ilk gözlem" değil (streak yalnız ilerler).
+    /// Claim (başarı/409) OTORİTER check-in state'ini uygular: checkInState + generation bump (uçuştaki
+    /// refreshCheckIn bayat status'ü düşürsün) + son-görülen streak persist (Fix 7: claim-sonrası app-kill →
+    /// cold-launch yanlış previousStreakLength'i önler). Kırılma tespiti YAPMAZ (claim "ilk gözlem" değil).
     private func applyClaimedCheckInState(_ state: CheckInState) {
         checkInState = state
         checkInGeneration += 1

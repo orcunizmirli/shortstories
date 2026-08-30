@@ -174,6 +174,34 @@ struct OdulMerkeziReconciliationTests {
         #expect(store.lastSeenStreak() == 4) // claim son-görülen streak'i güncelledi (cold-launch tabanı)
     }
 
+    @Test func resetForAccountSwitchClearsStateAndPreventsCrossAccountBreak() async {
+        // Cross-account (SS-132 sınıfı): uzun-ömürlü model hesap değişiminde reset edilmezse önceki hesabın
+        // bellek-içi checkInState'i + kalıcı lastSeenStreak'i yeni hesaba taşınıp SAHTE checkin_streak_break
+        // atardı. resetForAccountSwitch: state temizlenir + lastSeenStreak.reset() → yeni hesap yüklemesi
+        // "ilk gözlem" olur (kırılma yok).
+        let store = InMemoryLastSeenStreakStore(nil)
+        let service = FakeCheckInService(status: .success(.mock(cycleDay: 5, streakDays: 5)))
+        let analytics = MockAnalytics()
+        let model = makeModel(service: service, wallet: FakeRewardsWallet(250), analytics: analytics, lastSeenStreakStore: store)
+        model.onAppear()
+        await model.pendingWork()
+        #expect(model.coinBalance == 250)
+        #expect(model.checkInState?.streakDays == 5)
+        #expect(store.lastSeenStreak() == 5) // hesap A tabanı persist edildi
+
+        model.resetForAccountSwitch()
+        #expect(model.checkInState == nil)
+        #expect(model.coinBalance == 0)
+        #expect(store.lastSeenStreak() == nil) // A tabanı temizlendi
+
+        // Hesap B: streak 1 (A'nın 5'inden DÜŞÜK). Reset olmasaydı sahte break (5→1) atılırdı.
+        service.setStatus(.success(.mock(cycleDay: 1, streakDays: 1)))
+        model.onAppear()
+        await model.pendingWork()
+        #expect(model.checkInState?.streakDays == 1) // hesap B yüklendi
+        #expect(!analytics.events.contains { $0.name == "checkin_streak_break" }) // SAHTE break yok
+    }
+
     @Test func noStreakBreakOnFirstEverColdLaunch() async {
         // Hiç kalıcı değer yoksa (ilk açılış) kırılma emit edilmez; server streak'i kalıcı kılınır.
         let store = InMemoryLastSeenStreakStore(nil)
