@@ -249,9 +249,11 @@ ertelendi. **App CI'da DEĞİL — hepsi lokal AppTests + build ile doğrulanır
 - **`.series` deep-link idempotent değil (LOW) → DÜZELTİLDİ (f47d199):** showDetail `detailMarker (seriesID, depth)` →
   aynı dizi hâlâ tepedeyken (marker.depth == path.count) push bastırılır (deep-link/çift-tap özdeş DiziDetay çoğaltmaz).
   TDD: DiscoverNavigationTests 4 test (revert-verify RED→GREEN), 232 App testi yeşil.
-- **Standalone VIP aktivasyonu feed'i reaktive etmez (WalletFlowCoordinator.swift:159, LOW):** vipSubscriptionDidActivate
-  yalnız vipModel=nil yapar; feed reaktivasyon kancası (onEpisodeUnlocked) bölüm-bazlı, VIP-hepsini-aç için çağrılmaz
-  → VIP sonrası feed'deki kilitli bölümler `.locked` kalır. **Fix:** onVIPActivated → feed'i reaktive et (feedState-reset task'ıyla ilişkili).
+- **Standalone VIP aktivasyonu feed'i reaktive etmez (LOW) → DÜZELTİLDİ (68492ef):** vipSubscriptionDidActivate
+  yalnız vipModel=nil yapıyordu; standalone VIP (Profil/deep-link) feed'i açmıyordu → VIP tüm erişim verdiği halde
+  kilitli bölümler `.locked` kalıyordu. **Fix:** FeedUnlockReducer.applyingVIPUnlock (tüm kilitli → .unlocked,
+  idempotent) + HomeCoordinator.applyVIPUnlock + WalletFlowCoordinator.onVIPActivated callback (onEpisodeUnlocked
+  deseniyle simetrik; diff'li apply, remount yok). TDD: FeedUnlockReducerTests +3, 235 App testi yeşil.
 
 ### Oturum-değişikliği self-review — ertelenen 2 LOW (2026-08-30)
 Bu oturumun 26 fix diff'inin adversarial self-review'ı 7 bulgu üretti: 5'i düzeltildi (cross-account
