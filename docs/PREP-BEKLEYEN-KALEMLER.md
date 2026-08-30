@@ -356,6 +356,18 @@ SAVUNULABİLİR" dedi) → self-review zinciri CONVERGE etti (MEDIUM'lar → sav
   `.unexpected`-exclude kalkar, ambiguity kökten çözülür (slot→retryable→re-warm; config-outage `.unexpected`→
   not-retryable→re-warm-yok). AppError paylaşılan-infra dokunuşu + slot≠playback semantik pürüzü → LOW için ertelendi.
 
+### PlayerKit adversarial bug-hunt — ertelenen kalem (2026-08-31)
+PlayerKit bug-hunt (16 agent → 6 doğrulanmış); 5 CI-testli fix DÜZELTİLDİ (commit 6aa2919: #1 pool reclaim
+isAuthorizing, #2 reaktivasyon `.none` guard, #3 reorder kimlik-tabanlı, #5 auto-advance suppress sızıntısı,
+#6 aktif-slot idle-restart). 1 App-katmanı kalem ertelendi:
+- **VIP-expiry/iade IN-SESSION re-lock YOK (HomeCoordinator, MEDIUM CONFIRMED):** WalletFlowCoordinator yalnız
+  AÇMA-yönü callback'i taşır (onEpisodeUnlocked/onVIPActivated); onVIPExpired/onEpisodeRevoked YOK. Kullanıcı VIP
+  bölüm izlerken abonelik iade/expire olursa WalletStore.hasAccess false'a döner ama feed HABERDAR EDİLMEZ →
+  açık bölüm oynamaya devam eder + komşu `.unlocked` kartlar app-restart/server-feed-reload'a dek oynatılabilir
+  kalır (iade in-session erişimi geri almaz). **Fix:** WalletFlowCoordinator'a downgrade callback + FeedPlayback
+  Director'a entitlement-düşüş gözlemcisi (aktif handle'ı re-lock / `.unlocked` işaretleri temizle) — App-wiring +
+  WalletStore→feed downgrade yolu gerektirir (App CI-dışı → odaklı pass). Nadir senaryo (aktif izlerken iade) → MEDIUM.
+
 ---
 
 ## Kod-içsel (prep gerektirmeyen) kalan iş — ayrı izlenir
