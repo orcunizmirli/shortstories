@@ -200,8 +200,8 @@ günlük-reset unpin MEDIUM); 3'ü App-wiring/port-versiyonlama gerektirdiği i�
   uçuştaki claim yanıtı bir bağlam/hesap değişiminden sonra uygulanınca cross-account/bayat kredi; ayrıca
   eşzamanlı iki claim'de geç dönen DAHA ESKİ bakiye anlık-görüntüsü yeniyi ezebilir. Yukarıdaki reset
   (§hesap-değişimi) + akış-versiyonlama ile AYNI altyapıyı paylaşır → o iki fix'le birlikte ele alınacak.
-  (Not: todayReward computed var'ının schedule fallback'i [OdulMerkeziModel.swift:159, LOW] da calendar
-  bugün hücresiyle tutarlı olması için CheckInCycle SAF fallback'ine bağlanmalı — küçük, aynı pass'te.)
+  (Not: todayReward computed var'ının schedule fallback'i [OdulMerkeziModel.swift:159, LOW] → **DÜZELTİLDİ
+  (b523b27):** paylaşılan CheckInCycle.todayReward(for:) — buton etiketi + takvim bugün hücresi tek kaynak.)
 
 ### ContentKit bug-hunt — ertelenen 1 kalem (2026-08-30)
 ContentKit (Wire decode/Models/API) adversarial bug-hunt'ının 3 kept bulgusundan 2'si düzeltildi
@@ -230,11 +230,10 @@ format break→continue LOW); 2'si App-wiring/spec-config olduğu için ertelend
   UserDefaults'a persist eden bir store + composition'da makeExperimentClient'a previouslyExposed besle
   (RTG-01 ReviewPromptState / LastSeenStreakStore deseni). App-katmanı wiring + yeni store gerektirir →
   ertelendi. İlgili: [[shortseries-project]] App/DI composition.
-- **Duplicate variant id tespit edilmez (Experiment.swift:49, LOW PLAUSIBLE):** aynı id'li iki variant
-  kataloğa/Experiment'e girerse `variant(withID:)` `first`'ü döner (server-override yolu) ama hash
-  bucketing kümülatif yürüyüşte SONRAKİ duplike variant'ı seçebilir → aynı raporlanan variant id FARKLI
-  payload'a eşlenir (tutarsız deney davranışı). Spec-ihlali config (operatör hatası) gerektirir. **Fix:**
-  katalog yüklemede duplicate variant id'leri validate/dedup et (ilkini tut + telemetri) → ayrı pass.
+- **Duplicate variant id tespit edilmez (Experiment.swift:49, LOW PLAUSIBLE) → DÜZELTİLDİ (f254bea):**
+  aynı id'li iki variant → `variant(withID:)` `first`'ü döner ama hash bucketing SONRAKİ duplike'yi
+  seçebilir → aynı raporlanan id FARKLI payload'a eşlenirdi. Fix: Experiment yapımda `dedupedByID` (İLK'i
+  tut) — designated + custom decode init (remote config decode yolu dahil).
 
 ### App-integration bug-hunt — ertelenen kalemler (2026-08-30)
 App katmanı (coordinators/adapters/analytics-wiring) adversarial bug-hunt'ının 10 kept bulgusundan 3'ü
