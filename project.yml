@@ -177,6 +177,8 @@ targets:
     sources: [AppTests]
     dependencies:
       - target: ShortSeriesApp
+      # Kanonik test double'ları (MockSession vb.) — coordinator session-gözlem wiring testleri için.
+      - { package: AppFoundation, product: AppFoundationTestSupport }
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES

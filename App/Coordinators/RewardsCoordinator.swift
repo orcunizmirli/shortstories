@@ -1,3 +1,4 @@
+import AppFoundation
 import Foundation
 import Observation
 import RewardsKit
@@ -27,9 +28,32 @@ final class RewardsCoordinator {
     @ObservationIgnored private(set) lazy var referralModel: ReferralModel =
         composition.makeReferralModel(delegate: self)
 
+    /// Hesap değişimi gözlemcisi — app ömrü boyunca canlı (iptal edilmez): switch hangi sekmede olursa
+    /// olsun (Profil'den) yakalanır.
+    @ObservationIgnored private var accountObserver: Task<Void, Never>?
+
     init(composition: AppComposition, walletFlow: WalletFlowCoordinator) {
         self.composition = composition
         self.walletFlow = walletFlow
+        startObservingAccountSwitch()
+    }
+
+    /// Hesap DEĞİŞİMİNDE (userID farklı bir hesaba geçince) uzun-ömürlü `odulMerkeziModel`'i sıfırlar —
+    /// model TabCoordinator ömrü boyunca yaşar, switch'te yeniden yaratılmaz → cross-account state
+    /// (checkInState/claimedTaskIDs/coinBalance/lastSeenStreak) sızmasın (05 §3.3, SS-132 sınıfı). link
+    /// (guest→AYNI userID korunur, §3.3 sıfır-kayıp) reset TETİKLEMEZ; yalnız farklı-hesaba geçiş (409
+    /// switch → userID değişir) tetikler. session-death (userID→nil) ve re-auth (nil→userID) de tetiklemez.
+    private func startObservingAccountSwitch() {
+        let session = composition.dependencies.session
+        accountObserver = Task { [weak self] in
+            var lastUserID: String?
+            for await state in session.stateUpdates {
+                if let previous = lastUserID, let current = state.userID, previous != current {
+                    self?.odulMerkeziModel.resetForAccountSwitch()
+                }
+                lastUserID = state.userID
+            }
+        }
     }
 }
 

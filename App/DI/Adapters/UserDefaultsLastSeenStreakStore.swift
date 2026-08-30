@@ -26,4 +26,8 @@ final class UserDefaultsLastSeenStreakStore: LastSeenStreakStoring, @unchecked S
     func setLastSeenStreak(_ value: Int) {
         defaults.set(value, forKey: Self.key)
     }
+
+    func reset() {
+        defaults.removeObject(forKey: Self.key)
+    }
 }
