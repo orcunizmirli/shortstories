@@ -50,4 +50,42 @@ final class DiscoverNavigationTests: XCTestCase {
         discover.showSearch(query: nil) // Arama zaten açık, query yok → no-op
         XCTAssertEqual(discover.path.count, 1)
     }
+
+    // MARK: - self-review3 regresyonları (sistem-geri sonrası bayat-marker; [AppRoute] gerçek-peek ile çözüldü)
+
+    /// self-review3 MEDIUM: showDetail(s1) → sistem-geri → Arama aç → aramadan s1 seç → DEAD-TAP olmamalı
+    /// (eski depth-marker: Arama depth-1'de s1 marker'ını spoof'layıp bastırıyordu). [AppRoute] peek push eder.
+    func testShowDetailAfterSystemBackIsNotFalselySuppressed() throws {
+        let discover = try makeDiscover()
+        discover.showDetail(SeriesID("s1"), source: .kesfet)
+        discover.path.removeLast() // sistem-geri (path'i doğrudan mutate eder — coordinator kodu koşmaz)
+        discover.showSearch(query: nil) // [Arama]
+        discover.showDetail(SeriesID("s1"), source: .arama) // tepe .arama → bastırılmaz → push
+        XCTAssertEqual(discover.path.count, 2) // Arama + s1 DiziDetay (dead-tap YOK)
+    }
+
+    /// self-review3 MEDIUM: showDetail(s1),showDetail(s2) → sistem-geri (s2 pop) → showDetail(s1) ÇOĞALTMAMALI
+    /// (eski marker=(s2,2) → bastırmaz → [s1,s1]). [AppRoute] peek: tepe s1 → bastırır.
+    func testShowDetailAfterSystemBackDoesNotDuplicate() throws {
+        let discover = try makeDiscover()
+        discover.showDetail(SeriesID("s1"), source: .kesfet)
+        discover.showDetail(SeriesID("s2"), source: .kesfet)
+        discover.path.removeLast() // sistem-geri: s2 pop → tepe s1
+        discover.showDetail(SeriesID("s1"), source: .kesfet) // tepe s1 → bastırılır (çoğaltma yok)
+        XCTAssertEqual(discover.path.count, 1)
+    }
+
+    /// self-review3 LOW: Arama açıkken sistem-geri → DiziDetay aç → search?q= gelince kullanıcının DiziDetay'ını
+    /// YIKMAMALI (eski removeLast bayat depth'le yanlış frame'i poplardı). [AppRoute]: Arama stack'te yok → append.
+    func testShowSearchQueryForwardAfterSystemBackDoesNotDestroyDetail() throws {
+        let discover = try makeDiscover()
+        discover.showSearch(query: nil) // [Arama]
+        discover.path.removeLast() // sistem-geri: Arama pop → []
+        discover.showDetail(SeriesID("s1"), source: .kesfet) // [s1 DiziDetay]
+        discover.showSearch(query: "kral") // Arama stack'te yok → append (s1 KORUNUR)
+        XCTAssertEqual(discover.path.count, 2)
+        guard case .diziDetay = discover.path.first else {
+            return XCTFail("s1 DiziDetay korunmalıydı (yıkıcı pop YOK)")
+        }
+    }
 }
