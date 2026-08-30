@@ -28,5 +28,9 @@ public struct DSChip: View {
                     }
                 }
         }
+        // Seçili durum VoiceOver'a PROGRAMATİK bildirilir (yalnız accent dolgu + font ağırlığı görsel
+        // temsiliyle kalmasın): aksi halde filtre satırında hangi türün aktif olduğu işitsel duyulmaz ve
+        // kullanıcı aktif filtreyi istemeden kapatabilir. DSChip yeniden-kullanılan bileşen (audit MEDIUM).
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }

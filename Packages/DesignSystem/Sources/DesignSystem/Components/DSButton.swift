@@ -61,6 +61,16 @@ public struct DSButton: View {
             }
         }
         .disabled(isLoading)
+        // Yükleme durumu VoiceOver'a duyurulur: buton disabled + başlık gizli (opacity 0) + spinner
+        // etiketsiz olduğundan aksi halde yalnız "sönük" okunur, "işleniyor mu / kalıcı devre dışı mı"
+        // ayırt edilemezdi (DSStateView "Yükleniyor" etiket deseniyle tutarlı; audit LOW).
+        .accessibilityValue(accessibilityStatusLabel ?? "")
+    }
+
+    /// Yükleme durumunun erişilebilirlik değeri (VoiceOver başlığa ek olarak duyurur); boşta nil.
+    /// `internal` yalnız izole test için.
+    var accessibilityStatusLabel: String? {
+        isLoading ? "Yükleniyor" : nil
     }
 
     /// Bileşen-içi zemin türetimi (03 §4.1 katman 3) — `internal` yalnız izole test için.
