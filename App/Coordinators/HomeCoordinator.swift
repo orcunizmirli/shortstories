@@ -83,6 +83,8 @@ final class HomeCoordinator {
 
     /// SS-062 intent→feed-entry çözümleyicisi (katalog fetch; SAF eşleme `PlaybackIntentMapper`'da).
     private let feedResolver: PlaybackFeedResolver
+    /// Hesap-değişimi gözlemcisi — app ömrü boyunca canlı (RewardsCoordinator deseni).
+    @ObservationIgnored private var accountObserver: Task<Void, Never>?
 
     init(composition: AppComposition, walletFlow: WalletFlowCoordinator) {
         self.composition = composition
@@ -100,6 +102,38 @@ final class HomeCoordinator {
         walletFlow.onEpisodeUnlocked = { [weak self] episodeID in
             self?.applyUnlock(episodeID)
         }
+        startObservingAccountSwitch()
+    }
+
+    /// Hesap DEĞİŞİMİNDE (userID farklı bir hesaba geçince) feed durumunu sıfırlar — feedViewModel/pool
+    /// TabCoordinator ömrü boyunca yaşar, switch'te yeniden yaratılmaz → önceki hesabın feedState'i (özellikle
+    /// applyUnlock ile `.unlocked` işaretlenmiş bölümler) yeni hesaba SIZAR: PlayerPool.isPlayable `.unlocked`'a
+    /// entitlement sormadan güvendiğinden B, A'nın açtığı bölümü paywall'suz oynatır (05 §3.3, SS-132). link
+    /// (guest→aynı userID) / session-death / re-auth reset TETİKLEMEZ; yalnız gerçek switch. RewardsCoordinator
+    /// deseniyle simetrik.
+    private func startObservingAccountSwitch() {
+        let session = composition.dependencies.session
+        accountObserver = Task { [weak self] in
+            var lastUserID: String?
+            for await state in session.stateUpdates {
+                if let previous = lastUserID, let current = state.userID, previous != current {
+                    self?.resetForAccountSwitch()
+                }
+                lastUserID = state.userID
+            }
+        }
+    }
+
+    /// Feed hesap-özel durumunu sıfırlar: `.unlocked` işaretleri + A'nın seed'i temizlenir; uçuştaki seed
+    /// resolution'ları `seedGeneration` bump'ıyla düşürülür (last-intent-wins guard'ıyla aynı); remount ile
+    /// PlayerFeedView taze (boş) kurulur (A'nın player'ı yeni hesaba taşınmaz). B sonraki navigasyonda re-seed eder.
+    private func resetForAccountSwitch() {
+        seedGeneration &+= 1
+        feedViewModel.feedState = FeedState()
+        feedEntry = nil
+        pendingPlayback = nil
+        activeEpisodeID = nil
+        feedMountToken &+= 1
     }
 
     /// SwiftUI köprüsü — Ana Sayfa tab view'ı bunu gömer (delegate = self). `entry`: çözülmüş
