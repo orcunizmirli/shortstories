@@ -189,7 +189,9 @@ public final class DiziDetayModel {
             // Sayfa index'leri artan; bu sayfanın maks index'i hedefi GEÇTİYSE hedef ya bu sayfada geldi ya
             // da index boşluğu (kaldırılmış bölüm / releasedEpisodeCount aşımı) → sonraki sayfalarda YOK.
             // Tüm sayfaları tam-taramayı bırak (audit LOW: aşırı fetch koruması).
-            if let maxIndex = page.items.map(\.index).max(), maxIndex >= number { return }
+            if let maxIndex = page.items.map(\.index).max(), maxIndex >= number {
+                return
+            }
         }
     }
 

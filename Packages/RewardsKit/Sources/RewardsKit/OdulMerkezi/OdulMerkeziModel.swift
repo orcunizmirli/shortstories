@@ -389,5 +389,4 @@ public final class OdulMerkeziModel {
         lastSeenStreakStore.setLastSeenStreak(state.streakDays)
         analytics.trackCheckinView(currentStreakDay: state.cycleDay, canClaimToday: !state.todayClaimed)
     }
-
 }
