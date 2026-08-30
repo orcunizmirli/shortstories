@@ -24,6 +24,11 @@ final class DiscoverCoordinator {
     /// `showSearch` bunu tembel uzlaştırır (aksi halde bayrak eskir, tekrar açılmaz).
     @ObservationIgnored private var searchStackDepth: Int?
 
+    /// DiziDetay tekrar-önleme marker'ı (searchStackDepth deseni; NavigationPath introspect edilemez):
+    /// (son push edilen seriesID, o push'tan sonraki derinlik). Aynı dizi HÂLÂ tepedeyken tekrar push
+    /// (deep-link/çift-tap) bastırılır → özdeş DiziDetay çoğaltılmaz.
+    @ObservationIgnored private var detailMarker: (seriesID: SeriesID, depth: Int)?
+
     /// Oturum-içi filtre kalıcılığı: Kesfet modeli sekme ömrünce tek instance (tür çipi seçimi
     /// stack derinliklerinden geri dönünce korunur).
     @ObservationIgnored private let session = DiscoverSessionStore()
@@ -38,7 +43,13 @@ final class DiscoverCoordinator {
     // MARK: - Deep link / cross-tab yardımcıları (TabCoordinator.handle çağırır)
 
     func showDetail(_ seriesID: SeriesID, source: DiziDetaySource) {
+        // Idempotent (audit LOW): aynı dizi HÂLÂ stack'in tepesindeyse (marker.depth == path.count) özdeş
+        // DiziDetay'ı ÇOĞALTMA (deep-link/çift-tap). Üstüne başka frame bindiyse/pop edildiyse marker eskir → izin.
+        if let marker = detailMarker, marker.seriesID == seriesID, marker.depth == path.count {
+            return
+        }
         path.append(AppRoute.diziDetay(seriesID: seriesID, source: source))
+        detailMarker = (seriesID, path.count)
     }
 
     /// Arama'yı push eder — zaten stack'teyse TEKRAR ETMEZ (çift Arama bug'ı). `query` doluysa Arama
@@ -49,7 +60,17 @@ final class DiscoverCoordinator {
         if let depth = searchStackDepth, path.count < depth {
             searchStackDepth = nil
         }
-        guard searchStackDepth == nil else { return } // Arama zaten açık → tekrar push etme
+        if let depth = searchStackDepth {
+            // Arama zaten açık. Yeni bir query (universal-link search?q=) geldiyse pop+repush ile ön-doldurmayı
+            // uygula (audit LOW: aksi halde query SESSİZCE düşerdi); query yoksa no-op (çift-Arama önleme korunur).
+            guard let query, !query.isEmpty else { return }
+            path.removeLast(path.count - (depth - 1)) // Arama frame'ini (ve üstündeki DiziDetay'ları) pop et
+            searchStackDepth = nil
+            detailMarker = nil
+            path.append(AppRoute.arama(query: query))
+            searchStackDepth = path.count
+            return
+        }
         path.append(AppRoute.arama(query: query))
         searchStackDepth = path.count
     }
@@ -57,6 +78,7 @@ final class DiscoverCoordinator {
     func applyGenre(_ genre: String?) {
         path = NavigationPath() // filtre için köke dön (02 §4.10 çip filtresi kökte)
         searchStackDepth = nil // stack köke sıfırlandı → Arama artık yok
+        detailMarker = nil
         kesfetModel.selectGenre(genre?.isEmpty == true ? nil : genre)
     }
 
