@@ -154,6 +154,26 @@ struct OdulMerkeziReconciliationTests {
         #expect(store.lastSeenStreak() == 0) // güncel server streak'i kalıcı kılındı (sonraki açılış tabanı)
     }
 
+    @Test func claimPersistsLastSeenStreakForColdLaunchBaseline() async {
+        // Fix 7: claim başarı kolu checkInState'i yazıyordu ama son-görülen streak'i KALICI kılmıyordu →
+        // claim SONRASI app-kill → cold-launch, bayat (claim-öncesi, daha düşük) tabana göre yanlış
+        // previousStreakLength raporlanırdı (08 §3.5 KPI doğruluğu).
+        let store = InMemoryLastSeenStreakStore(nil)
+        let claimed = CheckInState.mock(cycleDay: 4, todayClaimed: true, streakDays: 4)
+        let service = FakeCheckInService(
+            status: .success(.mock(cycleDay: 3, todayClaimed: false, streakDays: 3)),
+            claim: .success(.mock(coins: 20, coinBalance: 120, checkin: claimed))
+        )
+        let model = makeModel(service: service, lastSeenStreakStore: store)
+        model.onAppear()
+        await model.pendingWork()
+        #expect(store.lastSeenStreak() == 3) // ilk yükleme tabanı
+
+        await model.claimToday()
+        #expect(model.streakDays == 4)
+        #expect(store.lastSeenStreak() == 4) // claim son-görülen streak'i güncelledi (cold-launch tabanı)
+    }
+
     @Test func noStreakBreakOnFirstEverColdLaunch() async {
         // Hiç kalıcı değer yoksa (ilk açılış) kırılma emit edilmez; server streak'i kalıcı kılınır.
         let store = InMemoryLastSeenStreakStore(nil)

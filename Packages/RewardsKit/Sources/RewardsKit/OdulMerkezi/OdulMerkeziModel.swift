@@ -107,6 +107,11 @@ public final class OdulMerkeziModel {
     /// 06 §5.2 "eski değer yeniyi ezmez"); akış bu değere yakaladığında temizlenir ve canlı akış devam
     /// eder. Fix 1: coinBalance reconciliation.
     private var awaitedBalance: Int?
+    /// Check-in state generation'ı — her OTORİTER yazımda (claim başarı/409) artırılır. `refreshCheckIn`
+    /// bunu `status()` await'inden ÖNCE yakalar, apply'dan ÖNCE karşılaştırır: await sırasında araya giren
+    /// bir claim generation'ı bump'larsa bayat pre-claim status DÜŞÜRÜLÜR (sahte streak_break + buton
+    /// regresyonu önlenir). Tek actor-hop karşılaştırma → TOCTOU'suz.
+    private var checkInGeneration = 0
 
     public init(
         checkInService: any CheckInService,
@@ -210,8 +215,13 @@ public final class OdulMerkeziModel {
     }
 
     private func refreshCheckIn() async {
+        let generation = checkInGeneration
         do {
             let state = try await checkInService.status()
+            // Uçuştaki status(), await sırasında araya giren bir claim'in TAZE state'ini EZMESİN: claim
+            // generation'ı bump'lar → bayat pre-claim status düşürülür (sahte checkin_streak_break + buton
+            // regresyonu önlenir). Claim zaten loadState=.loaded + otoriter checkInState yazdı.
+            guard generation == checkInGeneration else { return }
             applyLoadedState(state)
             loadState = .loaded
             // Görev listesi (missionSection) yalnız .loaded'da görünür → mission_view (08 §3.5).
@@ -289,7 +299,7 @@ public final class OdulMerkeziModel {
             let result = try await checkInService.claim()
             // SERVER-OTORİTER kredi: bakiye ve durum YALNIZ server yanıtından (optimistik DEĞİL).
             applyAuthoritativeBalance(result.coinBalance) // Fix 1: bayat akış bu krediyi ezemez
-            checkInState = result.checkin
+            applyClaimedCheckInState(result.checkin) // generation bump + son-görülen streak persist
             claimCelebration += 1 // haptic + coin uçuş animasyonu (View tetikler)
             analytics.trackCheckinClaim(
                 streakDay: result.checkin.cycleDay,
@@ -302,7 +312,7 @@ public final class OdulMerkeziModel {
         } catch let CheckInClaimError.alreadyClaimed(fresh) {
             // 409 ALREADY_CLAIMED: durumu sessizce senkronla, hata gösterme (idempotent tekrar). Kredi
             // ZATEN düşmüştür → başlığı otoriter cüzdandan tazele (Fix 2: bayat başlık kalmasın).
-            checkInState = fresh
+            applyClaimedCheckInState(fresh) // generation bump + son-görülen streak persist
             await applyAuthoritativeBalance(wallet.currentBalance())
         } catch {
             // Kredi VERİLMEZ; son bilinen durum korunur, kullanıcı tekrar deneyebilir.
@@ -326,6 +336,17 @@ public final class OdulMerkeziModel {
 
     private func trackScreenView() {
         analytics.track("screen_view", parameters: ["screen_name": .string("odul_merkezi")])
+    }
+
+    /// Claim (başarı/409) OTORİTER check-in state'ini uygular: checkInState yazılır, generation bump'lanır
+    /// (uçuştaki refreshCheckIn bayat status'ü düşürsün) ve son-görülen streak KALICI kılınır. Son'u
+    /// olmadan claim sonrası app-kill → cold-launch, önceki (bayat, daha düşük) tabana göre yanlış
+    /// `checkin_streak_break` previousStreakLength'i raporlardı (08 §3.5 KPI doğruluğu, Fix 7). Kırılma
+    /// tespiti YAPMAZ — claim bir "ilk gözlem" değil (streak yalnız ilerler).
+    private func applyClaimedCheckInState(_ state: CheckInState) {
+        checkInState = state
+        checkInGeneration += 1
+        lastSeenStreakStore.setLastSeenStreak(state.streakDays)
     }
 
     /// Check-in takvimi görünür olduğunda (08 §3.5). Streak kırılması önceki duruma göre tespit
