@@ -34,10 +34,8 @@ public final class PlayerFeedViewController: UIViewController {
     private let scrollProxy = FeedScrollProxy()
     /// Programatik kaydırma (auto-advance) yerleşince uygulanacak settle.
     var pendingProgrammaticSettle: (index: Int, startType: PlaybackStartType)?
-    /// Aktif oynayan lease'in hücre bağlaması (bulgu 4/6): hücre henüz görünür değilken
-    /// (settle hücreden ÖNCE geldiğinde) VEYA ekran dışına çıkıp GERİ DÖNDÜĞÜNDE
-    /// willDisplay bunu bağlar. Ham indeks değil BÖLÜM-ID ile doğrulanır: snapshot
-    /// kayması yanlış karta bağlamaz, aktif kart dönüşünde siyah kare+ses oluşmaz.
+    /// Aktif oynayan lease'in hücre bağlaması (bulgu 4/6): hücre henüz görünür değilken/geri döndüğünde
+    /// willDisplay bunu bağlar. BÖLÜM-ID ile doğrulanır (ham indeks değil → snapshot kayması yanlış karta bağlamaz).
     var activeBinding: ActiveBinding?
 
     /// Aktif hücre bağlaması (bulgu 4/6): willDisplay bölüm-id ile doğrular.
@@ -130,9 +128,8 @@ public final class PlayerFeedViewController: UIViewController {
 
     // MARK: - Public yüzey
 
-    /// Feed durumunu diff'li uygular (04 §2.3): `reloadData` YASAK (T7). Aynı id ile
-    /// içeriği değişen hücreler reconfigure edilir (02 §4.3.6); kilitli kart unlock
-    /// olduysa aynı hücrede yeniden aktive edilir (04 §9.2).
+    /// Feed durumunu diff'li uygular (04 §2.3): `reloadData` YASAK (T7). Aynı id'li hücreler reconfigure
+    /// edilir (02 §4.3.6); kilitli kart unlock olduysa aynı hücrede yeniden aktive edilir (04 §9.2).
     public func apply(state: FeedState) {
         let newItems = state.items.deduplicatingEpisodes()
         guard newItems != items else { return }
@@ -145,13 +142,14 @@ public final class PlayerFeedViewController: UIViewController {
         if shouldActivateFirst {
             needsInitialActivation = false
         }
-        let reactivateIndex = shouldActivateFirst ? nil : reactivatableUnlockIndex(in: newItems)
+        let reactivateIndex = shouldActivateFirst
+            ? nil
+            : Self.reactivatableUnlockIndex(newItems: newItems, previousItems: previousItems, lockedIndex: lockedIndex)
         Task { [weak self, director] in
             await director.updateItems(newItems)
             guard let self else { return }
             if shouldActivateFirst {
-                // İlk açılış: doğrudan video ile başlar (02 §4.3); seed varsa seed'lenen
-                // içerik/konumdan, yoksa index 0'dan devam kaydıyla resume (SS-062/065).
+                // İlk açılış: doğrudan video (02 §4.3); seed varsa seed konumundan, yoksa index 0 resume (SS-062/065).
                 await performInitialActivation()
             } else if let reactivateIndex {
                 // 04 §9.2 / 02 §4.3.6: kilit açıldı, kart yerinde oynatmaya başlar.
@@ -173,14 +171,16 @@ public final class PlayerFeedViewController: UIViewController {
         Task { [director] in await director.setPreferredRate(rate) }
     }
 
-    /// Kilitli kalan aktif kart yeni state'te oynatılabilir olduysa indeksi döner (arka
-    /// planda / sheet sonrası unlock — access `.locked` → oynatılabilir). Saf entitlement
-    /// sinyali (access.kind değişmeden) WalletKit `episodeUnlocked` portundadır — SS-050.
-    private func reactivatableUnlockIndex(in newItems: [FeedItem]) -> Int? {
+    /// Kilitli aktif kart oynatılabilir olduysa indeksini döner (SS-050). TRANSITION korkuluğu (self-review3):
+    /// YALNIZ kilit→açık geçişinde reactivate — aktif kart açıkken gelen İKİNCİ yazım (VIP çift-apply) N'yi
+    /// TEKRAR reactivate etmesin (çift video_start/playhead sıçraması). SAF+static (test hedefi).
+    static func reactivatableUnlockIndex(newItems: [FeedItem], previousItems: [FeedItem], lockedIndex: Int?) -> Int? {
         guard let lockedIndex, newItems.indices.contains(lockedIndex),
               newItems[lockedIndex].episode?.access.isPlayableWithoutUnlock == true
         else { return nil }
-        return lockedIndex
+        let wasPlayable = previousItems.indices.contains(lockedIndex)
+            && previousItems[lockedIndex].episode?.access.isPlayableWithoutUnlock == true
+        return wasPlayable ? nil : lockedIndex
     }
 
     private func renderSnapshot(previousItems: [FeedItem] = []) {
