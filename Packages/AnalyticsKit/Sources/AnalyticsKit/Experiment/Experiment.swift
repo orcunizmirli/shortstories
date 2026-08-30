@@ -31,7 +31,26 @@ public struct Experiment: Sendable, Equatable, Codable, Identifiable {
         self.salt = salt
         self.status = status
         self.trafficBasisPoints = trafficBasisPoints
-        self.variants = variants
+        self.variants = Self.dedupedByID(variants)
+    }
+
+    /// Custom decode (synthesized Decodable memberwise init'i ATLAR): remote config ANA yol olduğundan
+    /// variant dedup burada da uygulanır (aksi halde decode edilen deney duplike id taşırdı).
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        key = try container.decode(String.self, forKey: .key)
+        salt = try container.decode(String.self, forKey: .salt)
+        status = try container.decode(ExperimentStatus.self, forKey: .status)
+        trafficBasisPoints = try container.decode(Int.self, forKey: .trafficBasisPoints)
+        variants = try Self.dedupedByID(container.decode([ExperimentVariant].self, forKey: .variants))
+    }
+
+    /// Aynı id'li yinelenen variant'ları eler (İLK'i tutar, sıra korunur): hash bucketing kümülatif
+    /// yürüyüşte sonraki duplike'yi seçebilir ama `variant(withID:)` `first`'i döner → aynı raporlanan
+    /// variant id FARKLI payload'a eşlenmesin (tutarsız deney davranışı; spec-ihlali config savunması).
+    private static func dedupedByID(_ variants: [ExperimentVariant]) -> [ExperimentVariant] {
+        var seen = Set<String>()
+        return variants.filter { seen.insert($0.id).inserted }
     }
 
     /// Yalnız `.running` durumu canlı atama üretir (§7.2).
