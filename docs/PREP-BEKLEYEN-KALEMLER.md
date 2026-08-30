@@ -259,6 +259,24 @@ ertelendi. **App CI'da DEĞİL — hepsi lokal AppTests + build ile doğrulanır
   yalnız vipModel=nil yapar; feed reaktivasyon kancası (onEpisodeUnlocked) bölüm-bazlı, VIP-hepsini-aç için çağrılmaz
   → VIP sonrası feed'deki kilitli bölümler `.locked` kalır. **Fix:** onVIPActivated → feed'i reaktive et (feedState-reset task'ıyla ilişkili).
 
+### Oturum-değişikliği self-review — ertelenen 2 LOW (2026-08-30)
+Bu oturumun 26 fix diff'inin adversarial self-review'ı 7 bulgu üretti: 5'i düzeltildi (cross-account
+accountEpoch fence HIGH; DiziDetay dead-button MEDIUM + ensureEpisodeLoaded bound LOW; ayrıca load/
+refreshTasks/runRefresh fence #3/#4 aynı accountEpoch commit'inde). 2'si dar-edge/karmaşıklık gereği ertelendi:
+- **ProfilModel sessionExpired-çıkış restore, daha taze observeWallet emission'ını clobber edebilir
+  (ProfilModel.swift:~124, LOW):** `wallet = await walletSummary.currentSummary()` await'i sırasında
+  observeWallet daha taze bir emission (E) uygular, sonra restore'un currentSummary() okuması (E'den eski
+  olabilir) E'yi ezer (review #12 clobber sınıfı). Dar yarış: currentSummary() cache'i E store'undan ÖNCE
+  okur AMA atama observeWallet'ten SONRA olur. Pratikte currentSummary() otoriter cache → çoğu interleave'de
+  ≥ E. **Fix:** wallet-emission sayacı/generation → restore yalnız daha taze emission gelmediyse uygular.
+  Değer düşük + dar → ertelendi.
+- **reconcileClaimed unpin, Fix 4 kalıcı-pin garantisini read-replica edge'inde zayıflatır
+  (OdulMerkeziModel+Tasks.swift:~133, LOW):** server bir görevi ÖNCE .claimed SONRA tekrar .claimable
+  dönerse (read-your-writes ihlali, read-replica), unpin sonrası görev .claimable'a döner. Değişim, daha
+  impactful günlük-reset bug'ını (unbounded pin) kapatmak için bu nadir edge'i kabul etti (net-pozitif).
+  **Fix (istenirse):** claimedTaskIDs'i periyot/gün-anahtarıyla scope'la (server .claimed→.claimable
+  regresyonuna karşı dayanıklı). Nadir server-inconsistency → ertelendi.
+
 ---
 
 ## Kod-içsel (prep gerektirmeyen) kalan iş — ayrı izlenir
