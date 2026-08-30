@@ -26,6 +26,20 @@ enum FeedUnlockReducer {
         }
         return didChange ? updated : nil
     }
+
+    /// VIP aktivasyonunda TÜM kilitli feed öğelerini `.unlocked` yapar (VIP tüm bölümlere erişim verir;
+    /// standalone VIP feed'i reaktive etmiyordu — audit LOW). `applyingUnlock` deseniyle simetrik: yalnız
+    /// GERÇEKTEN değişiklik varsa güncellenmiş diziyi döner (idempotent → gereksiz `apply(state:)` yok);
+    /// bölüm taşımayan / zaten oynatılabilir kartlar atlanır.
+    static func applyingVIPUnlock(to items: [FeedItem]) -> [FeedItem]? {
+        var didChange = false
+        let updated = items.map { item -> FeedItem in
+            guard let episode = item.episode, !episode.access.isPlayableWithoutUnlock else { return item }
+            didChange = true
+            return item.replacingEpisode(with: episode.unlocked())
+        }
+        return didChange ? updated : nil
+    }
 }
 
 private extension Episode {

@@ -25,6 +25,10 @@ final class WalletFlowCoordinator {
     /// yeniden oynar (04 §9.2). HomeCoordinator bunu bağlar.
     var onEpisodeUnlocked: ((EpisodeID) -> Void)?
 
+    /// VIP aktifleşti → Ana Sayfa TÜM kilitli bölümleri reaktive eder (VIP tüm erişim; standalone VIP
+    /// feed'i açmıyordu — audit LOW). HomeCoordinator bunu bağlar (onEpisodeUnlocked deseniyle simetrik).
+    var onVIPActivated: (() -> Void)?
+
     init(composition: AppComposition) {
         self.composition = composition
     }
@@ -160,6 +164,9 @@ extension WalletFlowCoordinator: VIPSubscriptionDelegate {
         // Abonelik aktifleşti: VIP sheet kapanır. UnlockSheet açıksa onun entitlement gözlemcisi
         // `unlockSheetDidUnlock`'ı ayrıca atar (tüm yığını kapatır); burada yalnız VIP'i kapatırız.
         vipModel = nil
+        // Standalone (UnlockSheet'siz) VIP de feed'deki TÜM kilitli bölümleri reaktive etmeli (audit LOW):
+        // VIP tüm erişim verir; per-episode onEpisodeUnlocked yalnız tek bölüm açardı.
+        onVIPActivated?()
     }
 
     func vipSubscriptionRequestsManagement() {

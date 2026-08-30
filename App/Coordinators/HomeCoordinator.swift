@@ -102,6 +102,10 @@ final class HomeCoordinator {
         walletFlow.onEpisodeUnlocked = { [weak self] episodeID in
             self?.applyUnlock(episodeID)
         }
+        // VIP aktifleşti → feed'deki TÜM kilitli bölümleri reaktive et (standalone VIP, audit LOW).
+        walletFlow.onVIPActivated = { [weak self] in
+            self?.applyVIPUnlock()
+        }
         startObservingAccountSwitch()
     }
 
@@ -261,20 +265,6 @@ final class HomeCoordinator {
             episodeID: entry.episodeID,
             positionSec: entry.positionSec
         ))
-    }
-
-    /// SS-050/062: bölüm kilidi açıldı (coin/reklam/VIP) → feed'de o bölümü oynatılabilir işaretle.
-    /// Yeni `feedState` `PlayerFeedView.updateUIViewController` üzerinden PlayerKit'e diff'li akar
-    /// ve `PlayerFeedViewController.apply(state:)` kilitli kartı YERİNDE reactivate eder (04 §9.2).
-    /// `feedMountToken` BİLİNÇLİ artırılmaz: reactivation korunan kareyi kaybetmemek için remount
-    /// DEĞİL diff'li apply olmalıdır (remount seed'i yeniden tüketip sıfırdan başlatır — regresyon).
-    /// Karar SAF (`FeedUnlockReducer`): bölüm feed'de yoksa / zaten oynatılabilirse feed'e dokunulmaz.
-    private func applyUnlock(_ episodeID: EpisodeID) {
-        guard let updatedItems = FeedUnlockReducer.applyingUnlock(
-            of: episodeID,
-            to: feedViewModel.feedState.items
-        ) else { return }
-        feedViewModel.feedState = FeedState(items: updatedItems)
     }
 }
 

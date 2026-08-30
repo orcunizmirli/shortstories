@@ -94,6 +94,36 @@ final class FeedUnlockReducerTests: XCTestCase {
         XCTAssertNil(FeedUnlockReducer.applyingUnlock(of: EpisodeID("e1"), to: []))
     }
 
+    // MARK: - VIP: TÜM kilitli bölümleri aç (standalone VIP feed reaktivasyonu, audit LOW)
+
+    func testVIPUnlockMarksAllLockedEpisodesPlayable() {
+        let items = [
+            makeItem(episode: "e1", index: 1, kind: .locked, unlockPrice: 50),
+            makeItem(episode: "e2", index: 2, kind: .free),
+            makeItem(episode: "e3", index: 3, kind: .locked, unlockPrice: 80)
+        ]
+        let updated = FeedUnlockReducer.applyingVIPUnlock(to: items)
+
+        XCTAssertEqual(updated?[0].episode?.access.kind, .unlocked) // VIP açtı
+        XCTAssertEqual(updated?[1].episode?.access.kind, .free) // zaten oynatılabilir, dokunulmaz
+        XCTAssertEqual(updated?[2].episode?.access.kind, .unlocked) // VIP açtı
+    }
+
+    func testVIPUnlockReturnsNilWhenNoLockedEpisodes() {
+        // Idempotent: tüm bölümler zaten oynatılabilir → nil (gereksiz apply/reactivation yok).
+        let items = [
+            makeItem(episode: "e1", index: 1, kind: .free),
+            makeItem(episode: "e2", index: 2, kind: .unlocked)
+        ]
+        XCTAssertNil(FeedUnlockReducer.applyingVIPUnlock(to: items))
+    }
+
+    func testVIPUnlockIgnoresItemsWithoutEpisodeAndEmptyFeed() {
+        XCTAssertNil(FeedUnlockReducer.applyingVIPUnlock(to: []))
+        let promo = [makeItem(id: "promo-1", episode: nil, index: 0, kind: .free)]
+        XCTAssertNil(FeedUnlockReducer.applyingVIPUnlock(to: promo))
+    }
+
     // MARK: - Fixtures
 
     private func makeItem(
