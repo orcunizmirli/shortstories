@@ -146,14 +146,11 @@ HIGH+MEDIUM, recovery-intent MEDIUM×2, settle snapshot-kayması MEDIUM×2); 1'i
 Kütüphane (favoriler/devam-et) + Profil bug-hunt'ının 5 bulgusundan 3'ü düzeltildi (3 commit:
 compensatingDeletes cross-account leak MEDIUM, loadContinue generation-guard MEDIUM, ProfilModel
 sessionExpired-çıkış cüzdan-restore MEDIUM); 2'si düşük-değer/self-healing doğası gereği ertelendi:
-- **WatchHistoryStore.mergeServerProgress synced-newer LWW boşluğu (WatchHistoryStore.swift:31, LOW):**
-  Merge guard'ı yalnız `pendingUpload && watchedAt daha yeni` yerel kaydı korur (`isNewerLocalPending`).
-  Yerel kayıt **synced** ama server merge batch'indeki kayıttan DAHA YENİ ise (out-of-order/bayat server
-  response: T2 ack'lendikten sonra araya giren eski T1 snapshot'ı) guard false döner → eski T1 server
-  kaydı daha yeni synced T2'yi EZER (LWW ihlali). Pratikte self-healing: synced ⇒ server o değeri zaten
-  ack'lemiş ⇒ sonraki merge T2'yi geri getirir; pencere yalnız reordered/stale response anıdır. **Fix:**
-  guard'ı syncState'ten bağımsız saf `entity.watchedAt > record.watchedAt`'e genişlet (synced kayıt da
-  daha yeniyse korunur). Değer düşük (geçici + kendini düzelten), izole değil → ayrı pass'e bırakıldı.
+- **WatchHistoryStore.mergeServerProgress synced-newer LWW boşluğu (WatchHistoryStore.swift:31, LOW) →
+  DÜZELTİLDİ:** merge guard'ı yalnız pendingUpload yerel kaydı koruyordu; synced yerel kayıt server
+  batch'inden DAHA YENİ ise (bayat/out-of-order response) eski server kaydı yeni synced'i EZİYORDU. Fix:
+  guard syncState-BAĞIMSIZ `existing.watchedAt > record.watchedAt` (pending + synced korunur; yalnız
+  synced-newer case değişir); dead `isNewerLocalPending` kaldırıldı. RED→GREEN, 313 AppFoundation test yeşil.
 - **FavoritesService kalıcı-red rollback yok (FavoritesService.swift:202/223, LOW):** `syncAdd`/`syncRemove`
   offline-DIŞI tüm hataları tek `catch` ile `.skipped` sayar → kayıt `pendingAdd`/`pendingRemove` kalır ve
   HER sync turunda süresiz retry edilir. Sunucu KALICI reddederse (4xx: seri yok/403/422) iyimser yerel
