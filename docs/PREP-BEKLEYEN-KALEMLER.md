@@ -315,7 +315,20 @@ YENİ fix'lerimin regresyonu** (desen 3. kez kanıtlandı). TAMAMI TDD ile düze
   boşa authorize. **Fix:** catch'te AppError.isRetryable ile ayır (kalıcı→true, geçici→false).
 - **DERS:** self-review'ı kompleks fix'lerin ÜSTÜNE tekrar tekrar koş — her geçiş (2 ve 3) benim ÖNCEKİ
   fix'imde yeni regresyon buldu. Nav marker/derinlik heuristiği (NavigationPath) temelde kırılgan → `[AppRoute]`
-  peek doğru altitude. Reaktivasyon/idempotency her feedState yazımında değil TRANSITION'da olmalı.
+  peek doğru altitude.
+
+### Oturum-değişikliği self-review-4 — self-review3 fix'leri (2026-08-30, HEPSİ DÜZELTİLDİ)
+self-review3'ün DÜZELTTİĞİ fix'lerin 4. review'ı 2 CONFIRMED MEDIUM buldu (ikisi de self-review3 fix'lerimin
+KENDİ kenar-değiş-tokuşu; nav [AppRoute] TEMİZ çıktı). DÜZELTİLDİ (476b8b5):
+- **TRANSITION-check (da10d67) başarısız-reaktivasyon retry'ını bastırıyordu (MEDIUM):** `.failed` (transient)
+  reaktivasyon sonrası lockedIndex=N kalır + kart playable → sonraki apply'da previousItems[N] zaten playable →
+  transition yok → nil → kart oynatmaz. **Fix:** transition heuristiği yerine UÇUŞ-guard'ı (reactivatingIndex;
+  dispatch'te set, settle'da temizlenir) → çift-apply bastırılır AMA başarısızlık retry'ı korunur.
+- **prepareNext isRetryable (49a504a) `.unexpected` slot-çekişmesini kalıcı sanıyordu (MEDIUM):** geçici
+  slot-çekişme → completedWarmups → sticky-cold. **Fix:** `.unexpected`'i kalıcıdan hariç tut → re-warm.
+- **META-DERS:** "akıllı heuristik" fix'ler (transition/isRetryable-broad) art arda kenar-değiş-tokuşu yaptı;
+  yapısal/gerçek-durum çözümler (nav [AppRoute] peek, in-flight guard, narrow-exclude) sağlam. Heuristik yerine
+  gerçek-durumu izle. self-review zincirini fix temizlenene dek sürdür (4 geçiş: her biri bir öncekini düzeltti).
 
 ---
 
