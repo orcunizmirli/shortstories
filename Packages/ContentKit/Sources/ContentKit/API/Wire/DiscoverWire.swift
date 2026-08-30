@@ -56,7 +56,7 @@ struct CollectionWire: Decodable, Sendable {
         // Bozuk (present-but-invalid) bir series TÜM koleksiyonu düşürmesin (audit MEDIUM: nested
         // series izolasyonu) — lossy eleman-bazlı decode, bozuk series atlanır, kalan liste görünür.
         seriesList = try container.decodeLossyArray(SeriesWire.self, forKey: .seriesList)
-        nextCursor = try container.decodeIfPresent(String.self, forKey: .nextCursor)
+        nextCursor = try container.decodeOpaqueCursor(forKey: .nextCursor) // boş "" → nil (sonsuz sayfalama önlenir)
     }
 
     private enum CodingKeys: String, CodingKey {

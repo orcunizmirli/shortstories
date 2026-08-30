@@ -43,4 +43,13 @@ extension KeyedDecodingContainer {
     ) throws -> [Element] {
         try decodeIfPresent(LossyArray<Element>.self, forKey: key)?.elements ?? []
     }
+
+    /// Opak sayfalama cursor'ını decode eder; boş/boşluk-yalnızca string'i (geçerli bir opak cursor
+    /// DEĞİL) nil'e normalize eder → `Page.isLastPage` (nextCursor == nil) doğru son-sayfayı türetir ve
+    /// `cursor=""` ile aynı sayfanın tekrar istendiği sonsuz/yinelenen sayfalama önlenir (savunmacı sınır).
+    func decodeOpaqueCursor(forKey key: Key) throws -> String? {
+        let raw = try decodeIfPresent(String.self, forKey: key)
+        guard let raw, !raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        return raw
+    }
 }

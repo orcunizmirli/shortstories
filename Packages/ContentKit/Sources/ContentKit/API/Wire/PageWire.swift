@@ -12,7 +12,7 @@ struct PageWire<ItemWire: Decodable & Sendable>: Decodable, Sendable {
         // per-item resilience) — lossy eleman-bazlı decode, bozuk item atlanır, sayfanın kalanı akar.
         // (Sözleşme-geçerli ama render-dışı itemlar — .unknown tip — yine decode olur, mapping'de düşer.)
         items = try container.decodeLossyArray(ItemWire.self, forKey: .items)
-        nextCursor = try container.decodeIfPresent(String.self, forKey: .nextCursor)
+        nextCursor = try container.decodeOpaqueCursor(forKey: .nextCursor) // boş "" → nil (sonsuz sayfalama önlenir)
         ttlSec = try container.decodeIfPresent(Int.self, forKey: .ttlSec)
     }
 

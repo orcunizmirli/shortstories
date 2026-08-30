@@ -26,4 +26,25 @@ struct PaginationTests {
         #expect(wire.nextCursor == nil)
         #expect(wire.ttlSec == nil)
     }
+
+    /// Savunmacı sınır (audit LOW): sunucu son sayfada opak-cursor sözleşmesini ihlal edip
+    /// `"nextCursor":""` (boş string) dönerse decodeIfPresent bunu "" (NON-nil) korurdu → isLastPage
+    /// false → çağıran `cursor=""` ile aynı sayfayı tekrar ister (sonsuz/yinelenen sayfalama). Boş
+    /// string nil'e normalize edilir → son sayfa.
+    @Test func bosStringNextCursorNilOlarakNormalizeEdilir() throws {
+        let json = Data(#"{ "items": [], "nextCursor": "" }"#.utf8)
+
+        let wire = try Fixtures.decoder.decode(PageWire<SeriesWire>.self, from: json)
+
+        #expect(wire.nextCursor == nil) // "" → nil (son sayfa; sonsuz döngü yok)
+    }
+
+    /// Boşluk-yalnızca cursor da (`"   "`) opak-cursor değildir → nil'e normalize.
+    @Test func whitespaceNextCursorNilOlarakNormalizeEdilir() throws {
+        let json = Data(#"{ "items": [], "nextCursor": "   " }"#.utf8)
+
+        let wire = try Fixtures.decoder.decode(PageWire<SeriesWire>.self, from: json)
+
+        #expect(wire.nextCursor == nil)
+    }
 }
