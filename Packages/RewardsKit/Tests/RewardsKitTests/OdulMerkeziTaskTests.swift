@@ -10,27 +10,6 @@ import Testing
 @MainActor
 @Suite("SS-112 OdulMerkezi görev merkezi")
 struct OdulMerkeziTaskTests {
-    private func makeModel(
-        service: FakeCheckInService = FakeCheckInService(),
-        wallet: FakeRewardsWallet = FakeRewardsWallet(100),
-        taskCatalog: FakeTaskCatalog = FakeTaskCatalog(),
-        taskProgress: FakeTaskProgress = FakeTaskProgress(),
-        rewardClaiming: FakeRewardClaiming = FakeRewardClaiming(),
-        analytics: MockAnalytics = MockAnalytics(),
-        flags: MockFeatureFlags = MockFeatureFlags()
-    ) -> OdulMerkeziModel {
-        OdulMerkeziModel(
-            checkInService: service,
-            wallet: wallet,
-            taskCatalog: taskCatalog,
-            taskProgress: taskProgress,
-            rewardClaiming: rewardClaiming,
-            analytics: analytics,
-            featureFlags: flags,
-            delegate: RewardsDelegateSpy()
-        )
-    }
-
     // MARK: - Katalog yükleme
 
     @Test func loadsTaskCatalogFromServer() async {
@@ -236,6 +215,39 @@ struct OdulMerkeziTaskTests {
         #expect(model.claimableTaskCount == 0)
     }
 
+    @Test func serverConfirmedClaimedUnpinsForDailyResetReclaim() async {
+        // Audit MEDIUM: claimedTaskIDs eventual-consistency guard'ı (Fix 4) oturum boyu birikip HİÇ
+        // temizlenmiyordu → günlük (resetPolicy .daily) bir görev server'da SIFIRLANIP yeniden .claimable
+        // döndüğünde yanlışça .claimed'e sabitleniyordu (ertesi gün claim EDİLEMEZ, kayıp coin). Fix:
+        // server bir görevi ARTIK .claimed döndürünce guard işini bitti → setten düşür → sonraki .claimable
+        // (reset) pinlenmez. Fix 4'ün korumasını (server HÂLÂ .claimable iken pin) BOZMAZ.
+        let claimedTask = RewardTask.mock(id: "daily", progress: 10, state: .claimed)
+        let catalog = FakeTaskCatalog(.success([
+            .mock(id: "daily", kind: .watchMinutes, rewardCoins: 20, target: 10, progress: 10, state: .claimable)
+        ]))
+        let claiming = FakeRewardClaiming(.success(.mock(coins: 20, coinBalance: 120, task: claimedTask)))
+        let model = makeModel(taskCatalog: catalog, rewardClaiming: claiming)
+        model.onAppear()
+        await model.pendingWork()
+
+        await model.claimTask("daily")
+        #expect(model.taskItems.first?.status == .claimed) // claim sonrası .claimed (pinli)
+
+        // Server görevi ARTIK .claimed döndürür (eventual-consistency yakaladı) → guard setten düşürülür.
+        catalog.set(.success([
+            .mock(id: "daily", kind: .watchMinutes, rewardCoins: 20, target: 10, progress: 10, state: .claimed)
+        ]))
+        await model.retry()
+        #expect(model.taskItems.first?.status == .claimed)
+
+        // Ertesi gün RESET: server görevi .claimable (sıfır ilerleme) döndürür → pinlenmemeli, claim edilebilir.
+        catalog.set(.success([
+            .mock(id: "daily", kind: .watchMinutes, rewardCoins: 20, target: 10, progress: 0, state: .claimable)
+        ]))
+        await model.retry()
+        #expect(model.taskItems.first?.isClaimable == true) // reset görev claim edilebilir (yanlış .claimed pini yok)
+    }
+
     // MARK: - Offline / hata: kredi vermez, satır-içi uyarı
 
     @Test func claimOfflineNoCreditShowsFailureForThatTask() async {
@@ -308,5 +320,30 @@ struct OdulMerkeziTaskTests {
         #expect(catalog.callCount == 1)
         await model.retry()
         #expect(catalog.callCount == 2)
+    }
+}
+
+// MARK: - Test kurucusu (type_body_length: same-file extension gövdeye sayılmaz)
+
+private extension OdulMerkeziTaskTests {
+    func makeModel(
+        service: FakeCheckInService = FakeCheckInService(),
+        wallet: FakeRewardsWallet = FakeRewardsWallet(100),
+        taskCatalog: FakeTaskCatalog = FakeTaskCatalog(),
+        taskProgress: FakeTaskProgress = FakeTaskProgress(),
+        rewardClaiming: FakeRewardClaiming = FakeRewardClaiming(),
+        analytics: MockAnalytics = MockAnalytics(),
+        flags: MockFeatureFlags = MockFeatureFlags()
+    ) -> OdulMerkeziModel {
+        OdulMerkeziModel(
+            checkInService: service,
+            wallet: wallet,
+            taskCatalog: taskCatalog,
+            taskProgress: taskProgress,
+            rewardClaiming: rewardClaiming,
+            analytics: analytics,
+            featureFlags: flags,
+            delegate: RewardsDelegateSpy()
+        )
     }
 }

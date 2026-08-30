@@ -113,8 +113,17 @@ public extension OdulMerkeziModel {
     }
 
     /// Yerel olarak claim edilmiş (`claimedTaskIDs`) ama server hâlâ `.claimed` DEĞİL döndüren görevleri
-    /// `.claimed`'e sabitler (Fix 4). Kayıt boşsa katalog değişmeden döner.
+    /// `.claimed`'e sabitler (Fix 4 eventual-consistency guard). Kayıt boşsa katalog değişmeden döner.
     private func reconcileClaimed(_ fresh: RewardTaskCatalog) -> RewardTaskCatalog {
+        guard !claimedTaskIDs.isEmpty else { return fresh }
+        // Server bir görevi ARTIK .claimed döndürüyorsa eventual-consistency guard'ı işini bitti → setten
+        // DÜŞÜR. Aksi halde set oturum boyu büyür ve günlük (resetPolicy .daily) RESET olan görev ertesi
+        // gün yeniden .claimable döndüğünde yanlışça .claimed'e sabitlenip claim EDİLEMEZ kalırdı (kayıp
+        // coin). Server .claimed onayı bir periyot içinde monoton olduğundan düşürme Fix 4'ü BOZMAZ:
+        // guard yalnız server HÂLÂ .claimable dönerken (henüz onaylamadı) pinler.
+        for task in fresh.tasks where task.state == .claimed {
+            claimedTaskIDs.remove(task.id)
+        }
         guard !claimedTaskIDs.isEmpty else { return fresh }
         let reconciled = fresh.tasks.map { task -> RewardTask in
             claimedTaskIDs.contains(task.id) && task.state != .claimed ? task.markingClaimed() : task
