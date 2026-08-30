@@ -236,6 +236,35 @@ format break→continue LOW); 2'si App-wiring/spec-config olduğu için ertelend
   payload'a eşlenir (tutarsız deney davranışı). Spec-ihlali config (operatör hatası) gerektirir. **Fix:**
   katalog yüklemede duplicate variant id'leri validate/dedup et (ilkini tut + telemetri) → ayrı pass.
 
+### App-integration bug-hunt — ertelenen kalemler (2026-08-30)
+App katmanı (coordinators/adapters/analytics-wiring) adversarial bug-hunt'ının 10 kept bulgusundan 3'ü
+düzeltildi (3 commit: ab_exposure registry crash HIGH; rewarded-preload kill-switch LOW; deeplink_opened
+decorated LOW); kalanlar App-mimari (session-observation/reset altyapısı) veya küçük navigasyon olduğu için
+ertelendi. **App CI'da DEĞİL — hepsi lokal AppTests + build ile doğrulanır.**
+- **HESAP-DEĞİŞİMİNDE UZUN-ÖMÜRLÜ UI STATE RESET EDİLMİYOR (cluster, MEDIUM) — TEK MİMARİ TASK:** App'te
+  hiçbir session-state gözlemcisi yok; coordinator'lar/UI-model'ler app init'te BİR KEZ kurulur ve
+  `switchToExistingAccount` onları yeniden yaratmaz. `LiveAccountSwitchDataCoordinator.resetLocalUserData`
+  YALNIZ watch/favorites/wallet repo'larını sıfırlar. Sızan durumlar: (a) **HomeCoordinator.feedViewModel.feedState**
+  (HomeCoordinator.swift:234) — applyUnlock ile `.unlocked` işaretlenmiş bölümler + önceki hesabın seed'lenmiş
+  feed'i B hesabına taşınır; PlayerPool.isPlayable `.unlocked`'a entitlement sormadan güvendiğinden paywall
+  BASTIRILIR (imzalı-URL cache süresi geçene dek; sonra sunucu-otoriter reddi backstop). (b) **RewardsCoordinator.
+  odulMerkeziModel.checkInState** — A'nın bellek-içi checkInState'i B'nin status'üyle karşılaştırılıp sahte
+  `checkin_streak_break(previousStreakLength: A)` atar (win-back KPI cross-account kirlenmesi). (c)
+  **UserDefaultsLastSeenStreakStore** (key `rewards.last_seen_streak` hesap-scope'suz) — switch'te temizlenmez →
+  cold-launch A'nın streak'ini B'ye sızdırır. **Fix (tek task):** session-identity gözlemi (SessionManager.stateUpdates
+  zaten var; ProfilModel gözlüyor) VEYA account-switch reset broadcast'i → uzun-ömürlü UI coordinator/model'ler
+  kendini reset etsin (feedState temizle, OdulMerkeziModel.resetForAccountSwitch [claimedTaskIDs+checkInState+
+  hasLoaded+awaitedBalance+coinBalance], last_seen_streak clear). RewardsKit §OdulMerkeziModel-reset kalemiyle AYNI kök.
+- **Deep-link `search?q=` Arama açıkken query düşürülür (DiscoverCoordinator.swift:52, LOW CONFIRMED):** showSearch
+  `guard searchStackDepth == nil else { return }` — Arama zaten stack'teyse yeni universal-link query'si sessizce
+  atlanır, ön-doldurma uygulanmaz. **Fix:** Arama açık+query doluysa mevcut frame'i pop+repush VEYA AramaModel'e forward.
+- **`.series` deep-link idempotent değil (DiscoverCoordinator.swift:41, LOW):** showDetail `path.append` (NavigationPath,
+  peek yok) → aynı diziye ikinci push özdeş DiziDetay çoğaltır. **Fix:** son diziDetay seriesID marker'ı (search deseni),
+  özdeşse tekrar push etme.
+- **Standalone VIP aktivasyonu feed'i reaktive etmez (WalletFlowCoordinator.swift:159, LOW):** vipSubscriptionDidActivate
+  yalnız vipModel=nil yapar; feed reaktivasyon kancası (onEpisodeUnlocked) bölüm-bazlı, VIP-hepsini-aç için çağrılmaz
+  → VIP sonrası feed'deki kilitli bölümler `.locked` kalır. **Fix:** onVIPActivated → feed'i reaktive et (feedState-reset task'ıyla ilişkili).
+
 ---
 
 ## Kod-içsel (prep gerektirmeyen) kalan iş — ayrı izlenir
