@@ -108,6 +108,10 @@ final class GatedCheckInService: CheckInService, @unchecked Sendable {
     private var claimResult: CheckInClaimResult
     private var armed = false
     private var armedClaim = false
+    /// Set edilirse `status()` gate'ten SONRA bu hatayı fırlatır (uçuştaki status()-throw yolu testleri).
+    private var statusError: Error?
+    /// Set edilirse `claim()` gate'ten SONRA bu hatayı fırlatır (uçuştaki generic-catch fence testleri).
+    private var claimError: Error?
 
     init(status: CheckInState, claim: CheckInClaimResult) {
         statusResult = status
@@ -122,12 +126,25 @@ final class GatedCheckInService: CheckInService, @unchecked Sendable {
         lock.withLock { armedClaim = true }
     }
 
+    func setStatusError(_ error: Error) {
+        lock.withLock { statusError = error }
+    }
+
+    func setClaimError(_ error: Error) {
+        lock.withLock { claimError = error }
+    }
+
     func status() async throws -> CheckInState {
         let isArmed = lock.withLock { armed }
         if isArmed {
             await gate.wait()
         }
-        return lock.withLock { statusResult }
+        return try lock.withLock {
+            if let statusError {
+                throw statusError
+            }
+            return statusResult
+        }
     }
 
     func claim() async throws -> CheckInClaimResult {
@@ -135,7 +152,12 @@ final class GatedCheckInService: CheckInService, @unchecked Sendable {
         if isArmed {
             await claimGate.wait()
         }
-        return lock.withLock { claimResult }
+        return try lock.withLock {
+            if let claimError {
+                throw claimError
+            }
+            return claimResult
+        }
     }
 }
 

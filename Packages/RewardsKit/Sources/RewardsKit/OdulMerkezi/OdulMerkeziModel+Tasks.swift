@@ -77,7 +77,9 @@ public extension OdulMerkeziModel {
             markTaskClaimed(fresh)
             applyAuthoritativeBalance(balance)
         } catch {
-            // Kredi VERİLMEZ; son bilinen katalog korunur, kullanıcı tekrar deneyebilir.
+            // Kredi VERİLMEZ; son bilinen katalog korunur, kullanıcı tekrar deneyebilir. Hesap-değişimi
+            // fence'i (self-review2): switch SONRASI çözülen A görev-claim'inin hatası B'ye YAZILMASIN.
+            guard epoch == accountEpoch else { return }
             taskClaimFailure = TaskClaimFailure(taskID: id, reason: Self.claimFailure(for: error))
         }
     }

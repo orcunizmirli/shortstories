@@ -179,13 +179,11 @@ public final class OdulMerkeziModel {
             await refreshCheckIn()
         } else {
             await load()
-            // switch yükleme sırasında olduysa hasLoaded=true YAPMA → B'nin sonraki onAppear'ı tam yüklesin.
-            guard epoch == accountEpoch else {
-                loadTask = nil
-                return
-            }
+            guard epoch == accountEpoch else { return } // switch olduysa hasLoaded YAPMA + loadTask'ı EZME
             hasLoaded = true
         }
+        // Yalnız GÜNCEL epoch'un görevi loadTask'ı bıraksın (bayat/switch-öncesi görev yenisini ezmesin; #2 fix).
+        guard epoch == accountEpoch else { return }
         loadTask = nil
     }
 
@@ -214,24 +212,6 @@ public final class OdulMerkeziModel {
         await refreshCheckIn()
     }
 
-    /// Hesap değişiminde (05 §3.3) hesap-ÖZEL bellek-içi durumu sıfırlar (model TabCoordinator ömrü boyunca
-    /// yaşar → sıfırlanmazsa SS-132 cross-account: sahte streak_break, yanlış .claimed pin, bayat coinBalance).
-    /// generation bump uçuştakini fence eder; hasLoaded=false tam-yükletir; kalıcı lastSeenStreak temizlenir.
-    public func resetForAccountSwitch() {
-        accountEpoch += 1 // uçuştaki claim/load/refreshTasks yanıtlarını fence et (önceki hesap → yeni'ye yazmasın)
-        checkInGeneration += 1
-        checkInState = nil
-        coinBalance = 0
-        awaitedBalance = nil
-        catalog = RewardTaskCatalog()
-        catalogLoadedOnce = false
-        liveProgress = [:]
-        claimedTaskIDs.removeAll()
-        hasLoaded = false
-        loadState = .loading
-        lastSeenStreakStore.reset()
-    }
-
     private func refreshCheckIn() async {
         let generation = checkInGeneration
         do {
@@ -244,6 +224,10 @@ public final class OdulMerkeziModel {
             // Görev listesi (missionSection) yalnız .loaded'da görünür → mission_view (08 §3.5).
             analytics.trackMissionView(missionIDs: catalog.visibleTasks.map(\.id))
         } catch {
+            // Fix (self-review2): CATCH da generation-fence'li (başarı yolu gibi). Aksi halde araya giren
+            // claim/reset SONRASI status() THROW ederse loadState .failed'e düşüp para-ekranını tam-ekran
+            // hataya kırardı (başarılı claim'e rağmen buton regresyonu, throw yolu / B'de sahte hata).
+            guard generation == checkInGeneration else { return }
             loadState = Self.loadFailure(for: error)
         }
     }
@@ -275,9 +259,8 @@ public final class OdulMerkeziModel {
     }
 
     private func applyBalance(_ balance: Int) {
-        // Fix 1 + audit MEDIUM: claim/409 sonrası beklenen OTORİTER bakiye varken BAYAT (awaited-ALTI, claim
-        // öncesi in-flight) akış değeri onu EZMESİN; akış değere yetişince/aşınca guard temizlenir. `>=`
-        // (exact yerine): awaited hiç yeniden yayılmazsa yeni değer donmasın (bayat-alt yine düşürülür).
+        // Fix 1 + audit MEDIUM: OTORİTER awaited bakiye varken BAYAT (awaited-ALTI) akış değeri onu EZMESİN;
+        // `>=` (exact yerine): awaited yeniden yayılmazsa yeni değer donmasın (bayat-alt yine düşürülür).
         if let awaited = awaitedBalance {
             guard balance >= awaited else { return }
             awaitedBalance = nil
@@ -285,9 +268,8 @@ public final class OdulMerkeziModel {
         coinBalance = balance
     }
 
-    /// OTORİTER bakiye kredisi (claim yanıtı / 409 sonrası cüzdan okuması): başlığı günceller ve akışın
-    /// bu değere yakalamasını bekler — araya giren BAYAT akış değeri krediyi ezemez (Fix 1). Görev claim
-    /// akışı (`+Tasks` uzantısı) da kullanır → `internal`.
+    /// OTORİTER bakiye kredisi (claim/409 sonrası): başlığı günceller + akışın bu değere yakalamasını
+    /// bekler — araya giren BAYAT akış krediyi ezemez (Fix 1). Görev claim akışı (`+Tasks`) da kullanır → `internal`.
     func applyAuthoritativeBalance(_ balance: Int) {
         coinBalance = balance
         awaitedBalance = balance
@@ -313,8 +295,8 @@ public final class OdulMerkeziModel {
         do {
             let result = try await checkInService.claim()
             guard epoch == accountEpoch else { return } // hesap-değişimi fence'i (uçuştaki claim → yeni hesaba yazma)
-            // SERVER-OTORİTER kredi: bakiye ve durum YALNIZ server yanıtından (optimistik DEĞİL).
-            applyAuthoritativeBalance(result.coinBalance) // Fix 1: bayat akış bu krediyi ezemez
+            // SERVER-OTORİTER kredi (optimistik DEĞİL); bayat akış bu krediyi ezemez (Fix 1).
+            applyAuthoritativeBalance(result.coinBalance)
             applyClaimedCheckInState(result.checkin) // generation bump + son-görülen streak persist
             claimCelebration += 1 // haptic + coin uçuş animasyonu (View tetikler)
             analytics.trackCheckinClaim(
@@ -322,19 +304,18 @@ public final class OdulMerkeziModel {
                 coinReward: result.reward.coins,
                 isStreakBonus: result.reward.isStreakBonus
             )
-            // Başarılı check-in = POZİTİF an (RTG-01): App koordinatörü puanlama istemini burada
-            // değerlendirir. Yalnız GERÇEK claim'de (idempotent 409 ALREADY_CLAIMED yolunda DEĞİL).
+            // Başarılı check-in = POZİTİF an (RTG-01): puanlama istemi (yalnız GERÇEK claim, 409'da DEĞİL).
             delegate?.rewardsDidClaimCheckIn(streakDay: result.checkin.cycleDay)
         } catch let CheckInClaimError.alreadyClaimed(fresh) {
-            // 409 ALREADY_CLAIMED: durumu sessizce senkronla, hata gösterme (idempotent tekrar). Kredi
-            // ZATEN düşmüştür → başlığı otoriter cüzdandan tazele (Fix 2: bayat başlık kalmasın).
+            // 409 ALREADY_CLAIMED: sessiz senkron (hata gösterme); kredi zaten düşmüş → başlığı tazele (Fix 2).
             guard epoch == accountEpoch else { return }
             let balance = await wallet.currentBalance()
             guard epoch == accountEpoch else { return }
             applyClaimedCheckInState(fresh) // generation bump + son-görülen streak persist
             applyAuthoritativeBalance(balance)
         } catch {
-            // Kredi VERİLMEZ; son bilinen durum korunur, kullanıcı tekrar deneyebilir.
+            // Kredi VERİLMEZ; kullanıcı retry. #5 fence: switch SONRASI çözülen A hatası B'ye YAZILMASIN.
+            guard epoch == accountEpoch else { return }
             claimFailure = Self.claimFailure(for: error)
         }
     }
@@ -388,5 +369,32 @@ public final class OdulMerkeziModel {
         // "istemci ilk gördüğünde 1 kez": sonraki tazeleme (warm) aynı kırılmayı TEKRAR atmaz.
         lastSeenStreakStore.setLastSeenStreak(state.streakDays)
         analytics.trackCheckinView(currentStreakDay: state.cycleDay, canClaimToday: !state.todayClaimed)
+    }
+}
+
+// MARK: - Hesap değişimi sıfırlama (05 §3.3 / SS-132)
+
+public extension OdulMerkeziModel {
+    /// Hesap değişiminde hesap-ÖZEL bellek-içi durumu sıfırlar (model TabCoordinator ömrü boyu yaşar →
+    /// sıfırlanmazsa cross-account: sahte streak_break, yanlış .claimed pin, bayat coinBalance, A hata banner'ı).
+    /// accountEpoch/checkInGeneration bump uçuştakini fence eder; hasLoaded=false tam-yükletir.
+    func resetForAccountSwitch() {
+        accountEpoch += 1 // uçuştaki claim/load/refreshTasks yanıtlarını fence et (önceki hesap → yeni'ye yazmasın)
+        checkInGeneration += 1
+        checkInState = nil
+        coinBalance = 0
+        awaitedBalance = nil
+        catalog = RewardTaskCatalog()
+        catalogLoadedOnce = false
+        liveProgress = [:]
+        claimedTaskIDs.removeAll()
+        hasLoaded = false
+        loadState = .loading
+        lastSeenStreakStore.reset()
+        claimFailure = nil // #5 fix: YERLEŞMİŞ A hata banner'ları B'ye sızmasın (load/refresh temizlemez)
+        taskClaimFailure = nil
+        // #2 fix: uçuştaki yüklemeyi iptal + loadTask serbest → yoksa onAppear reload'u boğulur (sonsuz .loading).
+        loadTask?.cancel()
+        loadTask = nil
     }
 }
