@@ -117,13 +117,11 @@ Durum tarihi: 2026-07-20 · Referans: `09-yol-haritasi-tasklar.md`
 ### AppFoundation auth bug-hunt — ertelenen 2 kalem (2026-08-30)
 Auth/session bug-hunt'ın 9 bulgusundan 7'si düzeltildi (4 commit); 2'si düşük-değer/atomiklik-doğası
 gereği ertelendi:
-- **linkSession snapshot/token ayrışması (finding 5, MEDIUM):** 3 Keychain yazması (refresh/access/
-  snapshot) atomik değil. Torn-write TOKEN sırası (refresh-first) DÜZELTİLDİ (saatli bomba engellendi);
-  ama snapshot en son + best-effort yazıldığından, refresh+access başarılı olup snapshot yazması koparsa
-  relaunch'ta "guest snapshot + linked token" ayrışması (UI misafir gösterir ama istekler linked) kalır.
-  Keychain transaction olmadığı için 3-yazma tam atomiklik imkânsız; **kurtarılabilir UI/kimlik uyuşmazlığı**
-  (server hesap sağlam, re-login düzeltir), güvenlik açığı/veri kaybı DEĞİL. Prep gelince: SecureStore'a
-  atomik çok-anahtar-yazma primitifi (tek SecItem update / staging+swap) → linkSession o primitifi kullanır.
+- **linkSession snapshot/token ayrışması (MEDIUM) → DÜZELTİLDİ (ada4b69):** 3 Keychain yazması ayrı best-effort'tu;
+  snapshot-torn → "guest snapshot + linked token" ayrışması. **Fix:** `SecureStoring.setAtomically` primitifi
+  (protocol extension → conformer/okuyucu değişmez): yedekle→tümünü-yaz→koparsa-geri-al (torn kalmaz, ya hepsi-yeni
+  ya hepsi-eski); linkSession bunu kullanır. Native transaction yok → rollback da koparsa nadir tam garanti değil
+  ama yaygın torn engellenir. TDD: SecureStoringAtomicTests + linkSession torn testi (revert-verify). 317 test yeşil.
 - **handleRefreshFailure redundant Keychain re-read (finding 225, LOW):** Başarılı misafir re-bootstrap
   sonrası access token'ı bellekteki `response.accessToken` yerine Keychain'den `try?` ile yeniden okuyor;
   o tek okuma geçici glitch'lerse uçuştaki istek gereksiz `sessionExpired` alır (sonraki istek self-heal).
