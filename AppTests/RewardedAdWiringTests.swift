@@ -62,6 +62,18 @@ final class RewardedAdWiringTests: XCTestCase {
         XCTAssertEqual(availability, .hidden) // VIP'e satır gizli
     }
 
+    func testPreloadIsNoOpWhenRewardedAdsFlagOff() async {
+        // Audit LOW: preload() yalnız VIP'e kapılıydı, `ads.rewarded_enabled` remote kill-switch'e DEĞİL →
+        // özellik uzaktan kapatılsa bile her UnlockSheet açılışında gerçek AdMob reklamı ön-yükleniyordu
+        // (gereksiz SDK/ağ + kapalı özelliğe reklam isteği). Kill-switch kapalıyken preload no-op olmalı.
+        let provider = StubRewardedAdProvider(fill: true, outcome: .completed(sampleProof))
+        let adapter = makeAdapter(provider: provider, isVIP: false, flag: false)
+
+        await adapter.preload()
+
+        XCTAssertEqual(provider.preloadCount, 0) // kill-switch kapalı → reklam ön-yüklenmez
+    }
+
     // MARK: - Bayrak/fill kapısı
 
     func testAvailabilityHiddenWhenFlagOff() async {

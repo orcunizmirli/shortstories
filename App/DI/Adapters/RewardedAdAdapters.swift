@@ -41,6 +41,10 @@ struct RewardedAdUnlockingAdapter: WalletKit.RewardedAdUnlocking {
     }
 
     func preload() async {
+        // Remote kill-switch (`ads.rewarded_enabled`) KAPALIYSA ön-yükleme yok: özellik uzaktan
+        // kapatıldığında her UnlockSheet açılışında gerçek AdMob reklamı yüklenmesin (gereksiz SDK/ağ +
+        // kapalı özelliğe reklam isteği). `availability()` zaten bu bayrağı geçiriyordu; preload da geçirir.
+        guard rewardedAdsEnabled() else { return }
         // VIP'e reklam init'i YOK (06 §9.5 reklamsızlık). `RewardedAdService.preload` VIP kontrolü yapmaz →
         // burada üst kapı: VIP kullanıcıya reklam SDK'sı ön-yüklenmez (zorunlu-reklam yok).
         guard await isVIP() == false else { return }
