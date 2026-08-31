@@ -148,6 +148,48 @@ extension URLProtocolStubSerialTests {
             #expect(localRefresher.callCount == 1)
         }
 
+        @Test func overrideOneShotSonraki429RetrysindeBayatTasinmaz() async throws {
+            // self-review (#3d): override YALNIZ kurtarmayı izleyen İLK denemede kullanılmalı; 429/idempotent-retry
+            // döngüsünde TAŞINMAMALI (backoff sırasında eşzamanlı rotasyon → bayat override → gereksiz sessionExpired).
+            // Senaryo: kurtarma at_v1 döndürür (o an keychain'e yazılmamış); backoff'ta keychain at_v2'ye rotasyonlanır;
+            // 3. istek at_v1'i DEĞİL keychain'deki taze at_v2'yi taşımalı (one-shot temizler).
+            let store = MockSecureStore()
+            try store.setString("at_v2", forKey: .accessToken) // interceptor'ın okuduğu TAZE token
+            let localRefresher = SpyTokenRefresher()
+            localRefresher.stub(.success("at_v1")) // kurtarmanın döndürdüğü (backoff'ta bayatlayan) token
+            let authedClient = try APIClient(
+                configuration: APIConfiguration(
+                    environment: .development,
+                    baseURL: #require(URL(string: "https://api.test.local/v1"))
+                ),
+                urlSession: URLProtocolStub.makeSession(),
+                interceptors: [AuthInterceptor(secureStore: store)],
+                tokenRefresher: localRefresher
+            )
+            // receivedRequests.count 1-indexli (mevcut istek dahil sayılır).
+            URLProtocolStub.setHandler { request in
+                switch URLProtocolStub.receivedRequests.count {
+                case 1:
+                    return (URLProtocolStub.httpResponse(for: request, status: 401), Data()) // 1. istek → 401 → refresh
+                case 2:
+                    // 2. istek override at_v1 taşır → 429 (backoff); one-shot override'ı temizlemeli.
+                    return (URLProtocolStub.httpResponse(for: request, status: 429, headers: ["Retry-After": "0"]), Data())
+                default:
+                    // 3. istek: override TEMİZLENDİĞİ için interceptor'ın taze at_v2'si gitmeli (at_v1 DEĞİL).
+                    let fresh = request.value(forHTTPHeaderField: "Authorization") == "Bearer at_v2"
+                    return (
+                        URLProtocolStub.httpResponse(for: request, status: fresh ? 200 : 401),
+                        Data(#"{"value":"ok"}"#.utf8)
+                    )
+                }
+            }
+
+            let response = try await authedClient.send(AuthedEndpoint())
+
+            #expect(response == Payload(value: "ok")) // 3. istek taze at_v2 taşıdı (bayat at_v1 taşınmadı)
+            #expect(URLProtocolStub.receivedRequests.count == 3)
+        }
+
         @Test func refreshSonrasiTekrarDa401IseSessionExpiredFirlarVeIkinciRefreshYapilmaz() async {
             URLProtocolStub.setHandler { request in
                 (URLProtocolStub.httpResponse(for: request, status: 401), Data())

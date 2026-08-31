@@ -47,8 +47,13 @@ public struct APIClient: APIClientProtocol {
         // performRefresh "çağırana taze access'i döndür" der, bu onu fiilen kullanır (audit LOW).
         var recoveredBearer: String?
         while true {
+            // ONE-SHOT (self-review): override YALNIZ kurtarmayı izleyen İLK denemede kullanılır; tüketilip
+            // temizlenir. Aksi halde 429/idempotent-retry döngüsü bayat override'ı taşır (backoff sırasında
+            // eşzamanlı rotasyon → gereksiz sessionExpired). Kurtarma dalları bir sonraki için yeniden set eder.
+            let override = recoveredBearer
+            recoveredBearer = nil
             do {
-                return try await performOnce(endpoint, usedBearer: &usedBearer, overrideBearer: recoveredBearer)
+                return try await performOnce(endpoint, usedBearer: &usedBearer, overrideBearer: override)
             } catch let error as AppError {
                 // 401 (TOKEN_EXPIRED / kod yok) → tek-uçuş refresh → orijinal istek BİR KEZ
                 // tekrar (03 §8.2). İkinci 401 refresh tetiklemez; refresh hatası olduğu gibi yüzer.
