@@ -29,6 +29,10 @@ public enum ABVariants {
     public static func format(_ assignments: [String: String]) -> String {
         var result = ""
         for (key, value) in assignments.sorted(by: { $0.key < $1.key }) {
+            // Delimiter injection savunması: key/value `:` ya da `,` içerirse (bozuk remote config) düzleştirilmiş
+            // string ambiguous olur (backend yanlış pair'lere böler) → o girdiyi ATLA (diğer deneylerin
+            // pair'lerini bozmasın; ambiguous pair yaymaktan iyidir). Key'ler/id'ler konvansiyonel snake_case.
+            guard !key.contains(where: Self.isDelimiter), !value.contains(where: Self.isDelimiter) else { continue }
             let entry = "\(key):\(value)"
             let candidate = result.isEmpty ? entry : "\(result),\(entry)"
             if candidate.count > maxLength {
@@ -37,5 +41,10 @@ public enum ABVariants {
             result = candidate
         }
         return result
+    }
+
+    /// `ab_variants` düzleştirme delimiterları — key/value bunlardan birini içerirse pair ambiguous olur.
+    private static func isDelimiter(_ character: Character) -> Bool {
+        character == ":" || character == ","
     }
 }

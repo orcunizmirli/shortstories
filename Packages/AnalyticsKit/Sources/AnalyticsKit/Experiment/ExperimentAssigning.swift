@@ -57,7 +57,15 @@ public struct DeterministicExperimentAssigner: ExperimentAssigning {
             experimentKey: experiment.key,
             salt: experiment.salt + Self.variantSaltNamespace
         )
-        let scaled = variantBucket * totalWeight / Self.bucketModulus
+        // `scaled` = variantBucket'ı [0, totalWeight) kümülatif-ağırlık uzayına eşler. `variantBucket <
+        // bucketModulus` → scaled her zaman < totalWeight. Overflow-güvenli: aşırı-büyük totalWeight
+        // (adversarial remote config) `variantBucket * totalWeight`'i Int64'te TAŞIRIP TRAP ettirebilir →
+        // taşmada Double ile hesapla (bucketing için hassasiyet yeterli, crash yerine geçerli dağılım);
+        // normal (erişilebilir) durumda exact integer math korunur.
+        let (product, overflow) = variantBucket.multipliedReportingOverflow(by: totalWeight)
+        let scaled = overflow
+            ? Int((Double(variantBucket) / Double(Self.bucketModulus)) * Double(totalWeight))
+            : product / Self.bucketModulus
         var cumulative = 0
         for variant in experiment.variants {
             cumulative += variant.weight

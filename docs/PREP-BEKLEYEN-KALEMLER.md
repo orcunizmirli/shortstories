@@ -557,9 +557,9 @@ routing sağlam. 1 MEDIUM nav-leak + 1 LOW seed-cancel DÜZELTİLDİ, 2 LOW erte
   ama izleme-pozisyonu B'ye seed'lenir; çok dar — switch tek await'e denk gelmeli). **Fix:** await öncesi userID/
   epoch yakala, değiştiyse requestPlayback'i düşür (RewardsKit epoch-fence deseni).
 
-### AnalyticsKit adversarial bug-hunt — ertelenen 2 kalem (2026-08-31)
+### AnalyticsKit adversarial bug-hunt — HEPSİ DÜZELTİLDİ (2026-08-31)
 AnalyticsKit paketi küçük+saf+sağlam (batching/queue/flush YOK; experiment assign/exposure-idempotency/dedup/
-format testli, 2026-08-30 ertelenenler zaten fixli). Kusur App-side wiring'de: 1 HIGH DÜZELTİLDİ, 2 LOW ertelendi:
+format testli, 2026-08-30 ertelenenler zaten fixli). 1 HIGH App-wiring + 2 LOW paket-hardening DÜZELTİLDİ:
 - **#1 Player-feed engagement event'leri ab_variants decorator'ını atlıyor (HIGH CONFIRMED, funnel-attribution) →
   ✅ DÜZELTİLDİ:** `HomeCoordinator.makePlayerFeedView()` player-feed'e BASE `dependencies.analytics` geçiyordu
   (decoratedAnalytics değil) → en yüksek-trafikli tüketim event'leri (video_start/swipe_next/swipe_prev/
@@ -569,15 +569,16 @@ format testli, 2026-08-30 ertelenenler zaten fixli). Kusur App-side wiring'de: 1
   `decoratedAnalytics` (diğer TÜM feature wiring'i gibi; exposure ayrı ExperimentClient→BASE yolunda kalır §7.3).
   App derlendi + lint temiz. NOT: PlayerFeedView.analytics `private` + App target CI-dışı → orantılı unit-test yok
   (View'ı public yapmak üretim-API'sini test için açardı); build + pattern-tutarlılığı + reviewer-onayıyla doğrulandı.
-- **#2 Ağırlıklı varyant ölçeklemede Int overflow (LOW PLAUSIBLE, latent):** `ExperimentAssigning.swift:60`
+- **#2 Ağırlıklı varyant ölçeklemede Int overflow (LOW, latent crash-safety) → ✅ DÜZELTİLDİ:** `ExperimentAssigning`
   `variantBucket * totalWeight` — `totalWeight` üst-sınırsız remote-config toplamı; ≳9.2e14 ile Int64 overflow →
-  trap. Şu an üretimde ERİŞİLEMEZ (canlı RemoteExperimentBridge yalnız tek-varyant weight=1 sentezler; çok-varyant
-  path yalnız testte). **Fix:** `multipliedReportingOverflow` / UInt64 + totalWeight üst-clamp (tam remote katalog
-  bağlanırsa).
-- **#3 ABVariants.format delimiter injection (LOW PLAUSIBLE):** `ExperimentEvents.swift:29-40` `key:value` `,`-join,
-  key/variant-id'de `:`/`,` escape/validasyon YOK → id `"a,b"` ambiguous `ab_variants` üretir, backend yanlış
-  parse eder. Düşük olasılık (server-kontrollü, konvansiyonel snake_case) ama savunma yok. **Fix:** decode/format'ta
-  `:`/`,` içeren key/id'leri reddet/sanitize et.
+  TRAP (crash). Üretimde şu an erişilemez (canlı bridge yalnız weight=1 sentezler) ama tam remote-katalog bağlanırsa
+  latent. Fix: point-of-use `multipliedReportingOverflow` — taşmada Double fallback (bucketing için hassasiyet
+  yeterli, crash yerine geçerli dağılım), normal durumda exact integer korunur. TDD testi (Int.max/2 weight'ler →
+  crash yok, geçerli varyant) revert-verify RED (overflow trap → "unexpected exit").
+- **#3 ABVariants.format delimiter injection (LOW defensive) → ✅ DÜZELTİLDİ:** `key:value` `,`-join'de key/variant-id
+  `:`/`,` içerirse ambiguous `ab_variants` (backend yanlış pair'lere böler). Fix: format'ta `:`/`,` içeren key/value'lu
+  girdiyi ATLA (diğer deneylerin pair'lerini bozmasın). TDD testi (bozuk key/value atlanır, temizler korunur)
+  revert-verify RED (guard'sız `out` bozuk delimiterlı string).
 - SS-050 kilit-sınırı reactivation (varsa gap), LibraryCatalog offline cache, WP-F1-G
   review'unda ertelenen küçük optimizasyonlar (CatalogCache `lastAccessAt`/tahliye-bütçe,
   ListemModel batch-delete). Bunlar prep GEREKTİRMEZ; sürekli döngüde ele alınır.

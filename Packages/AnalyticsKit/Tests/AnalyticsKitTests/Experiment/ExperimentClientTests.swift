@@ -149,4 +149,17 @@ struct ABVariantsTests {
         #expect(!out.contains("m:")) // taşan atlandı
         #expect(out.count <= 100)
     }
+
+    @Test func formatDelimiterIcerenGirdiyiAtlarDigerleriBozulmaz() {
+        // #3 (LOW hardening, AnalyticsKit hunt): key/value `:` ya da `,` içerirse düzleştirilmiş string
+        // ambiguous olur (backend yanlış pair'lere böler). Fix: o girdiyi ATLA → diğer deneylerin pair'leri
+        // bozulmaz (ambiguous pair yaymaktan iyidir).
+        let out = ABVariants.format([
+            "a": "v1", // temiz → dahil
+            "bad": "x,y", // value virgül → atla
+            "b:z": "control", // key iki-nokta → atla
+            "c": "ok" // temiz → dahil
+        ])
+        #expect(out == "a:v1,c:ok") // yalnız temiz pair'ler, sıralı; bozuklar atlandı
+    }
 }

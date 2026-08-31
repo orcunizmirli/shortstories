@@ -92,6 +92,21 @@ struct ExperimentAssignmentTests {
         }
     }
 
+    @Test func adversarialBuyukWeightAssignmentTrapEtmez() {
+        // #2 (LOW hardening, AnalyticsKit hunt): aşırı-büyük totalWeight (adversarial remote config)
+        // `variantBucket * totalWeight`'i Int64'te TAŞIRIP TRAP ettirmemeli → overflow-güvenli (Double
+        // fallback) crash yerine geçerli varyant döndürür.
+        let experiment = makeExperiment(variants: [
+            ExperimentVariant(id: "control", weight: Int.max / 2),
+            ExperimentVariant(id: "v1", weight: Int.max / 2)
+        ])
+        for index in 0 ..< 200 {
+            let assigned = assigner.assignment(for: experiment, userID: "user-\(index)")
+            #expect(assigned != nil) // crash yok
+            #expect(["control", "v1"].contains(assigned?.id ?? "")) // geçerli varyant
+        }
+    }
+
     @Test func tamTrafikHerkesAtanir() {
         let experiment = makeExperiment(trafficBasisPoints: 10000)
         for index in 0 ..< 200 {
