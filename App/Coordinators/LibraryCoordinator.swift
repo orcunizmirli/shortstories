@@ -16,7 +16,7 @@ final class LibraryCoordinator {
     weak var tabCoordinator: TabCoordinator?
 
     /// Listem stack'i — favori uzun-bas "Detaya Git" → DiziDetay push.
-    var path = NavigationPath()
+    var path: [AppRoute] = []
 
     /// Listem modeli — Favoriler/Devam Et servisleri + katalog JOIN. `lazy`: delegate = self.
     @ObservationIgnored private(set) lazy var listemModel: ListemModel =
@@ -45,7 +45,7 @@ final class LibraryCoordinator {
                 guard let current = state.userID else { continue }
                 if let previous = lastUserID, previous != current {
                     self?.listemModel.resetForAccountSwitch()
-                    self?.path = NavigationPath() // A'nın pushed DiziDetay'ı B'ye taşınmasın (HomeCoordinator simetriği)
+                    self?.path = [] // A'nın pushed DiziDetay'ı B'ye taşınmasın (HomeCoordinator simetriği)
                 }
                 lastUserID = current
             }
@@ -55,7 +55,7 @@ final class LibraryCoordinator {
     /// Deep link / Profil "izleme geçmişi" → segment seçimi (02 §8.2 `mylist?segment=`).
     /// DiscoverKit segment tipini LibraryKit segmentine köprüler.
     func selectSegment(_ segment: DiscoverKit.MyListSegment?) {
-        path = NavigationPath()
+        path = []
         guard let segment else { return }
         listemModel.selectSegment(mapped(segment))
     }
@@ -107,7 +107,7 @@ extension LibraryCoordinator: ListemDelegate {
     }
 
     func listemOpenDetail(seriesID: SeriesID) {
-        path.append(AppRoute.diziDetay(seriesID: seriesID, source: .listem))
+        path.appendIfNotTop(.diziDetay(seriesID: seriesID, source: .listem))
     }
 
     func listemShare(seriesID: SeriesID) {

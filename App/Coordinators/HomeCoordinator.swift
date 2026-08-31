@@ -28,7 +28,7 @@ final class HomeCoordinator {
     // MARK: - Navigasyon durumu
 
     /// Ana Sayfa stack'i — dizi adına dokununca `DiziDetay` push edilir (02 §4.3.2 katman 2).
-    var path = NavigationPath()
+    var path: [AppRoute] = []
     /// SS-065 "kaldığın yerden devam et" giriş yüzeyi durumu.
     let continueEntry: ContinueWatchingEntryModel
     /// BolumListesi sheet'i (04 §8.5) — non-nil olunca RootTabView sunar; seçim/kapamada temizlenir.
@@ -141,7 +141,7 @@ final class HomeCoordinator {
         feedMountToken &+= 1
         // Self-review2: A'ya ait TÜM hesap-özel nav/sheet/devam-et yüzeyleri de temizlenmeli (DiziDetay push /
         // açık sheet / "devam et" banner'ı B'ye taşınmasın).
-        path = NavigationPath()
+        path = []
         bolumListesiModel = nil
         speedMenuCurrentRate = nil
         subtitleChoices = nil
@@ -213,9 +213,9 @@ final class HomeCoordinator {
     // MARK: - Bağlamsal oynatma (SS-062 App feed dilimi tüketir)
 
     /// Sekme-kökü deep-link/push (`.home`) → Ana Sayfa stack'ini köke sıfırla (bayat DiziDetay'da
-    /// kalınmaz; 02 §8.2). NavigationPath SwiftUI tipidir → sıfırlama burada (koordinatör) kapsüllenir.
+    /// kalınmaz; 02 §8.2). Tipli `[AppRoute]` (idempotent push için, FINDING 3) → sıfırlama koordinatörde kapsüllenir.
     func resetToRoot() {
-        path = NavigationPath()
+        path = []
         // `.home` sekme-kökü hedefi bağlamsal oynatmayı da İPTAL eder: `.play`→`.home` ardışığında uçuştaki
         // `.play` seed'i (pendingPlayback + resolve Task) çözülüp feed'i o diziye remount ETMESİN → SON niyet
         // (.home kök) kazanır (yoksa erken `.play` kazanırdı). seedGeneration bump uçuştaki seed-resolution'ı
@@ -228,7 +228,7 @@ final class HomeCoordinator {
         // PlayerFeed'i öne getir: DiziDetay/başka bir push altında GİZLİ kalmasın (02 §4.3.2). Ana
         // Sayfa stack'i köke sıfırlanır ki bağlamsal oynatma doğrudan feed'de görünsün.
         if !path.isEmpty {
-            path = NavigationPath()
+            path = []
         }
         pendingPlayback = intent
         // Feed hazır olunca `seedFeedWithPendingPlaybackIfNeeded()` bu intent'i tüketir (RootTabView
@@ -300,7 +300,7 @@ extension HomeCoordinator: PlayerFeedDelegate {
     }
 
     func playerFeed(_: PlayerFeedViewController, didRequestSeriesDetail series: Series) {
-        path.append(AppRoute.diziDetay(seriesID: series.id, source: .playerFeed))
+        path.appendIfNotTop(.diziDetay(seriesID: series.id, source: .playerFeed))
     }
 
     func playerFeed(

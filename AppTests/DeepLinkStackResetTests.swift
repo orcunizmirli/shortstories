@@ -15,7 +15,7 @@ final class DeepLinkStackResetTests: XCTestCase {
 
     func testHomeDeepLinkResetsHomeStackToRoot() throws {
         let tab = try makeTabCoordinator()
-        tab.home.path.append(SeriesID("srs_stale")) // Ana Sayfa'da bayat bir DiziDetay push'u var
+        tab.home.path.append(.diziDetay(seriesID: SeriesID("srs_stale"), source: .playerFeed)) // bayat DiziDetay push'u
         XCTAssertFalse(tab.home.path.isEmpty)
 
         tab.handle(.home) // sekme-kökü deep-link/push

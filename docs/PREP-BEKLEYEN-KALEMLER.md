@@ -566,10 +566,13 @@ routing sağlam. 1 MEDIUM nav-leak + 1 LOW seed-cancel DÜZELTİLDİ, 2 LOW erte
   resolution düşürülür; tüketilmemiş intent temizlenir). App testi (requestPlayback→handle(.home)→pendingPlayback
   nil) revert-verify RED-doğrulandı; PlaybackFeedSeed/AccountSwitchFeedReset regresyon yok. NOT: `.home`'un feed'i
   "For You"a re-seed edip etmemesi ayrı ürün-kararı (bu fix yalnız yanlış-seed yarışını kapatır).
-- **#3 Home & Library detay push'u idempotent değil (LOW CONFIRMED):** ikisi de hâlâ `NavigationPath` (element-peek
+- **#3 Home & Library detay push'u idempotent değil (LOW CONFIRMED — ✅ DÜZELTİLDİ 2026-08-31):** ikisi de hâlâ `NavigationPath` (element-peek
   edilemez, dedup yok) → player-feed rail / favori "Detaya Git" çift-tap'te iki özdeş `.diziDetay` → yığılmış çift
-  ekran + çift Geri. Discover (showDetail) + Profile (appendIfNotTop) zaten guard'lı. **Fix:** Home/Library `path`'i
-  `[AppRoute]`e çevir + appendIfNotTop (self-review3 Discover/Profile deseni), ya da append-öncesi top guard.
+  ekran + çift Geri. Discover (showDetail) + Profile (appendIfNotTop) zaten guard'lı. **Fix (uygulandı):** Home/Library
+  `path` `NavigationPath` → `[AppRoute]`e çevrildi + push'lar `appendIfNotTop` (Discover/Profile deseni; RootTabView
+  zaten `.navigationDestination(for: AppRoute.self)` — binding değişmedi). TDD: HomeLibraryNavigationIdempotencyTests
+  (coordinator-seviyesi: çift-tap→tek push, distinct→yığılır) RED→GREEN + revert-verify (guard izole); 260 App testi
+  yeşil, full-repo lint temiz. App CI-dışı → yerel doğrulandı.
 - **#4 LibraryCoordinator.listemPlaySeries fence'siz Task (LOW PLAUSIBLE):** `latestProgress` await'i sırasında
   A→B switch olursa Task A'nın record'unu (episode/pozisyon) B'nin feed'ine `requestPlayback` eder (dizi public
   ama izleme-pozisyonu B'ye seed'lenir; çok dar — switch tek await'e denk gelmeli). **Fix:** await öncesi userID/
