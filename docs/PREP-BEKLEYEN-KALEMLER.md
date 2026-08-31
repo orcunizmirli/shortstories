@@ -368,6 +368,30 @@ isAuthorizing, #2 reaktivasyon `.none` guard, #3 reorder kimlik-tabanlı, #5 aut
   Director'a entitlement-düşüş gözlemcisi (aktif handle'ı re-lock / `.unlocked` işaretleri temizle) — App-wiring +
   WalletStore→feed downgrade yolu gerektirir (App CI-dışı → odaklı pass). Nadir senaryo (aktif izlerken iade) → MEDIUM.
 
+### AppFoundation adversarial bug-hunt — ertelenen 2 kalem (2026-08-31)
+AppFoundation bug-hunt (9 agent → 5 doğrulanmış). Ortak tema: `try?` geçici keychain hatasını yıkıcıya
+çevirir. 3 CI-testli fix DÜZELTİLDİ (commit 829fc6f: #1 handleRefreshFailure linked-demotion, #4
+setAtomically yedek-oku, #3 APIClient taze-token override). 2 kalem ertelendi:
+- **#2 TokenRefreshCoordinator iki-yazım cross-thread yarışı (MEDIUM PLAUSIBLE, mimari):** performRefresh
+  rotasyonlanmış çifti İKİ AYRI senkron yazımla (refresh @137, access @141) yazar; rotation guard yalnız
+  yazımlardan ÖNCE (@128) örnekler. Eşzamanlı `linkSession` (MainActor, setAtomically) iki yazım ARASINA
+  (137↔141) girerse (linked refresh + guest access) uyumsuz çift kalır → AuthInterceptor guest access
+  gönderir (cross-identity), sonraki 401'de self-heal. KÖK: KeychainSecureStore lock'suz non-isolated
+  struct → cross-domain yazımlar serileşmez; setAtomically CRASH-torn'u önler ama concurrent-thread'i DEĞİL.
+  **Fix:** keychain yazımlarını tek serileştirme noktasına al (KeychainSecureStore'a lock, ya da tüm token
+  yazımlarını tek actor'den geçir). OS-preemption'lı sub-mikrosaniye pencere + eşzamanlı link + self-heal →
+  mimari, LOW-öncelik ertelendi.
+- **#5 resetLocalUserData deleteAll `try?` cross-account sızıntı (LOW PLAUSIBLE, App-katmanı):**
+  `LiveAccountSwitchDataCoordinator.resetLocalUserData` (AccountServiceAdapters.swift:74-75) watchHistory/
+  favorites `deleteAll()`'ı `try?` ile yutar. deleteAll LOKAL güvenlik-kritik silme (AĞ DEĞİL — comment'in
+  "ağ hatası bloklamamalı" gerekçesi burada geçersiz); SwiftData `save()` disk-pressure'da throw ederse guest
+  satırları KALIR → refetchForNewAccount().synchronize() yeni-hesap sunucu geçmişini bunlarla MERGE eder →
+  yeni hesabın Devam-Et/Listem'inde önceki GUEST'in özel izleme geçmişi/favorileri görünür (cross-account
+  privacy leak). deleteAll impl'leri atomik+doğru; kusur orkestratörün wipe'ı best-effort saymasında.
+  **Fix:** lokal-wipe'ı ağ-sync'ten AYIR — wipe başarısızsa refetch/merge'i ATLA (yeni hesap boş kalır,
+  sonraki açılışta taze reset+sync temizler) ya da wipe'ı retry et. Protokol dönüş-tipi + switch-flow
+  merge-gate değişikliği; App CI-dışı, tetik nadir (disk-fail) → odaklı pass.
+
 ---
 
 ## Kod-içsel (prep gerektirmeyen) kalan iş — ayrı izlenir
