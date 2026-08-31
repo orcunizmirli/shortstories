@@ -167,4 +167,48 @@ struct ReferralModelTests {
         #expect(model.redeemState == .idle)
         #expect(model.redeemFailure == nil)
     }
+
+    // MARK: - Hesap değişimi (cross-account sızıntı — RewardsKit adversarial hunt MEDIUM)
+
+    @Test func resetForAccountSwitchBayatDurumuTemizler() async {
+        // Model coordinator ömrü boyu yaşar → hesap değişiminde A'nın davet kodu/sayaçları + redeem-başarı
+        // mesajı temizlenmezse B'ye sızar. resetForAccountSwitch bayat durumu temizler.
+        let gateway = FakeReferralGateway(redeem: .success(
+            .credited(reward: ClaimedReward(coins: 50, isStreakBonus: false, expiresAt: nil), referral: .mock())
+        ))
+        let model = makeModel(gateway: gateway)
+        await model.load()
+        await model.redeem("FRIEND-CODE")
+        #expect(!model.inviteCode.isEmpty) // A'nın kodu yüklü
+        #expect(model.redeemState == .credited(coins: 50)) // A'nın başarı mesajı
+
+        model.resetForAccountSwitch()
+
+        #expect(model.loadState == .loading) // spinner (A verisi değil)
+        #expect(model.status == nil) // A'nın kodu/sayaçları temizlendi
+        #expect(model.inviteCode.isEmpty)
+        #expect(model.redeemState == .idle) // A'nın "+50 coin" mesajı temizlendi
+        #expect(model.redeemFailure == nil)
+    }
+
+    @Test func ucustakiYuklemeResetSonrasiYeniHesabaYazmaz() async {
+        // Epoch fence: A'nın load()'u uçuştayken reset olursa (hesap switch), A'nın status'u B'ye YAZILMAMALI
+        // (son-yazan-kazanır önlenir).
+        let gateway = FakeReferralGateway(status: .success(.mock(inviteCode: "ALICE-CODE")))
+        let gate = OneShotGate()
+        gateway.statusGate = { await gate.wait() }
+        let model = makeModel(gateway: gateway)
+
+        let loadTask = Task { await model.load() } // A load uçuşta (gate'te askıda)
+        await gate.waitForArrival()
+
+        model.resetForAccountSwitch() // hesap switch (epoch bump)
+
+        await gate.release() // A'nın status'u çözülür
+        await loadTask.value
+
+        #expect(model.status == nil) // A'nın status'u B'ye YAZILMADI
+        #expect(model.inviteCode.isEmpty)
+        #expect(model.loadState == .loading) // reset sonrası .loading'de kaldı, A .loaded yapmadı
+    }
 }

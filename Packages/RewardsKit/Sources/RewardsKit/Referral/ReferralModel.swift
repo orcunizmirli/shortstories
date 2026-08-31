@@ -74,6 +74,10 @@ public final class ReferralModel {
     private let gateway: any ReferralGateway
     private let analytics: any AnalyticsTracking
     private weak var delegate: (any ReferralDelegate)?
+    /// Hesap-değişimi epoch'u — YALNIZ resetForAccountSwitch'te artar. load()/redeem() await ÖNCESİ yakalar,
+    /// apply ÖNCESİ `guard epoch == accountEpoch` yaparak uçuştaki A yanıtının B'ye yazmasını fence eder
+    /// (OdulMerkeziModel deseni; SS-132 cross-account). Model coordinator ömrü boyu yaşadığından gerekli.
+    private var accountEpoch = 0
 
     public init(
         gateway: any ReferralGateway,
@@ -97,12 +101,15 @@ public final class ReferralModel {
     public func load() async {
         redeemState = .idle
         redeemFailure = nil
+        let epoch = accountEpoch // await ÖNCESİ yakala (hesap-değişimi fence'i)
         do {
             let state = try await gateway.status()
+            guard epoch == accountEpoch else { return } // switch olduysa A'nın durumunu B'ye YAZMA
             status = state
             loadState = .loaded
             analytics.trackReferralView(invitedCount: state.invitedCount, canRedeem: state.canRedeem)
         } catch {
+            guard epoch == accountEpoch else { return } // switch olduysa A'nın hata state'ini B'ye YAZMA
             loadState = Self.loadFailure(for: error)
         }
     }
@@ -126,8 +133,11 @@ public final class ReferralModel {
         guard loadState == .loaded, canRedeem, redeemState != .redeeming, !code.isEmpty else { return }
         redeemState = .redeeming
         redeemFailure = nil
+        let epoch = accountEpoch // await ÖNCESİ yakala (hesap-değişimi fence'i)
         do {
-            switch try await gateway.redeem(code: code) {
+            let outcome = try await gateway.redeem(code: code)
+            guard epoch == accountEpoch else { return } // switch olduysa A'nın redeem sonucunu B'ye YAZMA
+            switch outcome {
             case let .credited(reward, referral):
                 status = referral // taze durum (canRedeem artık false)
                 redeemState = .credited(coins: reward.coins) // yalnız server onayında
@@ -140,9 +150,22 @@ public final class ReferralModel {
                 redeemState = .conflict(reason) // kredi YOK; kullanıcıya-görünür
             }
         } catch {
+            guard epoch == accountEpoch else { return } // switch olduysa A'nın hata state'ini B'ye YAZMA
             redeemState = .idle
             redeemFailure = Self.redeemFailure(for: error) // transport → retry
         }
+    }
+
+    /// Hesap değişiminde hesap-ÖZEL bellek-içi durumu sıfırlar (model coordinator ömrü boyu yaşar →
+    /// sıfırlanmazsa cross-account: A'nın davet kodu/sayaçları + "+coin kazandın" başarı mesajı B'ye sızar).
+    /// accountEpoch bump uçuştaki load/redeem yanıtlarını fence eder; loadState=.loading tam-yükletir (onAppear).
+    /// `redeemCelebration` DEĞİŞMEZ (haptic trigger token'ı — reset onu bump ederse sahte başarı titreşimi olur).
+    public func resetForAccountSwitch() {
+        accountEpoch += 1
+        status = nil
+        redeemState = .idle
+        redeemFailure = nil
+        loadState = .loading
     }
 
     // MARK: - İç: hata eşleme

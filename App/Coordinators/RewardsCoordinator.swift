@@ -38,9 +38,9 @@ final class RewardsCoordinator {
         startObservingAccountSwitch()
     }
 
-    /// Hesap DEĞİŞİMİNDE (userID farklı bir hesaba geçince) uzun-ömürlü `odulMerkeziModel`'i sıfırlar —
-    /// model TabCoordinator ömrü boyunca yaşar, switch'te yeniden yaratılmaz → cross-account state
-    /// (checkInState/claimedTaskIDs/coinBalance/lastSeenStreak) sızmasın (05 §3.3, SS-132 sınıfı). link
+    /// Hesap DEĞİŞİMİNDE (userID farklı bir hesaba geçince) uzun-ömürlü `odulMerkeziModel` + `referralModel`'i
+    /// sıfırlar — modeller TabCoordinator ömrü boyunca yaşar, switch'te yeniden yaratılmaz → cross-account state
+    /// (checkInState/claimedTaskIDs/coinBalance/lastSeenStreak + davet kodu/sayaç/redeem) sızmasın (SS-132). link
     /// (guest→AYNI userID korunur, §3.3 sıfır-kayıp) reset TETİKLEMEZ; yalnız farklı-hesaba geçiş (409
     /// switch → userID değişir) tetikler. session-death (userID→nil) ve re-auth (nil→userID) de tetiklemez.
     private func startObservingAccountSwitch() {
@@ -53,6 +53,7 @@ final class RewardsCoordinator {
                 guard let current = state.userID else { continue }
                 if let previous = lastUserID, previous != current {
                     self?.odulMerkeziModel.resetForAccountSwitch()
+                    self?.referralModel.resetForAccountSwitch() // RWD-07: A'nın davet kodu/sayaç/redeem-başarısı B'ye sızmasın
                 }
                 lastUserID = current
             }

@@ -9,6 +9,8 @@ final class FakeReferralGateway: ReferralGateway, @unchecked Sendable {
     private var redeemResult: Result<ReferralRedeemOutcome, Error>
     private var statusCalls = 0
     private var redeemedCodes: [String] = []
+    /// Uçuş-durumu testleri için `status()`'ı deterministik askıya alır (çağrı kaydedildikten sonra beklenir).
+    var statusGate: (@Sendable () async -> Void)?
 
     init(
         status: Result<ReferralStatus, Error> = .success(.mock()),
@@ -47,6 +49,9 @@ final class FakeReferralGateway: ReferralGateway, @unchecked Sendable {
         let result = lock.withLock { () -> Result<ReferralStatus, Error> in
             statusCalls += 1
             return statusResult
+        }
+        if let statusGate {
+            await statusGate()
         }
         return try result.get()
     }

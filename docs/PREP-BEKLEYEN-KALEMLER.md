@@ -456,6 +456,28 @@ authoritative re-read, decode fail-safe) → HIGH para-bozulması YOK. 2 kusur D
   **Fix server-garantili monoton alan gerektirir** (subscription için `version` paritesi) → server-sözleşmesi
   ertelenen; kod-tarafı guard zaten mevcut fallback'i belgeliyor.
 
+### RewardsKit (para-bitişik) adversarial bug-hunt — ertelenen 2 kalem (2026-08-31)
+Para-korrektlik her yerde sağlam (version-monotonic balance guard, account-epoch fence, server-otoriter claim/
+redeem, rewarded-ad nonce/SSV → istemci ASLA kredi vermez) → HIGH/MEDIUM para bug'ı YOK. 1 cross-account kusur
+DÜZELTİLDİ, 2 LOW ertelendi:
+- **#1 ReferralModel hesap-değişiminde reset edilmiyor (MEDIUM CONFIRMED, cross-account) → ✅ DÜZELTİLDİ:**
+  RewardsCoordinator yalnız odulMerkeziModel'i reset ediyordu; sibling referralModel (coordinator ömrü boyu
+  yaşar) reset+epoch-fence'siz → A'nın davet kodu/sayaçları + "+50 coin kazandın" redeem-başarı mesajı hesap-
+  switch sonrası B'ye sızıyordu (para etkisi YOK — redeem server-otoriter). Fix: ReferralModel'e accountEpoch
+  fence (load/redeem await-öncesi yakala, apply-öncesi guard) + resetForAccountSwitch() (odulMerkezi mirror);
+  RewardsCoordinator switch'te ikisini de reset eder. 2 TDD testi (reset-clear + uçuştaki-load fence), her ikisi
+  bağımsız revert-verify RED-doğrulandı. RewardsKit 156 test yeşil, App derlendi.
+- **#2 OdulMerkeziModel reset sonrası .loading'de takılabilir (LOW PLAUSIBLE, savunmacı):** resetForAccountSwitch
+  loadState=.loading yapar ama reload BAŞLATMAZ — reload onAppear'a bağlı. Rewards sekmesi switch sırasında
+  sürekli görünür kalırsa (view disappear/reappear yok) sonsuz spinner. Pratikte switch login/Profil'den geçer →
+  view re-appear → onAppear reload; bu yüzden LOW. **Fix (opsiyonel):** resetForAccountSwitch sonunda
+  startRefreshIfIdle() tetikle (view-lifecycle'a bağımlılığı kaldır). Aynı desen ReferralModel'de de var (onAppear
+  reload; referral pushed sub-screen olduğundan switch'te görünür olması daha da olası değil).
+- **#3 RewardedAdService.watchAdToUnlock single-flight guard yok (LOW PLAUSIBLE, server-mitigated):** çift-dokunuş
+  iki showAd→requestAdUnlock sürebilir; ASLA istemci-kredi vermez (server-side), her proof ayrı one-time nonce
+  taşır → server SSV çift-krediyi engeller. Serileştirme UI'a (UnlockSheet butonu isLoading disable) bağlı. **Fix
+  (opsiyonel):** service'e in-flight bayrağı.
+
 ---
 
 ## Kod-içsel (prep gerektirmeyen) kalan iş — ayrı izlenir
