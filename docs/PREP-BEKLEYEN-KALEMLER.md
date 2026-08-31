@@ -438,6 +438,24 @@ guard). **#2 (entitlement-gözlem) sonradan DÜZELTİLDİ (2026-08-31, aşağıd
   Store.reset() + DiscoverCoordinator'a session.stateUpdates gözlemcisi (userID-change → reset), cross-account
   UI-state cluster deseniyle simetrik. App-wiring → odaklı pass.
 
+### WalletKit (para-çekirdeği) adversarial bug-hunt — ertelenen 1 kalem (2026-08-31)
+Para-DURUMU sağlam savunulmuş (version-monotonic SET, account-epoch fence, iki-katman IAP idempotency,
+authoritative re-read, decode fail-safe) → HIGH para-bozulması YOK. 2 kusur DÜZELTİLDİ, 1 ertelendi:
+- **#1 AsyncMulticast seed sıra-bozması (MEDIUM CONFIRMED) → ✅ DÜZELTİLDİ (commit 0818438):** seed kilit
+  DIŞINDA yield ediliyordu → eşzamanlı send() araya girip aboneyi [V_yeni, V_eski] besliyor, bayat kalıyordu
+  (versiyonsuz display: profil özeti, CoinShop/UnlockSheet bakiye, VIP bayrağı). Seed kilit altına alındı;
+  çok-abone×burst yarış testi (RED→GREEN).
+- **#2 unlock() defer başka hesabın pendingUnlock marker'ını siler (LOW CONFIRMED) → ✅ DÜZELTİLDİ:** mid-flight
+  reset + reentrant unlock'ta koşulsuz `defer { pendingUnlock = nil }` başka bölümün marker'ını siliyordu (≤1
+  bekleyen unlock invariantı düşer; RED'de 3. unlock diğerinin uçuştaki sonucunu bile çaldı). defer artık yalnız
+  kendi episodeID'sini temizler; deterministik iki-gate reentrancy testi (RED→GREEN).
+- **#3 subscription monotonluğu opsiyonel `updatedAt`'e bağlı (LOW PLAUSIBLE, server-sözleşmesi):** wallet
+  snapshot'ı her zaman `version` (Int) taşırken subscription yalnız HEM mevcut HEM gelen `updatedAt` varsa
+  bayat-drop yapar; server `updatedAt` göndermezse son-yazan-kazanır → iki eşzamanlı refresh out-of-order
+  dönerse bayat non-VIP taze VIP'i geçici EZER (erişim server-otoritatif → UI flicker, kayıp entitlement yok).
+  **Fix server-garantili monoton alan gerektirir** (subscription için `version` paritesi) → server-sözleşmesi
+  ertelenen; kod-tarafı guard zaten mevcut fallback'i belgeliyor.
+
 ---
 
 ## Kod-içsel (prep gerektirmeyen) kalan iş — ayrı izlenir

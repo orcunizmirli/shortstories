@@ -160,24 +160,27 @@ public actor WalletStore: EntitlementChecking {
         SpendPlanner.plan(spending: amount, from: snapshot.balance)
     }
 
-    /// İyimser kilit açma — iyimserlik BAKİYEDE DEĞİL, UNLOCK DURUMUNDA (kanon §5; 05 §5.2;
-    /// 06 §2.4 kural 3: istemci bakiyeyi ASLA lokal aritmetikle güncellemez). Akış:
-    ///   (a) bölümü hemen açık işaretle → kullanıcı bölüme anında girebilir (entitlement state),
-    ///   (b) coin bakiyesi YALNIZ sunucu snapshot'ından SET edilir (lokal çıkarma/yayın YOK),
-    ///   (c) server reddinde (INSUFFICIENT_COINS/PRICE_CHANGED) iyimser kilit geri alınır ve
-    ///       tipli sonuç döner.
-    /// Aynı anda en fazla 1 bekleyen unlock (06 §6.4) — ikincisi `transactionConflict` döner.
+    /// İyimser kilit açma — iyimserlik BAKİYEDE DEĞİL, UNLOCK DURUMUNDA (kanon §5; 05 §5.2; 06 §2.4 kural 3:
+    /// istemci bakiyeyi ASLA lokal aritmetikle güncellemez). Akış: (a) bölümü hemen açık işaretle (entitlement),
+    /// (b) bakiye YALNIZ sunucu snapshot'ından SET edilir (lokal çıkarma/yayın YOK), (c) server reddinde
+    /// (INSUFFICIENT_COINS/PRICE_CHANGED) iyimser kilit geri alınır + tipli sonuç döner. Aynı anda en fazla 1
+    /// bekleyen unlock (06 §6.4) — ikincisi `transactionConflict` döner.
     public func unlock(episodeID: EpisodeID, expectedPrice: Int) async -> UnlockResult {
         guard pendingUnlock == nil else {
             return .failed(.wallet(.transactionConflict))
         }
         pendingUnlock = episodeID
-        defer { pendingUnlock = nil }
+        // Yalnız KENDİ marker'ımızı temizle: uçuştayken reset() + araya giren unlock (aktör-reentrancy)
+        // pendingUnlock'u BAŞKA bölüme taşıyabilir → silme (≤1 bekleyen unlock, 06 §6.4).
+        defer {
+            if pendingUnlock == episodeID {
+                pendingUnlock = nil
+            }
+        }
 
-        // (a) İyimser entitlement: bölümü açık işaretle (hasAccess açılır → PlayerKit ön-kontrolü geçer).
-        // Bakiyeye DOKUNULMAZ, yayınlanmaz. `lastUnlocked` YAYINLANMAZ: o "ONAYLANMIŞ unlock" sinyalidir
-        // (UnlockSheet bununla kapanır); iyimser (server ONAYI ÖNCESİ) yayın onu taşırsa sheet server
-        // reddinden önce kapanır ve red-işleme (insufficient/priceChanged) ölü-kod olur (audit HIGH).
+        // (a) İyimser entitlement: bölümü açık işaretle (hasAccess açılır → PlayerKit ön-kontrolü geçer). Bakiyeye
+        // DOKUNULMAZ, yayınlanmaz. `lastUnlocked` YAYINLANMAZ (ONAYLANMIŞ-unlock sinyali → UnlockSheet kapanır);
+        // iyimser yayın onu taşırsa sheet server reddinden önce kapanıp red-işleme ölü-kod olur (audit HIGH).
         let wasUnlocked = unlockedEpisodes.contains(episodeID)
         if !wasUnlocked {
             optimisticallyMarkUnlocked(episodeID)
@@ -276,18 +279,6 @@ public actor WalletStore: EntitlementChecking {
         earnVelocityRecorder.recordEarn(coins: earnedDelta)
     }
 
-    /// Monotonluk guard (applyWallet ile simetri; out-of-order koruması): server zaten bir subscription
-    /// snapshot'ı verdiyse ve HEM mevcut HEM gelen `updatedAt` taşıyorsa, daha ESKİ snapshot bayattır —
-    /// uçuşta kalmış non-VIP fetch'in taze VIP'i EZMESİNİ engeller. `updatedAt` yoksa (nil) guard atlanır →
-    /// son-yazan-kazanır (geriye uyum; downgrade/expiry akışları korunur).
-    private func isStaleSubscription(_ incoming: SubscriptionStatus) -> Bool {
-        guard hasServerSubscription,
-              let incomingAt = incoming.updatedAt,
-              let currentAt = subscription.updatedAt
-        else { return false }
-        return incomingAt < currentAt
-    }
-
     private func applySubscription(_ incoming: SubscriptionStatus) {
         guard !isStaleSubscription(incoming) else {
             log.debug("stale subscription snapshot dropped (updatedAt \(String(describing: incoming.updatedAt)))")
@@ -307,10 +298,9 @@ public actor WalletStore: EntitlementChecking {
         broadcastEntitlement()
     }
 
-    /// `unlock_coin` (08 §3.4 satır 201 zorunlu şeması): kanonik parametrelerle. `earned_spent`/
-    /// `purchased_spent` sunucunun döndüğü kese-bazlı ledger satırlarından (05 §2.6: karışık düşüm
-    /// kese başına bir satır) türetilir; `balance_after` server snapshot'ından. `unlock_price` kaydın
-    /// harcanan coin'idir. İdempotent re-unlock'ta ledger satırı gelmezse harcamalar 0 raporlanır.
+    /// `unlock_coin` (08 §3.4 satır 201 zorunlu şeması): `earned_spent`/`purchased_spent` sunucunun kese-bazlı
+    /// ledger satırlarından (05 §2.6) türetilir, `balance_after` server snapshot'ından, `unlock_price` kaydın
+    /// harcanan coin'i. İdempotent re-unlock'ta ledger satırı gelmezse harcamalar 0 raporlanır.
     private func trackUnlockCoin(record: UnlockRecord, wallet: WalletSnapshot, transactions: [CoinTransaction]) {
         analytics.track(
             "unlock_coin",
@@ -396,5 +386,15 @@ public extension WalletStore {
             return
         }
         applySubscription(incoming)
+    }
+
+    /// Subscription monotonluk guard'ı (applyWallet ile simetri): HEM mevcut HEM gelen `updatedAt` varsa daha
+    /// ESKİ snapshot bayattır (uçuştaki non-VIP fetch taze VIP'i ezmesin); `updatedAt` nil ise son-yazan-kazanır.
+    private func isStaleSubscription(_ incoming: SubscriptionStatus) -> Bool {
+        guard hasServerSubscription,
+              let incomingAt = incoming.updatedAt,
+              let currentAt = subscription.updatedAt
+        else { return false }
+        return incomingAt < currentAt
     }
 }
