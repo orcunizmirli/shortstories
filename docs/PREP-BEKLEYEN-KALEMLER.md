@@ -517,9 +517,12 @@ testli. 1 HIGH cross-account + 1 MEDIUM lossy-decode DÜZELTİLDİ, 2 LOW ertele
   `HistoryListWire`'a custom `init(from:)` + self-contained `SkippableProgress` (eleman-bazlı lossy: bozuk kayıt
   atlanır, kalanı akar; array-değil/eksik → []). ContentKit LossyArray App'ten import edilmediğinden yerel.
   App TDD testi (bozuk durationSec atlanır, 2 geçerli kalır) revert-verify RED-doğrulandı.
-- **#3 fetchServerProgress pagination dedup/stuck-cursor yok (LOW):** değişmeyen non-empty cursor 50 kez aynı
-  sayfayı çeker (maxHistoryPages cap infinite-loop'u önler; mergeServerProgress episodeID upsert dedup'lar → boşa
-  round-trip, bozulma değil). **Fix:** `nextCursor == cursor` (değişmedi) break + episodeID dedup.
+- **#3 fetchServerProgress pagination stuck-cursor yok (LOW — ✅ DÜZELTİLDİ 2026-08-31):** değişmeyen non-empty
+  cursor 50 kez aynı sayfayı çekiyordu (maxHistoryPages cap infinite-loop'u önler; mergeServerProgress episodeID
+  upsert dedup'lar → boşa round-trip, bozulma değil). **Fix (uygulandı):** loop'a `if next == cursor { break }` —
+  cursor İLERLEMEDİYSE dur (normal advance/nil-terminate bozulmaz: nil != son non-nil cursor). TDD:
+  WatchProgressPaginationTests (stuck→2 istek [fix'siz 50], single-page→1 istek) RED→GREEN (RED=pre-fix 50 = revert-
+  verify); 262 App testi yeşil. episodeID dedup zaten mergeServerProgress'te (downstream) → ayrıca gerekmedi.
 - **#4 ContinueWatchingService.synchronize coalescing guard yok (LOW):** `guard !isSyncing` örtüşen çağrıyı düşürür,
   FavoritesService'in `needsResync`/repeat coalescing'i yok → switch refetch'i görünür Listem sync'iyle çakışırsa
   B'nin pull'u atlanabilir (switch sıralı → pencere dar). **Fix:** FavoritesService coalescing desenini mirror'la.

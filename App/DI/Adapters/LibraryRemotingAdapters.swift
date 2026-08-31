@@ -71,7 +71,13 @@ struct APIWatchProgressRemoting: WatchProgressRemoting {
         repeat {
             let response = try await client.send(HistoryFetchEndpoint(cursor: cursor))
             records.append(contentsOf: response.items.map(\.record))
-            cursor = response.nextCursor
+            let next = response.nextCursor
+            // Cursor İLERLEMEDİYSE (sunucu bozuk davranışı: aynı non-empty cursor'ı geri döndürür) DUR: aynı
+            // sayfayı maxHistoryPages'e dek tekrar çekmek boşa round-trip'tir (mergeServerProgress zaten dedup'lar).
+            if next == cursor {
+                break
+            }
+            cursor = next
             page += 1
         } while cursor?.isEmpty == false && page < Self.maxHistoryPages
         return records
