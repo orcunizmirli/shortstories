@@ -114,6 +114,26 @@ struct ContinueWatchingServiceTests {
         #expect(try await service.pendingUploadCount() == 1)
     }
 
+    /// App-integration hunt #4 (coalescing): bir senkron uçarken gelen İKİNCİ `synchronize()` (ör. hesap-switch
+    /// refetch'i görünür Listem sync'iyle çakışınca) DÜŞMEMELİ — aksi halde B'nin pull'u atlanır (bayat veri).
+    /// `needsResync` ile mevcut tur bir kez daha koşar → `fetchServerProgress` İKİ kez çağrılır (fix'siz: 1).
+    @Test func synchronizeCoalescesOverlappingCallInsteadOfDropping() async throws {
+        let repo = try makeRepo()
+        let remoting = FakeWatchProgressRemoting()
+        let service = makeService(repo: repo, remoting: remoting)
+        try await service.recordProgress(Fixtures.progress(episode: "e-1", at: 1000)) // pending → upload çalışır
+
+        // A'nın upload'ı uçarken (deterministik askı noktası) B'nin synchronize'ı gelir (reentrant).
+        remoting.setOnUpload { _ in
+            try? await service.synchronize() // B: isSyncing=true → coalescing (needsResync), erken döner
+        }
+
+        try await service.synchronize() // A
+
+        // Coalescing: A ikinci turu koşar → fetch 2 kez. Fix'siz (guard düşürür): B kaybolur → fetch 1 kez.
+        #expect(remoting.fetchServerProgressCallCount == 2)
+    }
+
     @Test func offlineKeepsPendingAndDoesNotThrow() async throws {
         let repo = try makeRepo()
         let remoting = FakeWatchProgressRemoting(uploadError: .network(.offline))

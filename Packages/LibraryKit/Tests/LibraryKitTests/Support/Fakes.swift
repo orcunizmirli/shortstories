@@ -71,6 +71,7 @@ final class FakeWatchProgressRemoting: WatchProgressRemoting, @unchecked Sendabl
     private var server: [WatchProgressRecord]
     private var uploadError: AppError?
     private var fetchError: AppError?
+    private var fetchCount = 0
     /// Bir upload `await` edilirken tetiklenen tek-atışlık reentrancy kancası (deterministik
     /// askı noktası): markSynced watchedAt-körü veri-kaybı yarışını kurar.
     private var onUpload: (@Sendable ([WatchProgressRecord]) async -> Void)?
@@ -87,6 +88,11 @@ final class FakeWatchProgressRemoting: WatchProgressRemoting, @unchecked Sendabl
 
     var uploadedEpisodeIDs: [EpisodeID] {
         lock.withLock { uploaded.flatMap(\.self).map(\.episodeID) }
+    }
+
+    /// `fetchServerProgress` çağrı sayısı (coalescing testi: örtüşen sync düşmeyip bir tur daha koşarsa 2).
+    var fetchServerProgressCallCount: Int {
+        lock.withLock { fetchCount }
     }
 
     func setServer(_ records: [WatchProgressRecord]) {
@@ -116,6 +122,7 @@ final class FakeWatchProgressRemoting: WatchProgressRemoting, @unchecked Sendabl
 
     func fetchServerProgress() async throws -> [WatchProgressRecord] {
         try lock.withLock {
+            fetchCount += 1
             if let fetchError {
                 throw fetchError
             }

@@ -523,9 +523,13 @@ testli. 1 HIGH cross-account + 1 MEDIUM lossy-decode DÜZELTİLDİ, 2 LOW ertele
   cursor İLERLEMEDİYSE dur (normal advance/nil-terminate bozulmaz: nil != son non-nil cursor). TDD:
   WatchProgressPaginationTests (stuck→2 istek [fix'siz 50], single-page→1 istek) RED→GREEN (RED=pre-fix 50 = revert-
   verify); 262 App testi yeşil. episodeID dedup zaten mergeServerProgress'te (downstream) → ayrıca gerekmedi.
-- **#4 ContinueWatchingService.synchronize coalescing guard yok (LOW):** `guard !isSyncing` örtüşen çağrıyı düşürür,
-  FavoritesService'in `needsResync`/repeat coalescing'i yok → switch refetch'i görünür Listem sync'iyle çakışırsa
-  B'nin pull'u atlanabilir (switch sıralı → pencere dar). **Fix:** FavoritesService coalescing desenini mirror'la.
+- **#4 ContinueWatchingService.synchronize coalescing guard yok (LOW — ✅ DÜZELTİLDİ 2026-08-31):** `guard !isSyncing`
+  örtüşen çağrıyı DÜŞÜRÜYORDU → switch refetch'i görünür Listem sync'iyle çakışırsa B'nin pull'u atlanabilir (bayat
+  veri; switch sıralı → pencere dar). **Fix (uygulandı):** FavoritesService `needsResync` coalescing deseni mirror'landı
+  (`guard !isSyncing { needsResync=true; return }` + `repeat { needsResync=false; sync } while needsResync`). TDD:
+  ContinueWatchingServiceTests.synchronizeCoalescesOverlappingCallInsteadOfDropping (upload-await'inde reentrant
+  synchronize → fetch 2 kez [fix'siz 1]) RED→GREEN; 71 LibraryKit testi yeşil (reentrant-write testi korunur:
+  recordProgress needsResync set etmez).
 
 ### ProfileKit adversarial bug-hunt — ertelenen 1 kalem (2026-08-31)
 ProfilModel switch-anı account/wallet stream-türetimi + HesapBaglama state-machine + NotificationCenter

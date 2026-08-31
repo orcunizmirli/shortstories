@@ -11,6 +11,9 @@ public actor ContinueWatchingService {
     private let repository: any WatchHistoryRepository
     private let remoting: any WatchProgressRemoting
     private var isSyncing = false
+    /// Coalescing dirty bayrağı (bulgu #4): sync uçarken gelen `synchronize()` bunu set eder → mevcut tur
+    /// bitince bir kez daha koşulur (FavoritesService deseni; örtüşen çağrı düşmez).
+    private var needsResync = false
 
     public init(repository: any WatchHistoryRepository, remoting: any WatchProgressRemoting) {
         self.repository = repository
@@ -78,20 +81,28 @@ public actor ContinueWatchingService {
     /// geçmişini çekip birleştir (`mergeServerProgress` — yerel yeni pending korunur). Tek-uçuşlu.
     /// Çevrimdışıysa sessizce ertelenir; diğer hatalar yüzeye çıkar.
     public func synchronize() async throws {
-        guard !isSyncing else { return }
+        guard !isSyncing else {
+            // Coalescing (bulgu #4, FavoritesService deseni): sürmekte olan tura "bir tur daha koş" de →
+            // örtüşen çağrı (hesap-switch refetch'i görünür Listem sync'iyle çakışırsa) DÜŞMESİN, B'nin pull'u atlanmaz.
+            needsResync = true
+            return
+        }
         isSyncing = true
         defer { isSyncing = false }
 
-        do {
-            let pending = try await repository.pendingUploads()
-            if !pending.isEmpty {
-                try await remoting.uploadProgress(pending)
-                try await repository.markSynced(uploaded: pending)
+        repeat {
+            needsResync = false
+            do {
+                let pending = try await repository.pendingUploads()
+                if !pending.isEmpty {
+                    try await remoting.uploadProgress(pending)
+                    try await repository.markSynced(uploaded: pending)
+                }
+                let server = try await remoting.fetchServerProgress()
+                try await repository.mergeServerProgress(server)
+            } catch let error as AppError where error == .network(.offline) {
+                // Bekleyenler `pendingUpload` kalır; bağlantı dönünce yeniden denenir (SS-123).
             }
-            let server = try await remoting.fetchServerProgress()
-            try await repository.mergeServerProgress(server)
-        } catch let error as AppError where error == .network(.offline) {
-            // Bekleyenler `pendingUpload` kalır; bağlantı dönünce yeniden denenir (SS-123).
-        }
+        } while needsResync
     }
 }
