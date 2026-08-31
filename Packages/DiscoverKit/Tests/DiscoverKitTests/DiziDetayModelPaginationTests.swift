@@ -31,22 +31,23 @@ struct DiziDetayModelPaginationTests {
         range.map { Fixtures.episode(seriesID: "srs_abc123", index: $0, access: .free, unlockPrice: nil) }
     }
 
-    @Test func gecicIlerlemeSayfasiHatasiYanlisStartCTAYerineLoadHatasiVerir() async {
-        // #3: ilerleme bölümü (Bölüm 45, sayfa 2) sayfasının GEÇİCİ ağ hatası eskiden `try?` ile yutulup
-        // resolve'u sessizce .start (Bölüm 1)'e düşürüyordu (kullanıcı kaldığı yeri kaybeder, loadState .loaded
-        // kalıyordu). Fix: hata YÜZER → load .offline gösterir (retry).
+    @Test func derinIlerlemeSayfasiHatasiEkraniBozmaz() async {
+        // self-review: ilerleme bölümü (Bölüm 45, sayfa 2) sayfasının GEÇİCİ hatası tüm ekranı bozMAMALI
+        // (canlı dizi .removed/.error dead-end'ine düşmemeli). Best-effort yutulur → dizi .loaded görünür
+        // (CTA .start'a düşer — kabul-LOW; PREP: doğru fix episodeId-resume). page1 ızgarası izlenebilir kalır.
         let spy = SpyCatalog()
         spy.setSeriesDetail(.success(Fixtures.series(
             id: "srs_abc123", episodeCount: 60, releasedEpisodeCount: 60, freeEpisodeCount: 60
         )))
         spy.setEpisodes(.success(Page(items: freePage(1 ... 20), nextCursor: "p2", ttlSec: nil)))
-        spy.setEpisodesPage(.failure(.network(.offline)), cursor: "p2") // ilerleme sayfası GEÇİCİ hata
+        spy.setEpisodesPage(.failure(.content(.notFound)), cursor: "p2") // derin-sayfa 404 (bayat cursor)
         let history = FakeHistory(progress: Fixtures.progress(seriesID: "srs_abc123", episodeIndex: 45, completed: false))
         let model = makeModel(catalog: spy, history: history)
 
         await model.load()
 
-        #expect(model.loadState == .offline) // yanlış .start CTA yerine retry (eskiden .loaded + Bölüm 1 idi)
+        #expect(model.loadState == .loaded) // canlı dizi .removed dead-end'ine DÜŞMEZ
+        #expect(model.episodes.count == 20) // page1 ızgarası izlenebilir
     }
 
     @Test func loadMoreBosSayfaNonNilCursorDaSonsuzSayfalamaYapmaz() async {

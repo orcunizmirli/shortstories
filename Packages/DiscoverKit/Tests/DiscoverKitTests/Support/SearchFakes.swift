@@ -9,6 +9,7 @@ final class SpySearch: SearchServicing, @unchecked Sendable {
 
     private var suggestByQuery: [String: [SearchSuggestion]] = [:]
     private var suggestDefault: [SearchSuggestion] = []
+    private var suggestError: AppError?
     private var searchPages: [String?: Result<Page<Series>, AppError>] = [:]
     private var searchDefault: Result<Page<Series>, AppError> = .success(Page(items: [], nextCursor: nil, ttlSec: nil))
     private var popularResult: Result<[String], AppError> = .success([])
@@ -43,11 +44,18 @@ final class SpySearch: SearchServicing, @unchecked Sendable {
         lock.withLock { popularResult = result }
     }
 
+    func setSuggestError(_ error: AppError?) {
+        lock.withLock { suggestError = error }
+    }
+
     // MARK: - SearchServicing
 
     func suggest(query: String) async throws -> [SearchSuggestion] {
-        lock.withLock {
+        try lock.withLock {
             suggestQueries.append(query)
+            if let suggestError {
+                throw suggestError
+            }
             return suggestByQuery[query] ?? suggestDefault
         }
     }

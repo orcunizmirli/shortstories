@@ -53,4 +53,18 @@ struct AramaModelSuggestTests {
         #expect(model.phase == .browsing) // blank .suggesting DEĞİL
         #expect(model.suggestions.isEmpty)
     }
+
+    @Test func oneriAgHatasindaBrowseFallbackineDoner() async {
+        // self-review BULGU 2: #5 scheduleSuggest önerileri temizlediğinden, suggest AĞ HATASI verirse
+        // performSuggest'in erken dönüşü `.suggesting`de BLANK bırakırdı → hata dalı da browse'a dönmeli.
+        let search = SpySearch()
+        search.setSuggestError(.network(.offline))
+        let model = makeModel(search: search)
+
+        model.queryChanged("mid")
+        await model.pendingWork()
+
+        #expect(model.phase == .browsing) // ağ hatası blank .suggesting bırakmaz
+        #expect(model.suggestions.isEmpty)
+    }
 }

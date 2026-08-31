@@ -127,7 +127,17 @@ public final class AramaModel {
     /// Öneri isteği; yalnız EN GÜNCEL token için uygulanır (sıra-dışı yanıt savunması, §4.11).
     func performSuggest(query: String, token: Int) async {
         guard machine.isCurrent(token) else { return }
-        guard let incoming = try? await search.suggest(query: query) else { return }
+        let incoming: [SearchSuggestion]
+        do {
+            incoming = try await search.suggest(query: query)
+        } catch {
+            // Ağ hatası (self-review BULGU 2): #5 önerileri temizlediğinden `.suggesting`de BLANK kalmasın →
+            // browse (son+popüler) fallback'e dön (yalnız GÜNCEL sorgu; bayat token güncel fazı ezmez).
+            guard machine.isCurrent(token) else { return }
+            suggestions = []
+            phase = .browsing
+            return
+        }
         guard machine.isCurrent(token) else { return } // await sırasında yeni tuş geldiyse at
         // #6: öneri BOŞsa `.suggesting`de BLANK ekran gösterme → browse (son+popüler) fallback'e dön; kullanıcı
         // yine de submit ile tam sonuç arayabilir (öneri yokluğu ≠ sonuç yokluğu).
