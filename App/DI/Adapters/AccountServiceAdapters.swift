@@ -39,10 +39,8 @@ struct LiveAccountSwitchDataCoordinator: AccountSwitchDataCoordinating {
     private let favorites: FavoritesService
     private let watchHistoryRepository: any WatchHistoryRepository
     private let favoritesRepository: any FavoritesRepository
-    /// Cüzdan state'ini (bakiye/VIP/açılmış-bölüm) SIFIRLAR — audit HIGH bulgusu: reset yalnız izleme
-    /// geçmişi + favori repo'larını silerse paylaşılan `WalletStore` singleton'ı önceki hesabın
-    /// bakiyesini/VIP'ini/açık bölümlerini yeni hesaba SIZDIRIR (§575 cross-account). `WalletStore.reset`
-    /// (kompozisyon kökünden enjekte; koordinatör WalletKit'e bağlanmaz).
+    /// Cüzdan state'ini (bakiye/VIP/açılmış-bölüm) SIFIRLAR (§575 cross-account: reset yalnız izleme/favori
+    /// repo'larını silerse paylaşılan `WalletStore` singleton önceki hesabı sızdırır). Kompozisyon kökünden enjekte.
     private let resetWallet: @Sendable () async -> Void
     /// Reset SONRASI yeni hesabın cüzdan snapshot'ını (bakiye/abonelik) sunucudan çeker (`WalletStore.refresh`).
     private let refreshWallet: @Sendable () async -> Void
@@ -90,14 +88,11 @@ struct LiveAccountSwitchDataCoordinator: AccountSwitchDataCoordinating {
 
 // MARK: - Hesap bağlama (POST /auth/link, POST /auth/switch)
 
-/// ProfileKit `AccountLinkingServicing` → `APIClient` + AppFoundation `SessionManaging`. Başarıda
-/// sunucunun döndürdüğü kimlik + rotasyonlu token'ları `SessionManaging.linkSession(...)` hook'una
-/// verir: hook bellek-içi oturumu CANLI `.linked`e yükseltir, `stateUpdates`e YAYAR (`ProfilModel`
-/// relaunch'sız tazelenir — `hesapBaglamaDidLink` yalnız sheet'i kapatır) VE token + kimlik
-/// snapshot'ını Keychain'e yazar (relaunch tutarlılığı). `userId` sunucu-otoriter korunur;
-/// bakiye/VIP/entitlement sunucuda tutulduğundan client hiçbir varlığı kaybetmez; tekrar çağrı
-/// idempotenttir (durum zaten `.linked` ise yayın yapılmaz). Beklenen conflict sonucu DEĞER olarak
-/// döner (sunucu 200 verir); yalnız GERÇEK hatalar throw eder (05 §4.2 sözleşmesi, port dokümanı).
+/// ProfileKit `AccountLinkingServicing` → `APIClient` + AppFoundation `SessionManaging`. Başarıda kimlik +
+/// rotasyonlu token'ları `SessionManaging.linkSession(...)` hook'una verir: bellek-içi oturumu `.linked`e
+/// yükseltir + `stateUpdates`e YAYAR (`ProfilModel` relaunch'sız tazelenir) VE Keychain'e yazar. `userId`
+/// sunucu-otoriter; bakiye/VIP/entitlement sunucuda → client varlık kaybetmez. Beklenen conflict DEĞER
+/// döner (sunucu 200); yalnız GERÇEK hatalar throw eder (05 §4.2).
 struct APIAccountLinkingService: AccountLinkingServicing {
     private let client: any APIClientProtocol
     private let session: any SessionManaging
@@ -113,12 +108,10 @@ struct APIAccountLinkingService: AccountLinkingServicing {
         self.switchDataCoordinator = switchDataCoordinator
     }
 
-    /// SAĞLAYICI-BAĞIMSIZ bağlama (SS-132 F2): `LinkCredential` → `POST /auth/link`. İstek gövdesinin
-    /// `provider` alanı + jeton alanı `credential`'dan türer (Apple/Google `identityToken`; e-posta opak
-    /// `verificationToken`, 05 §4.2/§4.2.1) — Apple/Google/e-posta TEK yoldan geçer. Başarıda oturum
-    /// `credential.provider` ile `.linked`e yükselir; `userId` sunucu-otoriter KORUNUR (sıfır-kayıp,
-    /// §3.3). Beklenen conflict sonucu DEĞER olarak döner (sunucu 200); yalnız GERÇEK hatalar throw eder.
+    /// SAĞLAYICI-BAĞIMSIZ bağlama (SS-132 F2): `LinkCredential` → `POST /auth/link`. `userId` sunucu-otoriter
+    /// KORUNUR (sıfır-kayıp §3.3; farklıysa switch-lifecycle'a düşülür). Conflict DEĞER döner; GERÇEK hata throw.
     func link(_ credential: LinkCredential) async throws -> AccountLinkOutcome {
+        let previousUserID = await session.state.userID // pre-link (misafir) kimlik — sıfır-kayıp guard'ı
         let wire = try await client.send(AuthLinkEndpoint(credential: credential))
         switch wire.status {
         case .linked:
@@ -126,7 +119,16 @@ struct APIAccountLinkingService: AccountLinkingServicing {
             // Sağlayıcı istemci-otoriter: sunucu yanıtı `provider` taşırsa onu tercih et, yoksa
             // bağladığımız kimliğin sağlayıcısı (gönderdiğimizle birebir).
             let provider = credentials.provider ?? credential.provider
-            await activateLinkedSession(credentials, provider: provider)
+            if let previousUserID, previousUserID != credentials.userId {
+                // Defense-in-depth (§575, uyumsuz backend): dönen userId pre-link'ten FARKLIYSA sıfır-kayıp DEĞİL →
+                // plain activate WalletStore/repo'ları yıkmaz (cross-account sızıntı) → tam switch-lifecycle. Erişilmez.
+                await switchDataCoordinator.flushPendingGuestData()
+                await activateLinkedSession(credentials, provider: provider)
+                await switchDataCoordinator.resetLocalUserData()
+                await switchDataCoordinator.refetchForNewAccount()
+            } else {
+                await activateLinkedSession(credentials, provider: provider)
+            }
             return .linked(AccountSummary(kind: .linked(provider: provider)))
         case .conflict:
             guard let conflict = wire.conflict else { throw AppError.auth(.linkingFailed) }
@@ -160,10 +162,8 @@ struct APIAccountLinkingService: AccountLinkingServicing {
         return AccountSummary(kind: .linked(provider: provider))
     }
 
-    /// Bağlama/switch başarısını CANLI oturuma yansıtır. `SessionManaging.linkSession` bellek-içi
-    /// durumu `.linked`e yükseltir + yayar VE token/snapshot'ı Keychain'e yazar — adaptör artık
-    /// Keychain'e ELLE yazmaz (tek yol; SessionState sahibi SessionManager). Canlı witness @MainActor
-    /// senkrondur; `any SessionManaging` üzerinden `await`lenir.
+    /// Bağlama/switch başarısını CANLI oturuma yansıtır: `SessionManaging.linkSession` durumu `.linked`e
+    /// yükseltir + yayar + Keychain'e yazar (tek yol; SessionState sahibi SessionManager).
     private func activateLinkedSession(_ credentials: SessionCredentialsWire, provider: AuthProvider) async {
         await session.linkSession(
             userID: credentials.userId,

@@ -548,12 +548,14 @@ optimistik/tombstone/fence sağlam ve testli. 1 MEDIUM load-path + 1 MEDIUM shee
   Fix: iki ProfileKit view'una `.interactiveDismissDisabled(model...isBusy)` (view internal isBusy'ye erişir; yeni
   public API yok). View-katmanı (unit-test edilemez — swipe modeli baypas eder), App derleme + ProfileKit build ile
   doğrulandı.
-- **#3 AccountServiceAdapters.link() userID-koruma guard'ı yok (LOW PLAUSIBLE, defense-in-depth):** yalnız
-  switchToExistingAccount flush→reset→refetch + WalletStore reset yapar; link() `.linked`i sıfır-kayıp kabul edip
-  userID'nin korunduğuna GÜVENİR (409 yabancı-kimlik yolu). Uyumsuz `/auth/link` farklı userID'li `.linked`
-  dönerse coordinator'lar (userID-change gözler) modelleri reset eder ama WalletStore + repo'lar YIKILMAZ →
-  cross-account bakiye/entitlement sızıntısı. Uyumlu backend'de erişilemez. **Fix:** link() `.linked` dalında
-  dönen userId pre-link userID'den farklıysa switch-lifecycle'a yönlendir (ucuz guard, pahalı hata).
+- **#3 AccountServiceAdapters.link() userID-koruma guard'ı yok (LOW PLAUSIBLE, defense-in-depth — ✅ DÜZELTİLDİ
+  2026-08-31):** link() `.linked`i sıfır-kayıp kabul edip userID korunduğuna GÜVENİYORDU; uyumsuz `/auth/link`
+  farklı userID'li `.linked` dönerse coordinator'lar modelleri reset eder ama WalletStore + repo'lar YIKILMAZ →
+  cross-account bakiye/entitlement sızıntısı (uyumlu backend'de erişilemez). **Fix (uygulandı):** link() `.linked`
+  dalında pre-link `session.state.userID` yakalanır; dönen `credentials.userId` farklıysa plain activate yerine tam
+  switch-lifecycle (flush→activate→reset→refetch + WalletStore reset). Happy-path (aynı userID → else = orijinal
+  activate) değişmez. TDD: AccountSwitchDataFlowTests (mismatch→[flush,reset,refetch]; same-id→[] happy-path korunur)
+  RED→GREEN; 264 App testi yeşil, full-repo lint temiz. App CI-dışı → yerel doğrulandı.
 
 ### App-integration (routing/coordinator) adversarial bug-hunt — ertelenen 2 kalem (2026-08-31)
 Session-stream fan-out, lazy-model force-init, contextual-playback seed ordering, universal-link/cold-start

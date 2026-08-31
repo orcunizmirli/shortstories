@@ -17,6 +17,50 @@ final class AccountSwitchDataFlowTests: XCTestCase {
         return Data(#"{"session":\#(session),"provider":"\#(provider)"}"#.utf8)
     }
 
+    /// `POST /auth/link` `.linked` yanıtı (top-level `provider` yok → `credential.provider`'a düşer).
+    private func makeLinkResponseData(userID: String) -> Data {
+        let session = #"{"userId":"\#(userID)","accessToken":"at","refreshToken":"rt"}"#
+        return Data(#"{"status":"linked","session":\#(session)}"#.utf8)
+    }
+
+    private var emailCredential: LinkCredential {
+        .email(EmailCredential(email: "a@b.com", verificationToken: "vt"))
+    }
+
+    /// Defense-in-depth (§575, LOW PLAUSIBLE): `/auth/link` `.linked` PRE-LINK userID'den FARKLI userId dönerse
+    /// (uyumsuz backend) sıfır-kayıp DEĞİLDİR → plain activate WalletStore/repo'ları yıkmaz → cross-account
+    /// bakiye/entitlement sızıntısı. Tam switch-lifecycle'a (flush→reset→refetch) yönlendirilmeli.
+    func testLinkWithMismatchedUserIDRoutesToFullSwitchLifecycle() async throws {
+        let client = StubSwitchAPIClient()
+        client.stub("/auth/link", data: makeLinkResponseData(userID: "different-2"))
+        let session = StubSwitchSession(state: .guest(userID: "guest-1"))
+        let coordinator = SpyAccountSwitchDataCoordinator(session: session)
+        let adapter = APIAccountLinkingService(client: client, session: session, switchDataCoordinator: coordinator)
+
+        let outcome = try await adapter.link(emailCredential)
+
+        XCTAssertEqual(coordinator.callOrder, ["flush", "reset", "refetch"]) // tam lifecycle → cüzdan/repo sıfırlandı
+        XCTAssertEqual(coordinator.stateAtFlush, .guest(userID: "guest-1")) // flush activate ÖNCESİ (misafir token)
+        XCTAssertEqual(coordinator.stateAtReset, .linked(userID: "different-2", provider: .email)) // activate SONRASI
+        XCTAssertEqual(session.linkSessionCalls, 1)
+        guard case .linked = outcome else { return XCTFail(".linked bekleniyordu") }
+    }
+
+    /// Sıfır-kayıp happy-path (uyumlu backend): `.linked` AYNI userID dönerse plain activate — lifecycle
+    /// (flush/reset/refetch) ÇALIŞMAZ (cüzdan/geçmiş korunur; §3.3 sıfır-kayıp merge).
+    func testLinkWithSameUserIDDoesNotResetLocalData() async throws {
+        let client = StubSwitchAPIClient()
+        client.stub("/auth/link", data: makeLinkResponseData(userID: "guest-1"))
+        let session = StubSwitchSession(state: .guest(userID: "guest-1"))
+        let coordinator = SpyAccountSwitchDataCoordinator(session: session)
+        let adapter = APIAccountLinkingService(client: client, session: session, switchDataCoordinator: coordinator)
+
+        _ = try await adapter.link(emailCredential)
+
+        XCTAssertEqual(coordinator.callOrder, []) // sıfır-kayıp: yerel veri lifecycle'ı çalışmaz
+        XCTAssertEqual(session.linkSessionCalls, 1)
+    }
+
     /// Top-level `provider` alanı OLMAYAN switch yanıtı (sözleşme donmadan sunucu atlayabilir).
     private func makeSwitchResponseDataNoTopLevelProvider(userID: String) -> Data {
         let session = #"{"userId":"\#(userID)","accessToken":"at","refreshToken":"rt","provider":"apple"}"#
