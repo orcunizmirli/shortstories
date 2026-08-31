@@ -392,6 +392,18 @@ setAtomically yedek-oku, #3 APIClient taze-token override). 2 kalem ertelendi:
   sonraki açılışta taze reset+sync temizler) ya da wipe'ı retry et. Protokol dönüş-tipi + switch-flow
   merge-gate değişikliği; App CI-dışı, tetik nadir (disk-fail) → odaklı pass.
 
+### ContentKit adversarial bug-hunt — ertelenen 1 kalem (2026-08-31)
+ContentKit bug-hunt (9 agent → 6 doğrulanmış). 5 CI-testli fix DÜZELTİLDİ (commit af8c951: decode-aşaması
+droppedItemCount, non-core tarih toleransı, yanlış-tip array alanı). 1 kalem ertelendi:
+- **unlockPrice == 0 istemci-tarafı 0-coin unlock (MEDIUM PLAUSIBLE, defensive/cross-package):** Sunucu
+  `access = {kind: locked, unlockPrice: 0}` dönerse (backend misconfig/promo bug — kanon 50-100 coin) istemci
+  0'ı reddetmez: UnlockSheetViewState.resolveCoinState `.sufficient(price: 0)` → aktif "0 coin'e aç" butonu +
+  SpendPlanner 0-coin plan + PlayerCell "0 coin" rozeti; performUnlock 0-fiyatlı unlock'ı otomatik ateşleyebilir.
+  Not: bulgunun işaret ettiği `EpisodeAccess.isCoinUnlockAvailable` ÖLÜ kod (yalnız testte); gerçek yol
+  `episode.access.unlockPrice`'ı doğrudan WalletKit'e taşır. **Fix:** istemci `unlockPrice <= 0`'ı "coin yolu
+  kapalı" (isCoinPathClosedLock gibi) say — bedava-unlock DEĞİL. Server-contract-ihlaline karşı savunmacı
+  clamp; WalletKit/UnlockSheet (App-katmanı) dokunuşu + "0-fiyat nasıl yorumlanmalı" ürün kararı → ertelendi.
+
 ---
 
 ## Kod-içsel (prep gerektirmeyen) kalan iş — ayrı izlenir
