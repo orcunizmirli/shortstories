@@ -4,9 +4,10 @@ import Foundation
 /// dağıtır. SS-161'de dil tercihi değişimleri (uygulama + altyazı) bununla ANINDA yayınlanır;
 /// altyazı dilini PlayerKit (SS-046) `SubtitleLanguageProviding` üzerinden bu akışla okur.
 ///
-/// Concurrency: durum `NSLock` ile korunur; `AsyncStream.Continuation` Sendable olduğundan
-/// kilit dışında güvenle yield edilir. Combine YOK (kanon §2). WalletKit'teki `AsyncMulticast`
-/// ile aynı sözleşme — R2 gereği kopyalanır (ProfileKit WalletKit'i import edemez).
+/// Concurrency: durum `NSLock` ile korunur. Abone SEED'i kayıtla AYNI kilit altında yield edilir
+/// (aksi halde eşzamanlı `send()` araya girip aboneyi [V_yeni, V_eski] sırasıyla besler → bayat kalır);
+/// `send()` yayınları tek-tüketici tarafından serialize edildiğinden kilit dışında yield edilir. Combine
+/// YOK (kanon §2). WalletKit'teki `AsyncMulticast` ile aynı sözleşme — R2 gereği kopyalanır (import edemez).
 ///
 /// Current-value (BehaviorSubject) semantiği: SON yayınlanan değer saklanır ve yeni abone kayıt
 /// anında onunla tohumlanır — böylece geç abone (Ayarlar'dan set ile Player'ın subscribe'ı

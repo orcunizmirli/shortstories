@@ -18,6 +18,11 @@ final class AsyncMulticast<Element: Sendable>: @unchecked Sendable {
     /// En son yayınlanan değer (geç abonelere replay edilir). Henüz hiç `send` olmadıysa `nil`.
     private var latest: Element?
 
+    /// YALNIZ TEST: registration ile (kilit BIRAKILDIKTAN sonra) devam kodu arasındaki pencereyi deterministik
+    /// kılan enjekte edilebilir askı; `subscribe()` kaydı biter bitmez bir kez çağrılır. Prod'da her zaman `nil`.
+    /// Seed-replay atomikliği bununla flake-siz test edilir (ProfileKit `AsyncMulticast` ile aynı seam).
+    var onRegisteredForTesting: (@Sendable () -> Void)?
+
     init() {}
 
     /// Yeni bir abone akışı verir; kayıt anında (varsa) SON değeri replay eder. Akış iptal edilince
@@ -25,7 +30,7 @@ final class AsyncMulticast<Element: Sendable>: @unchecked Sendable {
     func subscribe() -> AsyncStream<Element> {
         let id = UUID()
         return AsyncStream { continuation in
-            lock.withLock {
+            let hook = lock.withLock { () -> (@Sendable () -> Void)? in
                 continuations[id] = continuation
                 // Seed'i KAYITLA AYNI kilit altında yield et: eşzamanlı `send()` kayıt ile seed-yield arasına
                 // girip aboneyi [V_yeni, V_eski] sırasıyla besleyemez (geç abone V_eski'de bayat kalırdı).
@@ -33,7 +38,9 @@ final class AsyncMulticast<Element: Sendable>: @unchecked Sendable {
                 if let latest {
                     continuation.yield(latest)
                 }
+                return onRegisteredForTesting
             }
+            hook?() // yalnız test: kayıt-sonrası pencerede send enjekte et (prod'da nil)
             continuation.onTermination = { [weak self] _ in
                 guard let self else { return }
                 lock.withLock { _ = continuations.removeValue(forKey: id) }
