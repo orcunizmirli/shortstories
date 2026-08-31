@@ -15,3 +15,12 @@ public protocol FavoritesGateway: Sendable {
     func isFavorite(_ seriesID: SeriesID) async -> Bool
     func setFavorite(_ isFavorite: Bool, seriesID: SeriesID) async throws
 }
+
+/// Entitlement (VIP/kilit-açma) DEĞİŞİM sinyali portu (bug-hunt #2): DiziDetay açıkken unlock/VIP aktivasyon/
+/// bitiş olursa erişim kümesi + CTA yeniden türetilir → kullanıcı ödediği bölümü bu ekrandan oynayabilir
+/// (aksi halde CTA 🔒 kalıp zaten sahip olunan bölüm için UnlockSheet yeniden açılıyordu). Evi WalletKit
+/// (`WalletStore.entitlementUpdates`); App void'e map eder. Anlık sorgu portu `EntitlementChecking` ayrıdır.
+public protocol EntitlementChangeObserving: Sendable {
+    /// Her emisyon "entitlement değişti, erişimi yeniden türet" sinyalidir (değerin kendisi taşınmaz).
+    func entitlementChanges() -> AsyncStream<Void>
+}

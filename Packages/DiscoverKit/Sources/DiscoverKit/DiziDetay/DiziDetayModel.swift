@@ -41,6 +41,9 @@ public final class DiziDetayModel {
     private let history: any WatchHistoryReading
     private let favorites: any FavoritesGateway
     private let entitlement: any EntitlementChecking
+    /// Entitlement DEĞİŞİM sinyali (bug-hunt #2): açıkken unlock/VIP olursa erişimi yeniden türetir. nil =
+    /// gözlem yok (test/eski çağıran). App WalletStore.entitlementUpdates'ı void'e map ederek bağlar.
+    private let entitlementChanges: (any EntitlementChangeObserving)?
     private let analytics: any AnalyticsTracking
     private let now: @Sendable () -> Date
     private weak var delegate: (any DiziDetayDelegate)?
@@ -57,6 +60,9 @@ public final class DiziDetayModel {
     private var isLoadingDetail = false
     /// toggleFavorite in-flight guard: örtüşen toggle'lar sunucudan sapmasın.
     private var isTogglingFavorite = false
+    /// Entitlement-değişim gözlem görevi (#2); model ömrü boyunca yaşar, deinit'te iptal. `nonisolated(unsafe)`:
+    /// yalnız MainActor'da yazılır, yalnız deinit'te (eşzamanlı MainActor işi yokken) iptal edilir → güvenli.
+    private nonisolated(unsafe) var entitlementObserveTask: Task<Void, Never>?
 
     public init(
         seriesID: SeriesID,
@@ -67,6 +73,7 @@ public final class DiziDetayModel {
         entitlement: any EntitlementChecking,
         analytics: any AnalyticsTracking,
         delegate: (any DiziDetayDelegate)?,
+        entitlementChanges: (any EntitlementChangeObserving)? = nil,
         now: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.seriesID = seriesID
@@ -75,9 +82,14 @@ public final class DiziDetayModel {
         self.history = history
         self.favorites = favorites
         self.entitlement = entitlement
+        self.entitlementChanges = entitlementChanges
         self.analytics = analytics
         self.delegate = delegate
         self.now = now
+    }
+
+    deinit {
+        entitlementObserveTask?.cancel()
     }
 
     // MARK: - Yaşam döngüsü
@@ -86,6 +98,22 @@ public final class DiziDetayModel {
         guard !appeared else { return }
         appeared = true
         loadTask = Task { await load() }
+        startObservingEntitlementChanges()
+    }
+
+    /// #2: unlock/VIP değişiminde erişim kümesi + CTA'yı yeniden türet — kullanıcı ödediği bölümü bu ekrandan
+    /// oynayabilsin (aksi halde CTA 🔒 kalıp sahip olunan bölüm için UnlockSheet yeniden açılıyordu). Coordinator
+    /// wiring GEREKMEZ (model kendisi gözlemler); hafif re-derive (progress ağ-fetch'i yok).
+    private func startObservingEntitlementChanges() {
+        guard let entitlementChanges else { return }
+        entitlementObserveTask = Task { [weak self] in
+            for await _ in entitlementChanges.entitlementChanges() {
+                // `ctaTarget != nil` = içerik türetildi. `loadState == .loaded` YERİNE (self-review yarışı:
+                // recompute ile loadState=.loaded arası favorites-await penceresinde sinyal yutulup CTA bayat kalırdı).
+                guard let self, ctaTarget != nil else { continue }
+                await recomputeAccess()
+            }
+        }
     }
 
     /// Testler için: askıdaki ilk yükleme görevini bekler (deterministik).
@@ -130,41 +158,21 @@ public final class DiziDetayModel {
         }
     }
 
-    /// Geçmiş → CTA hedefi + bölüm erişilebilirlik kümesi + CTA kilit durumu (tümü tekrar
-    /// hesaplanır; yeni bölüm sayfası yüklendiğinde de çağrılır).
+    /// Geçmiş → CTA hedefi + erişilebilirlik kümesi + CTA kilidi (tümü tekrar; yeni sayfa yüklenince de çağrılır).
     private func recompute() async {
         guard let series else { return }
         let progress = await history.latestProgress(forSeries: seriesID)
         hasHistory = progress != nil
-        // İlerleme bölümü ilk sayfada değilse CTA'yı doğru türetmek için o sayfayı çek —
-        // aksi halde resolve() baştan-başlat'a düşer ve PlayerFeed yanlış bölüme girer (§4.4). GEÇİCİ hata
-        // BEST-EFFORT: derin-sayfa ağ hatasında (`.content(.notFound)` dahil) tüm load'u BOZMA (self-review:
-        // hata YÜZDÜRMEK canlı diziyi `.removed` dead-end'ine düşürüyordu) — CTA .start'a düşer (kabul-LOW, PREP).
+        // İlerleme bölümü ilk sayfada değilse CTA'yı doğru türetmek için o sayfayı çek (aksi halde resolve()
+        // baştan-başlat'a düşer, PlayerFeed yanlış bölüme girer §4.4). BEST-EFFORT: derin-sayfa ağ hatasında
+        // load'u BOZMA (hata yüzdürmek canlı diziyi `.removed` dead-end'ine düşürüyordu) — CTA .start (kabul-LOW).
         await ensureProgressEpisodeLoaded(progress)
         let target = ContinueWatchingTarget.resolve(series: series, episodes: episodes, progress: progress)
-        // CTA hedef bölümü (izlenen+1) sayfa sınırında SONRAKİ cursor sayfasında olabilir; kilit türetimi
-        // ve primaryCTA yönlendirmesi hedef Episode'unu YÜKLÜ ister → onu da çek. Aksi halde aşağıdaki
-        // guard else'e düşer ve kilitli hedef UnlockSheet atlanarak oynatmaya giderdi (paywall bypass).
+        // CTA hedef bölümü (izlenen+1) sonraki cursor sayfasında olabilir; kilit türetimi + primaryCTA hedef
+        // Episode'unu YÜKLÜ ister → çek (aksi halde kilitli hedef UnlockSheet atlanarak oynardı — paywall bypass).
         await ensureEpisodeLoaded(number: target.episodeNumber)
         ctaTarget = target
-
-        var accessible: Set<EpisodeID> = []
-        for episode in episodes {
-            if episode.access.isPlayableWithoutUnlock {
-                accessible.insert(episode.id)
-            } else if await entitlement.hasAccess(to: episode.id) {
-                accessible.insert(episode.id)
-            }
-        }
-        accessibleEpisodeIDs = accessible
-
-        if let episode = episodes.first(where: { $0.index == target.episodeNumber }) {
-            ctaLocked = !accessible.contains(episode.id)
-        } else {
-            // Hedef bölüm sayfalar tükenmesine rağmen yüklenemedi (ör. ağ hatası) → çözülemeyen kilit
-            // KİLİTLİ varsayılır (güvenli taraf, 05 §12 kural 4); erişilemeyen bölüm oynatmaya gitmesin.
-            ctaLocked = true
-        }
+        await recomputeAccess()
     }
 
     /// İzleme ilerlemesinin bölümü henüz yüklü değilse, bulunana (ya da sayfalar bitene) kadar
@@ -198,9 +206,8 @@ public final class DiziDetayModel {
             guard let page = try? await catalog.episodes(seriesId: seriesID, cursor: cursor) else { return }
             appendUniqueEpisodes(page.items)
             episodesCursor = page.nextCursor
-            // Sayfa index'leri artan; bu sayfanın maks index'i hedefi GEÇTİYSE hedef ya bu sayfada geldi ya
-            // da index boşluğu (kaldırılmış bölüm / releasedEpisodeCount aşımı) → sonraki sayfalarda YOK.
-            // Tüm sayfaları tam-taramayı bırak (audit LOW: aşırı fetch koruması).
+            // Sayfa index'leri artan; maks index hedefi GEÇTİYSE hedef ya bu sayfada geldi ya da index boşluğu
+            // (kaldırılmış bölüm / releasedEpisodeCount aşımı) → sonrakilerde YOK, tam-taramayı bırak (audit LOW).
             if let maxIndex = page.items.map(\.index).max(), maxIndex >= number {
                 return
             }
@@ -341,6 +348,29 @@ public final class DiziDetayModel {
 // MARK: - İç yardımcılar (type_body_length: same-file extension gövdeye sayılmaz)
 
 private extension DiziDetayModel {
+    /// Erişilebilirlik kümesi + CTA kilidini entitlement'tan yeniden türetir. recompute alt-adımı; #2
+    /// gözlemcisi de unlock/VIP sonrası çağırır (hafif — progress ağ-fetch'i yok). `ctaTarget` hazır olmalı.
+    func recomputeAccess() async {
+        var accessible: Set<EpisodeID> = []
+        for episode in episodes {
+            if episode.access.isPlayableWithoutUnlock {
+                accessible.insert(episode.id)
+            } else if await entitlement.hasAccess(to: episode.id) {
+                accessible.insert(episode.id)
+            }
+        }
+        accessibleEpisodeIDs = accessible
+
+        guard let target = ctaTarget else { return }
+        if let episode = episodes.first(where: { $0.index == target.episodeNumber }) {
+            ctaLocked = !accessible.contains(episode.id)
+        } else {
+            // Hedef bölüm sayfalar tükenmesine rağmen yüklenemedi (ör. ağ hatası) → çözülemeyen kilit
+            // KİLİTLİ varsayılır (güvenli taraf, 05 §12 kural 4); erişilemeyen bölüm oynatmaya gitmesin.
+            ctaLocked = true
+        }
+    }
+
     func resumePosition(for episode: Episode) -> Double {
         guard let target = ctaTarget, target.episodeNumber == episode.index else { return 0 }
         return target.startPositionSec

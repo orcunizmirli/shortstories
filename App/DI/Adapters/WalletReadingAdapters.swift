@@ -1,3 +1,4 @@
+import DiscoverKit
 import Foundation
 import ProfileKit
 import RewardsKit
@@ -28,6 +29,22 @@ struct WalletGatewayRewardsReading: RewardsWalletReading {
         AsyncStream<RewardsBalanceUpdate>.mapping(gateway.versionedBalanceUpdates()) {
             RewardsBalanceUpdate(balance: $0.balance.totalCoins, version: $0.version)
         }
+    }
+}
+
+/// DiscoverKit `EntitlementChangeObserving` → WalletKit `WalletGateway` (#2). DiziDetay AÇIKKEN unlock/VIP
+/// olursa erişim kümesi + CTA yeniden türetilsin diye entitlement snapshot akışını değersiz "değişti"
+/// sinyaline map eder (DiscoverKit `EntitlementSnapshot` tipini görmez; dönüşüm burada izole). Anlık kilit
+/// sorgusu ayrı port `EntitlementChecking`tir (canlı: aynı `WalletStore`).
+struct WalletGatewayEntitlementChangeObserving: EntitlementChangeObserving {
+    private let gateway: any WalletGateway
+
+    init(gateway: any WalletGateway) {
+        self.gateway = gateway
+    }
+
+    func entitlementChanges() -> AsyncStream<Void> {
+        AsyncStream<Void>.mapping(gateway.entitlementUpdates()) { _ in () }
     }
 }
 

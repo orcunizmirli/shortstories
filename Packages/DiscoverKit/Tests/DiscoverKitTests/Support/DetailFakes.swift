@@ -69,6 +69,64 @@ final class FakeEntitlements: EntitlementChecking, @unchecked Sendable {
     func hasAccess(to episodeID: EpisodeID) async -> Bool {
         lock.withLock { isVIP || unlocked.contains(episodeID) }
     }
+
+    /// Test: çalışma anında bir bölüme erişim ver (unlock/satın-alma simülasyonu — #2 gözlem testi).
+    func grant(_ episodeID: EpisodeID) {
+        lock.withLock { _ = unlocked.insert(episodeID) }
+    }
+}
+
+/// Entitlement-değişim sinyali fake'i (#2): `emit()` ile manuel tetiklenir; model gözlemcisi her emisyonda
+/// erişimi yeniden türetir. AsyncStream buffer'ı `.unbounded` (varsayılan) → emit yayıldıysa asla düşmez.
+final class ManualEntitlementChanges: EntitlementChangeObserving, @unchecked Sendable {
+    private let stream: AsyncStream<Void>
+    private let continuation: AsyncStream<Void>.Continuation
+
+    init() {
+        (stream, continuation) = AsyncStream<Void>.makeStream()
+    }
+
+    func entitlementChanges() -> AsyncStream<Void> {
+        stream
+    }
+
+    func emit() {
+        continuation.yield(())
+    }
+}
+
+/// `isFavorite()` çağrısını bir kapı ardında bloklar (#2 yarış testi): load()'un favorites-await'inde
+/// askıya alıp o pencerede (recompute bitti, loadState hâlâ .loading) entitlement sinyali enjekte etmeyi
+/// sağlar. `waitUntilEntered()` load'un kapıya vardığını, `release()` devam etmesini bekletir.
+final class GateFavorites: FavoritesGateway, @unchecked Sendable {
+    private let entered: AsyncStream<Void>
+    private let enteredCont: AsyncStream<Void>.Continuation
+    private let gate: AsyncStream<Void>
+    private let gateCont: AsyncStream<Void>.Continuation
+
+    init() {
+        (entered, enteredCont) = AsyncStream<Void>.makeStream()
+        (gate, gateCont) = AsyncStream<Void>.makeStream()
+    }
+
+    func isFavorite(_: SeriesID) async -> Bool {
+        enteredCont.yield(())
+        var iterator = gate.makeAsyncIterator()
+        _ = await iterator.next()
+        return false
+    }
+
+    func setFavorite(_: Bool, seriesID _: SeriesID) async throws {}
+
+    /// load() favorites-await'ine (kapı içine) ulaşana dek bekler.
+    func waitUntilEntered() async {
+        var iterator = entered.makeAsyncIterator()
+        _ = await iterator.next()
+    }
+
+    func release() {
+        gateCont.yield(())
+    }
 }
 
 @MainActor

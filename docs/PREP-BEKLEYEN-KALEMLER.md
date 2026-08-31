@@ -404,10 +404,10 @@ droppedItemCount, non-core tarih toleransı, yanlış-tip array alanı). 1 kalem
   kapalı" (isCoinPathClosedLock gibi) say — bedava-unlock DEĞİL. Server-contract-ihlaline karşı savunmacı
   clamp; WalletKit/UnlockSheet (App-katmanı) dokunuşu + "0-fiyat nasıl yorumlanmalı" ürün kararı → ertelendi.
 
-### DiscoverKit adversarial bug-hunt — ertelenen 3 kalem (2026-08-31)
+### DiscoverKit adversarial bug-hunt — ertelenen 2 kalem (2026-08-31)
 DiscoverKit bug-hunt (14 agent → 9 doğrulanmış). 6 CI-testli fix DÜZELTİLDİ (commit 3854329 + self-review
 f327339: recent-search newline, loadMore sonsuz-sayfalama, öneri bayat/boş/ağ-hatası, CTA kilit-etiketi, load
-guard). 3 kalem ertelendi:
+guard). **#2 (entitlement-gözlem) sonradan DÜZELTİLDİ (2026-08-31, aşağıda ✅).** Kalan 2 ertelenen kalem:
 - **#3 DiziDetay ilerleme-hedefi derin-sayfa GEÇİCİ hatasında yanlış .start CTA (LOW, izleme-yeri kaybı):**
   ensureProgressEpisodeLoaded ilerleme bölümünün derin sayfasını çekerken GEÇİCİ hata alırsa (`try?` yutar) CTA
   sessizce .start'a (Bölüm 1) düşer → kullanıcı kaldığı yeri kaybeder. **İLK fix'im (recompute-throws → hata
@@ -416,17 +416,19 @@ guard). 3 kalem ertelendi:
   fix:** progress'i `episodeId`+`positionSec` ile RESUME et (WatchProgress'te var) — ekranı BOZMADAN doğru
   bölüme git; delegate `diziDetayStartWatching` episodeNumber yerine episodeId kabul etmeli (cross-package,
   ContinueWatchingTarget + PlayerFeed sözleşmesi). Ekranı-bozan yerine izleme-yeri-koruyan çözüm.
-- **#2 DiziDetay CTA/entitlement unlock/VIP SONRASI bayat (MEDIUM CONFIRMED, App entitlement-observation —
-  YÜKSEK ETKİ):** `accessibleEpisodeIDs`/`ctaLocked` yalnız load()/loadMoreEpisodes()'te hesaplanır; onAppear
-  `appeared` guard'ıyla bir kez çalışır. Kullanıcı coin ile Bölüm 6'yı açar → UnlockSheet kapanır, AYNI
-  DiziDetayModel'e dönülür ama accessibleEpisodeIDs Bölüm 6'yı içermez → CTA hâlâ 🔒, ızgarada kilitli, CTA'ya
-  tekrar dokunmak ZATEN SAHİP OLUNAN bölüm için UnlockSheet'i yeniden açar → **kullanıcı ödediği içeriği bu
-  ekrandan oynatamaz**. Ekran açıkken VIP olan kullanıcıya da tüm kilitli hücreler kilitli kalır.
-  WalletFlowCoordinator.onEpisodeUnlocked/onVIPActivated YALNIZ HomeCoordinator'a bağlı; DiziDetayModel
-  reload/gözlem YOK. **Fix:** DiziDetayModel'e entitlement-değişim gözlemi (WalletStore.entitlementUpdates
-  portu üzerinden re-derive) ya da unlock-sonrası reload tetiği + View .task/observe. Bu, PlayerKit #4
-  (VIP-expiry re-lock) ve genel "entitlement-değişimi UI'a yayılmıyor" cluster'ının parçası. App-wiring
-  gerektirir (App CI-dışı → odaklı pass). Kullanıcı-parası etkisi nedeniyle YÜKSEK öncelikli ertelenen.
+- **#2 DiziDetay CTA/entitlement unlock/VIP SONRASI bayat (MEDIUM CONFIRMED — ✅ DÜZELTİLDİ 2026-08-31):**
+  `accessibleEpisodeIDs`/`ctaLocked` yalnız load()/loadMoreEpisodes()'te hesaplanıyordu → kullanıcı Bölüm 6'yı
+  açtıktan sonra AYNI DiziDetayModel'e dönünce CTA 🔒 kalıp zaten sahip olunan bölüm için UnlockSheet'i yeniden
+  açıyordu (ödediği içeriği oynatamıyordu); ekran açıkken VIP olan kullanıcıya da kilitli hücreler kilitli
+  kalıyordu. **Çözüm (REAKTİF self-gözlem, coordinator wiring gerekmez):** DiscoverKit'e `EntitlementChangeObserving`
+  portu + DiziDetayModel'de `startObservingEntitlementChanges` → `recomputeAccess` (recompute'tan ayıklandı; hafif
+  re-derive, progress ağ-fetch'i yok); `nonisolated(unsafe)` gözlem task'ı + deinit iptali. App-wiring:
+  `WalletGatewayEntitlementChangeObserving` adaptörü (`WalletStore.entitlementUpdates` → `AsyncStream<Void>`,
+  `AsyncStream.mapping` köprüsü) `makeDiziDetayModel`'e bağlandı. **Self-review yarış-fix'i (H3 CONFIRMED):**
+  gözlemci guard'ı `loadState == .loaded` → `ctaTarget != nil` (load recompute'u ile loadState=.loaded arası
+  favorites-await penceresinde gelen cold-start/deep-link broadcast'ı YUTULMASIN). 2 TDD testi (post-load
+  re-derive + yükleme-penceresi yarışı, ikisi de revert-verify RED-doğrulandı). DiscoverKit 151 test yeşil,
+  App lokal derlendi, tam-repo lint temiz. Diğer teardown/lifecycle/paywall-bypass hipotezleri REFUTED.
 - **#9 DiscoverSessionStore cross-account (LOW CONFIRMED, App coordinator reset):** `DiscoverSessionStore.cached`
   `public private(set)` ama reset/clear API'si YOK (yalnız save/init); DiscoverCoordinator'da uzun-ömürlü `let`
   olarak tutulur, hesap/session gözlemcisi YOK — oysa uzun-ömürlü coordinator'lar hesap-değişiminde reset

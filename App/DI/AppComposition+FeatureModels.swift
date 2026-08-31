@@ -66,7 +66,8 @@ extension AppComposition {
             favorites: discoverFavoritesGateway,
             entitlement: walletStore,
             analytics: decoratedAnalytics,
-            delegate: delegate
+            delegate: delegate,
+            entitlementChanges: WalletGatewayEntitlementChangeObserving(gateway: walletStore)
         )
     }
 
