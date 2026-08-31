@@ -14,7 +14,7 @@ import SwiftUI
 @Observable
 @MainActor
 final class HomeCoordinator {
-    private let composition: AppComposition
+    let composition: AppComposition // internal: HomeCoordinator+FeedUnlock uzantısı entitlement portu için okur
     private let walletFlow: WalletFlowCoordinator
     /// Sekmeler arası geçiş + bağlamsal oynatma için üst koordinatör (zayıf — döngü yok).
     weak var tabCoordinator: TabCoordinator?
@@ -41,27 +41,21 @@ final class HomeCoordinator {
     /// (güncel seçim canlı `composition.languagePreferences`'tan okunur). Aktif dizinin sunduğu diller.
     private(set) var subtitleChoices: [SubtitleLanguage]?
 
-    /// Bekleyen bağlamsal oynatma isteği: RootTabView (Ana Sayfa görünür olunca / yeni intent gelince)
-    /// `seedFeedWithPendingPlaybackIfNeeded()` ile TÜKETİR → `PlaybackFeedResolver` bunu feed-entry
-    /// seed'ine çevirir. `@ObservationTracked` olduğundan `.onChange` sıcak sekmede yeni intent'i yakalar.
+    /// Bekleyen bağlamsal oynatma isteği; RootTabView tüketir → `PlaybackFeedResolver` feed-entry seed'ine çevirir.
     private(set) var pendingPlayback: PlaybackIntent?
 
     /// Mount edilen `PlayerFeedView`'ı süren feed-entry (nil → For You baştan). Seed çözülünce set edilir.
     private(set) var feedEntry: FeedEntry?
-    /// Feed remount jetonu (SwiftUI `.id`): seed çözülünce artırılır → `PlayerFeedView` yeni `entry` ile
-    /// yeniden kurulur (PlayerKit seed'i yalnız init'te/ilk aktivasyonda tüketir; canlı VC'ye enjekte
-    /// edilemez). Havuz kompozisyon kökünde (koordinatörde) yaşadığından remount player'ları KORUR
-    /// (VC.deinit → director.teardown(keepPlayers:true)).
+    /// Feed remount jetonu (SwiftUI `.id`): seed çözülünce artırılır → `PlayerFeedView` yeni `entry` ile kurulur
+    /// (havuz koordinatörde yaşadığından remount player'ları KORUR: VC.deinit → teardown(keepPlayers:true)).
     private(set) var feedMountToken = 0
     /// Sıra-dışı biten katalog fetch'i güncel seed'i ezmesin diye üretim sayacı (last-intent-wins).
     private var seedGeneration = 0
     /// SS-061: Ana Sayfa sekmesi aktif mi (pause/resume sinyali). `TabCoordinator` sekme değişiminde yazar.
     private(set) var isHomeActive = true
 
-    /// Cross-feature "bu diziyi oynat" niyeti (deep-link/DiziDetay/Listem/Ana Sayfa → PlayerFeed).
-    /// `episodeID` önceden çözülmüş hedeftir (Ana Sayfa/Listem "devam et" kayıtları taşır) ve
-    /// `episodeNumber`'a göre önceliklidir; `episodeNumber` deep-link/DiziDetay'ın taşıdığı 1-tabanlı
-    /// numaradır (App katalogdan bölüm-ID'ye çözer). İkisi de nil → dizinin ilk oynatılabilir bölümü.
+    /// Cross-feature "bu diziyi oynat" niyeti. `episodeID` önceden çözülmüş hedef (Ana Sayfa/Listem "devam et")
+    /// ve `episodeNumber`'a önceliklidir; ikisi de nil → dizinin ilk oynatılabilir bölümü (App katalogdan çözer).
     struct PlaybackIntent: Equatable, Sendable {
         let seriesID: SeriesID
         let episodeNumber: Int?
@@ -85,6 +79,10 @@ final class HomeCoordinator {
     private let feedResolver: PlaybackFeedResolver
     /// Hesap-değişimi gözlemcisi — app ömrü boyunca canlı (RewardsCoordinator deseni).
     @ObservationIgnored private var accountObserver: Task<Void, Never>?
+    /// Client-optimistik `.unlocked` işaretli bölümler (#4); entitlement düşüşünde yalnız bunlar yeniden-doğrulanır.
+    @ObservationIgnored var clientOptimisticUnlocks: Set<EpisodeID> = []
+    /// Entitlement-düşüşü gözlemcisi — app ömrü boyunca canlı ([weak self], `accountObserver` deseni).
+    @ObservationIgnored var entitlementObserver: Task<Void, Never>?
 
     init(composition: AppComposition, walletFlow: WalletFlowCoordinator) {
         self.composition = composition
@@ -107,6 +105,7 @@ final class HomeCoordinator {
             self?.applyVIPUnlock()
         }
         startObservingAccountSwitch()
+        startObservingEntitlementRevocation()
     }
 
     /// Hesap DEĞİŞİMİNDE (userID farklı bir hesaba geçince) feed durumunu sıfırlar — feedViewModel/pool
@@ -135,6 +134,7 @@ final class HomeCoordinator {
     private func resetForAccountSwitch() {
         seedGeneration &+= 1
         feedViewModel.feedState = FeedState()
+        clientOptimisticUnlocks = [] // feedState boşaldı → A'nın client-optimistik izleri B'ye taşınmaz
         feedEntry = nil
         pendingPlayback = nil
         activeEpisodeID = nil

@@ -360,13 +360,20 @@ SAVUNULABİLİR" dedi) → self-review zinciri CONVERGE etti (MEDIUM'lar → sav
 PlayerKit bug-hunt (16 agent → 6 doğrulanmış); 5 CI-testli fix DÜZELTİLDİ (commit 6aa2919: #1 pool reclaim
 isAuthorizing, #2 reaktivasyon `.none` guard, #3 reorder kimlik-tabanlı, #5 auto-advance suppress sızıntısı,
 #6 aktif-slot idle-restart). 1 App-katmanı kalem ertelendi:
-- **VIP-expiry/iade IN-SESSION re-lock YOK (HomeCoordinator, MEDIUM CONFIRMED):** WalletFlowCoordinator yalnız
-  AÇMA-yönü callback'i taşır (onEpisodeUnlocked/onVIPActivated); onVIPExpired/onEpisodeRevoked YOK. Kullanıcı VIP
-  bölüm izlerken abonelik iade/expire olursa WalletStore.hasAccess false'a döner ama feed HABERDAR EDİLMEZ →
-  açık bölüm oynamaya devam eder + komşu `.unlocked` kartlar app-restart/server-feed-reload'a dek oynatılabilir
-  kalır (iade in-session erişimi geri almaz). **Fix:** WalletFlowCoordinator'a downgrade callback + FeedPlayback
-  Director'a entitlement-düşüş gözlemcisi (aktif handle'ı re-lock / `.unlocked` işaretleri temizle) — App-wiring +
-  WalletStore→feed downgrade yolu gerektirir (App CI-dışı → odaklı pass). Nadir senaryo (aktif izlerken iade) → MEDIUM.
+- **VIP-expiry/iade IN-SESSION re-lock (HomeCoordinator, MEDIUM CONFIRMED — ✅ DÜZELTİLDİ 2026-08-31):**
+  Kullanıcı VIP/coin bölüm izlerken abonelik iade/expire olursa `WalletStore.hasAccess` false'a döner ama feed
+  client-optimistik `.unlocked` işaretini (FeedUnlockReducer `episode.unlocked()`) KORUYORDU → `PlayerPool.isPlayable`
+  `.unlocked`'a (`isPlayableWithoutUnlock`) güvenip hasAccess'i SORMAYIP paywall'u bypass ediyordu → komşu kartlar
+  feed-reload'a dek oynatılabilir kalırdı (gelir sızıntısı). **Kök (derin araştırma):** `WalletStore.unlockedEpisodes`
+  OTURUM-YEREL (applyWallet sunucudan doldurmaz; geçmiş ownership CATALOG `.unlocked` access'inde) → naif "isPlayable
+  `.unlocked` için hasAccess sorsun" fix'i geçmiş-oturum satın-almasını FALSE-LOCK ederdi. **Fix (829f... sınıfı):**
+  HomeCoordinator client-optimistik unlock'ları izler (`clientOptimisticUnlocks`; applyUnlock/applyVIPUnlock ekler) +
+  entitlement-DÜŞÜŞÜ gözlemcisi (`WalletGatewayEntitlementChangeObserving`) → izlenenlerden `hasAccess`=false olanları
+  `FeedUnlockReducer.revertingRevokedUnlocks` ile `.locked`'a döndürür. Katalog-historik `.unlocked` İZLENMEZ →
+  false-lock yok. Cross-account fence (revoked ∩ güncel izleme). Aktif oynayan video KESİLMEZ (updateItems handle'ı
+  korur; yalnız görsel overlay + re-aktivasyon gate'lenir → north-star korunur; "iade in-session erişimi geri almaz"
+  ile uyumlu). TDD: FeedUnlockReducerTests (revert reducer, 7 test) + HomeFeedRevokeRelockTests (wiring, 3 test) —
+  RED→GREEN + 2 revert-verify (revert-apply + false-lock gate); 256 App testi yeşil. App CI-dışı → yerel doğrulandı.
 
 ### AppFoundation adversarial bug-hunt — ertelenen 2 kalem (2026-08-31)
 AppFoundation bug-hunt (9 agent → 5 doğrulanmış). Ortak tema: `try?` geçici keychain hatasını yıkıcıya

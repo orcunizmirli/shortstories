@@ -124,6 +124,73 @@ final class FeedUnlockReducerTests: XCTestCase {
         XCTAssertNil(FeedUnlockReducer.applyingVIPUnlock(to: promo))
     }
 
+    // MARK: - VIP-expiry/iade re-lock: revoked client-optimistik unlock'ları geri kilitle
+
+    func testRevertingRevokedUnlockMarksItLocked() {
+        // Client-optimistik olarak `.unlocked` işaretlenmiş bölüm, entitlement düşüşünde (revoked) geri `.locked`.
+        let items = [makeItem(episode: "e1", index: 1, kind: .unlocked, unlockPrice: 50)]
+        let updated = FeedUnlockReducer.revertingRevokedUnlocks(of: [EpisodeID("e1")], to: items)
+
+        XCTAssertEqual(updated?.first?.episode?.access.kind, .locked)
+        // Re-lock'un anahtar sinyali: artık kilitsiz oynatılamaz → PlayerPool.isPlayable hasAccess'e düşer.
+        XCTAssertEqual(updated?.first?.episode?.access.isPlayableWithoutUnlock, false)
+    }
+
+    func testRevertingPreservesUnlockPriceAndItemContext() {
+        // Kilitlenen kart doğru CTA/fiyatla dönmeli (unlockPrice/adUnlockEligible KORUNUR); öğe bağlamı korunur.
+        let items = [makeItem(
+            id: "seed-e1", episode: "e1", index: 4, kind: .unlocked,
+            unlockPrice: 80, adUnlockEligible: true, reason: "Romantik izlediğin için"
+        )]
+        let item = FeedUnlockReducer.revertingRevokedUnlocks(of: [EpisodeID("e1")], to: items)?.first
+
+        XCTAssertEqual(item?.id, "seed-e1") // aynı id → diff'li apply reconfigure eder (remount değil)
+        XCTAssertEqual(item?.reason, "Romantik izlediğin için")
+        XCTAssertEqual(item?.episode?.index, 4)
+        XCTAssertEqual(item?.episode?.access.unlockPrice, 80)
+        XCTAssertEqual(item?.episode?.access.adUnlockEligible, true)
+    }
+
+    func testRevertingOnlyAffectsRevokedUnlockedEpisodes() {
+        // Yalnız revoked SETİNDEKİ ve `.unlocked` olanlar kilitlenir; diğerlerine DOKUNULMAZ (false-lock koruması).
+        let items = [
+            makeItem(episode: "e1", index: 1, kind: .unlocked, unlockPrice: 50), // revoked → kilitlenir
+            makeItem(episode: "e2", index: 2, kind: .unlocked, unlockPrice: 50), // revoked DEĞİL → kalır (coin-owned)
+            makeItem(episode: "e3", index: 3, kind: .free) // free → revoked'da olsa bile ASLA kilitlenmez
+        ]
+        let updated = FeedUnlockReducer.revertingRevokedUnlocks(of: [EpisodeID("e1"), EpisodeID("e3")], to: items)
+
+        XCTAssertEqual(updated?[0].episode?.access.kind, .locked) // revoked + unlocked → kilitlendi
+        XCTAssertEqual(updated?[1].episode?.access.kind, .unlocked) // revoked değil → korundu
+        XCTAssertEqual(updated?[2].episode?.access.kind, .free) // free → revoked'da olsa bile korundu
+    }
+
+    func testRevertingFreeEpisodeInRevokedSetReturnsNilWhenNoUnlockedRevoked() {
+        // Kritik false-lock koruması: revoked yalnız `.free` bölüm içeriyorsa HİÇBİR şey değişmez → nil.
+        let items = [makeItem(episode: "e1", index: 1, kind: .free)]
+        XCTAssertNil(FeedUnlockReducer.revertingRevokedUnlocks(of: [EpisodeID("e1")], to: items))
+    }
+
+    func testRevertingEmptyRevokedReturnsNil() {
+        let items = [makeItem(episode: "e1", index: 1, kind: .unlocked, unlockPrice: 50)]
+        XCTAssertNil(FeedUnlockReducer.revertingRevokedUnlocks(of: [], to: items))
+    }
+
+    func testRevertingAbsentAndPromoReturnsNil() {
+        let items = [
+            makeItem(episode: "e1", index: 1, kind: .unlocked, unlockPrice: 50),
+            makeItem(id: "promo-1", episode: nil, index: 0, kind: .free)
+        ]
+        // Revoked'da olmayan bölüm + episode taşımayan kart → değişiklik yok.
+        XCTAssertNil(FeedUnlockReducer.revertingRevokedUnlocks(of: [EpisodeID("e-absent")], to: items))
+    }
+
+    func testRevertingLockedEpisodeInRevokedReturnsNil() {
+        // Zaten `.locked` bölüm revoked'da olsa bile no-op (idempotent → gereksiz apply/reactivation yok).
+        let items = [makeItem(episode: "e1", index: 1, kind: .locked, unlockPrice: 50)]
+        XCTAssertNil(FeedUnlockReducer.revertingRevokedUnlocks(of: [EpisodeID("e1")], to: items))
+    }
+
     // MARK: - Fixtures
 
     private func makeItem(

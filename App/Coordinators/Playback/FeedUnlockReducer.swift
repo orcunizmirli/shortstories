@@ -40,6 +40,25 @@ enum FeedUnlockReducer {
         }
         return didChange ? updated : nil
     }
+
+    /// VIP-expiry/iade IN-SESSION re-lock: entitlement DÜŞÜŞÜNDE (VIP dolması / unlock rollback), client-optimistik
+    /// `.unlocked` işaretlenip ARTIK erişimi olmayan bölümleri geri `.locked` yapar. `revoked` = HomeCoordinator'ın
+    /// izlediği client-mark'lı bölümlerden hasAccess'i false dönenler; katalog-historik `.unlocked` bu sete GİRMEZ
+    /// (izlenmez) → geçmiş satın-alma false-lock OLMAZ. Yalnız `.kind == .unlocked` olanlar dönüştürülür (`.free`
+    /// ASLA kilitlenmez). Idempotent: gerçek değişiklik yoksa `nil` (feedState'e dokunulmaz). `unlockPrice`/
+    /// `adUnlockEligible` korunur → kilitlenen kart doğru CTA/fiyatla döner.
+    static func revertingRevokedUnlocks(of revoked: Set<EpisodeID>, to items: [FeedItem]) -> [FeedItem]? {
+        var didChange = false
+        let updated = items.map { item -> FeedItem in
+            guard let episode = item.episode,
+                  revoked.contains(episode.id),
+                  episode.access.kind == .unlocked
+            else { return item }
+            didChange = true
+            return item.replacingEpisode(with: episode.relocked())
+        }
+        return didChange ? updated : nil
+    }
 }
 
 private extension Episode {
@@ -55,6 +74,22 @@ private extension Episode {
             durationSec: durationSec,
             thumbnailURL: thumbnailURL,
             access: EpisodeAccess(kind: .unlocked, unlockPrice: access.unlockPrice, adUnlockEligible: access.adUnlockEligible),
+            publishedAt: publishedAt
+        )
+    }
+
+    /// Erişimi `.locked`'a döndürür (entitlement düşüşü — VIP-expiry/iade). `unlockPrice`/`adUnlockEligible`
+    /// KORUNUR → kilitlenen kart doğru coin/ad CTA'sıyla döner (05 §2.2); diğer alanlar DEĞİŞMEZ. `unlocked()`
+    /// tersidir; yalnız client-optimistik `.unlocked` bölümlere (izlenen küme) uygulanır → geçmiş satın-alma bozulmaz.
+    func relocked() -> Episode {
+        Episode(
+            id: id,
+            seriesId: seriesId,
+            index: index,
+            title: title,
+            durationSec: durationSec,
+            thumbnailURL: thumbnailURL,
+            access: EpisodeAccess(kind: .locked, unlockPrice: access.unlockPrice, adUnlockEligible: access.adUnlockEligible),
             publishedAt: publishedAt
         )
     }
