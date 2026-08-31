@@ -430,15 +430,17 @@ Kalan 1 ertelenen kalem (#3 episodeId-resume, aşağıda):
   favorites-await penceresinde gelen cold-start/deep-link broadcast'ı YUTULMASIN). 2 TDD testi (post-load
   re-derive + yükleme-penceresi yarışı, ikisi de revert-verify RED-doğrulandı). DiscoverKit 151 test yeşil,
   App lokal derlendi, tam-repo lint temiz. Diğer teardown/lifecycle/paywall-bypass hipotezleri REFUTED.
-  **ERTELENEN follow-up (LOW latent, holistik self-review): `recomputeAccess()` fence YOK + artık 2 eşzamanlı
-  çağıranı var** (load'un recompute'u + entitlement gözlemcisi — H3 fix'inin `ctaTarget!=nil` guard'ının yan-
-  sonucu). Out-of-band entitlement değişimi sub-saniye İLK-load sırasında (ctaTarget kurulduktan sonra) gelirse
+  **Follow-up (LOW latent, holistik self-review) → ✅ DÜZELTİLDİ:** `recomputeAccess()` fence'siz + H3 fix'inin
+  `ctaTarget!=nil` guard'ının yan-sonucu olarak 2 eşzamanlı çağıranı vardı (load'un recompute'u + entitlement
+  gözlemcisi). Out-of-band entitlement değişimi sub-saniye İLK-load sırasında (ctaTarget kurulduktan sonra) gelirse
   iki recomputeAccess per-episode `hasAccess` loop'unda interleave eder; load'un BAYAT (pre-unlock) yazımı SON
-  inerse CTA açılmış bölüm için 🔒 kalır (#2'nin kapattığı bug'ın çok-dar kalıntısı). ÇOK-DAR: entitlement
-  değişimleri normalde screen-load SONRASI user-driven; cold-start replay aynı snapshot'ı okur (divergence yok).
-  **Fix:** recomputeAccess başında generation bump/capture + final atamalardan (accessibleEpisodeIDs/ctaLocked)
-  ÖNCE guard (loadFavorites/revalidateGeneration deseni; son-başlayan-kazanır). Deterministik test iki eşzamanlı
-  recomputeAccess'in hasAccess-interleave'ini precise-gate ister (LOW için orantısız) + dosya 400-satır limitinde.
+  inerse açılmış hedef CTA 🔒 kalırdı (#2'nin kapattığı bug'ın çok-dar kalıntısı). Fix: `accessRecomputeGeneration`
+  (recomputeAccess başında bump/capture, final atamalardan ÖNCE guard → son-BAŞLAYAN kazanır; loadFavorites/
+  revalidateGeneration deseni). Deterministik interleave testi (per-call-gated `GatedEntitlements`: ep4 hasAccess
+  1. çağrısı bloklu → A ve B'yi interleave ettirir; B'nin ep3→.current commit'i beklenir, A serbest bırakılınca
+  bayat yazımı fence'le düşer) revert-verify RED-doğrulandı. DiscoverKit 154 test yeşil; file_length ≤400 (yorum
+  kırpma). NOT: ilk poll `ctaLocked`'a bakıyordu (default false → A/B senkronize etmiyordu) → `cellState==.current`e
+  düzeltildi (B'nin gözlemlenebilir etkisi).
 - **#9 DiscoverSessionStore cross-account (LOW CONFIRMED, App coordinator reset) → ✅ DÜZELTİLDİ:** Discover
   SessionStore + KesfetModel sekme ömrü boyu yaşar, DiscoverCoordinator (Home/Rewards/Library'nin AKSİNE)
   hesap-switch gözlemcisi YOKTU → A'nın per-user `/discover` layout'u (`private, max-age=600` cache) + seçili tür

@@ -49,10 +49,11 @@ public final class DiziDetayModel {
     private weak var delegate: (any DiziDetayDelegate)?
 
     private var accessibleEpisodeIDs: Set<EpisodeID> = []
+    /// recomputeAccess kuşak jetonu: load-recompute ile #2 gözlemcisi eşzamanlı çağırırsa son-başlayan kazanır.
+    private var accessRecomputeGeneration = 0
     private var hasHistory = false
     private var episodesCursor: String?
-    /// onAppear re-entrancy guard (AramaModel gibi): ilk görünümde bir kez load(); tekrar
-    /// görünümde bölümler/cursor/scroll/optimistik favori EZİLMESİN.
+    /// onAppear re-entrancy guard: ilk görünümde bir kez load(); tekrar görünümde state EZİLMESİN.
     private var appeared = false
     private var loadTask: Task<Void, Never>?
     /// load() uçuş guard'ı (#8): View'in .error/.offline "Tekrar Dene" butonu load()'u DOĞRUDAN çağırır →
@@ -60,8 +61,7 @@ public final class DiziDetayModel {
     private var isLoadingDetail = false
     /// toggleFavorite in-flight guard: örtüşen toggle'lar sunucudan sapmasın.
     private var isTogglingFavorite = false
-    /// Entitlement-değişim gözlem görevi (#2); model ömrü boyunca yaşar, deinit'te iptal. `nonisolated(unsafe)`:
-    /// yalnız MainActor'da yazılır, yalnız deinit'te (eşzamanlı MainActor işi yokken) iptal edilir → güvenli.
+    /// #2 gözlem görevi; deinit'te iptal. `nonisolated(unsafe)`: yalnız MainActor'da yazılır + deinit'te iptal → güvenli.
     private nonisolated(unsafe) var entitlementObserveTask: Task<Void, Never>?
 
     public init(
@@ -175,10 +175,8 @@ public final class DiziDetayModel {
         await recomputeAccess()
     }
 
-    /// İzleme ilerlemesinin bölümü henüz yüklü değilse, bulunana (ya da sayfalar bitene) kadar
-    /// ileri sayfala. `WatchProgress` yalnız `episodeId` taşır; hedef bölüm numarasını türetmek
-    /// için o bölümün Episode'unu yüklemek gerekir. Tekrarlanan/ilerlemeyen cursor'da durur
-    /// (bayat ilerleme ya da kaldırılmış bölümde sonsuz döngü koruması).
+    /// İzleme ilerleme bölümü yüklü değilse bulunana/sayfalar bitene kadar ileri sayfala (`WatchProgress` yalnız
+    /// `episodeId` taşır → Episode'u lazım). Tekrarlanan/ilerlemeyen cursor'da durur (bayat/kaldırılmış: döngü koruması).
     private func ensureProgressEpisodeLoaded(_ progress: WatchProgress?) async {
         guard let progress else { return }
         var visitedCursors: Set<String> = []
@@ -186,18 +184,16 @@ public final class DiziDetayModel {
             // Sayfa BİTTİ (cursor nil) ya da ilerlemeyen cursor → bölüm gerçekten yok (bayat/kaldırılmış) → legit çık.
             guard let cursor = episodesCursor, !visitedCursors.contains(cursor) else { return }
             visitedCursors.insert(cursor)
-            // BEST-EFFORT (self-review): derin-sayfa hatasını YÜZDÜRMEK canlı diziyi `.removed`/`.error`
-            // dead-end'ine düşürüyordu (handleLoadError .content→.removed) → `try?` ile yut, CTA .start'a düşer
-            // (kabul-LOW; doğru fix = progress'i episodeId ile resume, delegate desteği gerektirir → PREP).
+            // BEST-EFFORT (self-review): derin-sayfa hatasını YÜZDÜRMEK canlı diziyi `.removed`/`.error` dead-end'ine
+            // düşürüyordu → `try?` ile yut, CTA .start'a düşer (kabul-LOW; doğru fix episodeId-resume → PREP).
             guard let page = try? await catalog.episodes(seriesId: seriesID, cursor: cursor) else { return }
             appendUniqueEpisodes(page.items)
             episodesCursor = page.items.isEmpty ? nil : page.nextCursor // #4 simetrik (boş+cursor sonsuz sayfalama önle)
         }
     }
 
-    /// CTA hedef bölüm numarasının Episode'u henüz yüklü değilse, bulunana (ya da sayfalar bitene) kadar
-    /// ileri sayfala. `ensureProgressEpisodeLoaded` yalnız İZLENEN bölümü garanti eder; resume hedefi
-    /// (izlenen+1) sayfa sınırında sonraki sayfada olabilir. Tekrarlanan/ilerlemeyen cursor'da durur.
+    /// CTA hedef bölüm Episode'u yüklü değilse bulunana/sayfalar bitene kadar ileri sayfala (ensureProgress
+    /// EpisodeLoaded yalnız İZLENENİ garanti eder; resume hedefi izlenen+1 sonraki sayfada olabilir).
     private func ensureEpisodeLoaded(number: Int) async {
         var visitedCursors: Set<String> = []
         while !episodes.contains(where: { $0.index == number }) {
@@ -351,6 +347,8 @@ private extension DiziDetayModel {
     /// Erişilebilirlik kümesi + CTA kilidini entitlement'tan yeniden türetir. recompute alt-adımı; #2
     /// gözlemcisi de unlock/VIP sonrası çağırır (hafif — progress ağ-fetch'i yok). `ctaTarget` hazır olmalı.
     func recomputeAccess() async {
+        accessRecomputeGeneration += 1
+        let generation = accessRecomputeGeneration
         var accessible: Set<EpisodeID> = []
         for episode in episodes {
             if episode.access.isPlayableWithoutUnlock {
@@ -359,6 +357,8 @@ private extension DiziDetayModel {
                 accessible.insert(episode.id)
             }
         }
+        // Sonradan başlayan recomputeAccess (daha taze entitlement) araya girdiyse bu bayat commit'i düşür.
+        guard generation == accessRecomputeGeneration else { return }
         accessibleEpisodeIDs = accessible
 
         guard let target = ctaTarget else { return }

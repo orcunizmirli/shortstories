@@ -106,4 +106,47 @@ struct DiziDetayEntitlementObserveTests {
         await model.pendingWork()
         #expect(!model.ctaLocked) // load tamamlandıktan sonra da kilitsiz (load son yazımı access'i ezmez)
     }
+
+    @Test func recomputeAccessYarisindaBayatYazimEzmez() async throws {
+        // holistik self-review LOW: load'un recompute'u (recomputeAccess A) per-episode hasAccess loop'unda
+        // BLOKLUYKEN out-of-band unlock + gözlemcinin recomputeAccess B'si araya girerse, A'nın BAYAT (pre-unlock)
+        // yazımı generation-fence ile düşmeli → açılmış hedef CTA 🔒 kalmasın (B kazanır, son-başlayan).
+        let spy = lockedSeriesCatalog()
+        let entitlement = GatedEntitlements(gatedEpisode: EpisodeID("srs_abc123_e4")) // ep4 hasAccess 1. çağrı bloklu
+        let changes = ManualEntitlementChanges()
+        let history = FakeHistory(progress: Fixtures.progress(seriesID: "srs_abc123", episodeIndex: 3, completed: false))
+        let model = DiziDetayModel(
+            seriesID: seriesID,
+            source: .kesfet,
+            catalog: spy,
+            history: history,
+            favorites: FakeFavorites(),
+            entitlement: entitlement,
+            analytics: MockAnalytics(),
+            delegate: nil,
+            entitlementChanges: changes,
+            now: { now }
+        )
+
+        model.onAppear()
+        await entitlement.waitUntilGated() // A ep4'te bloklu: ctaTarget kuruldu, ep3=false okundu, henüz commit yok
+        let episode3 = try #require(model.episodes.first { $0.index == 3 })
+
+        // Out-of-band unlock + gözlemci B: ep3=true okur → accessible'a ep3 girer.
+        entitlement.grant(EpisodeID("srs_abc123_e3"))
+        changes.emit()
+        // B'nin COMMIT'ini bekle (ep3 → .current); ctaLocked default false olduğundan onu poll etmek A/B'yi
+        // senkronize ETMEZ → ep3 erişilebilirliğini poll et (B'nin gözlemlenebilir etkisi).
+        for _ in 0 ..< 1000 where model.cellState(for: episode3) != .current {
+            await Task.yield()
+        }
+        #expect(model.cellState(for: episode3) == .current) // B kazandı: ep3 erişilebilir
+
+        entitlement.releaseGate() // A devam eder → guard: A'nın generation'ı eskimiş → BAYAT commit DÜŞER
+        await model.pendingWork()
+
+        // A'nın bayat (ep3=false) yazımı B'yi EZMEMELİ (generation-fence): ep3 .current + CTA açık kalır.
+        #expect(model.cellState(for: episode3) == .current)
+        #expect(!model.ctaLocked)
+    }
 }

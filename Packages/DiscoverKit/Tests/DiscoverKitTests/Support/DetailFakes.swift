@@ -76,6 +76,54 @@ final class FakeEntitlements: EntitlementChecking, @unchecked Sendable {
     }
 }
 
+/// recomputeAccess yarış testi (holistik self-review LOW): `gatedEpisode`'a yapılan İLK `hasAccess` çağrısını
+/// `releaseGate()`e kadar bloklar (sonraki çağrılar geçer) → iki eşzamanlı recomputeAccess'i (load A + gözlemci B)
+/// deterministik interleave ettirir. `grant()` ile çalışma anında erişim verilir.
+final class GatedEntitlements: EntitlementChecking, @unchecked Sendable {
+    private let lock = NSLock()
+    private var granted: Set<EpisodeID> = []
+    private var gateConsumed = false
+    private let gatedEpisode: EpisodeID
+    private let arrived: AsyncStream<Void>
+    private let arrivedCont: AsyncStream<Void>.Continuation
+    private let release: AsyncStream<Void>
+    private let releaseCont: AsyncStream<Void>.Continuation
+
+    init(gatedEpisode: EpisodeID) {
+        self.gatedEpisode = gatedEpisode
+        (arrived, arrivedCont) = AsyncStream<Void>.makeStream()
+        (release, releaseCont) = AsyncStream<Void>.makeStream()
+    }
+
+    func grant(_ episodeID: EpisodeID) {
+        lock.withLock { _ = granted.insert(episodeID) }
+    }
+
+    func hasAccess(to episodeID: EpisodeID) async -> Bool {
+        let shouldGate = lock.withLock { () -> Bool in
+            guard episodeID == gatedEpisode, !gateConsumed else { return false }
+            gateConsumed = true
+            return true
+        }
+        if shouldGate {
+            arrivedCont.yield(()) // A kapıya ulaştı (per-episode loop'ta bloklu)
+            var iterator = release.makeAsyncIterator()
+            _ = await iterator.next()
+        }
+        return lock.withLock { granted.contains(episodeID) }
+    }
+
+    /// İlk gated `hasAccess` çağrısının kapıya ulaşmasını bekler.
+    func waitUntilGated() async {
+        var iterator = arrived.makeAsyncIterator()
+        _ = await iterator.next()
+    }
+
+    func releaseGate() {
+        releaseCont.yield(())
+    }
+}
+
 /// Entitlement-değişim sinyali fake'i (#2): `emit()` ile manuel tetiklenir; model gözlemcisi her emisyonda
 /// erişimi yeniden türetir. AsyncStream buffer'ı `.unbounded` (varsayılan) → emit yayıldıysa asla düşmez.
 final class ManualEntitlementChanges: EntitlementChangeObserving, @unchecked Sendable {
