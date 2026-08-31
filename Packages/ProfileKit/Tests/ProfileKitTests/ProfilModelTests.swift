@@ -60,6 +60,25 @@ struct ProfilModelTests {
         #expect(model.account.provider == .apple)
     }
 
+    @Test func loadIntoSessionExpiredClearsStaleWallet() async {
+        // MEDIUM (ProfileKit hunt): session-death SONRASI Profil İLK açılışında load() — observeSession/
+        // observeWallet guard'ının AKSİNE — cüzdanı koşulsuz currentSummary()'den yazıyordu → "oturum düştü"
+        // ekranında A'nın bayat 500 coin + VIP'i bir frame görünürdü (WalletStore session-death'te reset
+        // edilmez). load() da guard'lamalı (stream guard'larıyla simetrik). Stream'ler DEĞİL, YALNIZ load izole.
+        let wallet = FakeWalletSummary(WalletSummary(coinBalance: 500, isVIP: true, vipRenewalDate: Date()))
+        let model = makeModel(
+            session: MockSession(state: .loggedOut(previousUserID: "u1", provider: .google)),
+            wallet: wallet,
+            delegate: ProfileDelegateSpy()
+        )
+        model.onAppear()
+        await model.pendingWork()
+        #expect(model.account.isSessionExpired) // "oturum düştü" ekranı
+        #expect(model.wallet.coinBalance == 0) // bayat coin GÖSTERİLMEZ
+        #expect(!model.wallet.isVIP) // bayat VIP GÖSTERİLMEZ
+        #expect(model.loadState == .loaded)
+    }
+
     // MARK: - Navigasyon niyetleri
 
     @Test func guestLinkCTAInvokesDelegateAndTracks() async {

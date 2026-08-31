@@ -35,6 +35,10 @@ public struct HesapBaglamaView: View {
         } message: {
             Text(conflictMessage)
         }
+        // Bağlama/switch İŞLENİRKEN (isBusy: linking/switching — switch yerel veriyi + misafir verisini yıkar)
+        // swipe-to-dismiss modeli baypas edip yarıda kapatmasın; işlem arka planda tamamlanır ama kasıtlı
+        // busy-guard (dismiss no-op) korunur.
+        .interactiveDismissDisabled(model.isBusy)
     }
 
     // MARK: - Değer önerisi (ilerlemeyi kaybetme mesajı — 02 §4.13)

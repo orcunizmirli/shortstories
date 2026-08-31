@@ -80,7 +80,11 @@ public final class ProfilModel {
     public func load() async {
         let state = await session.state
         account = AccountSummary.make(from: state)
-        wallet = await walletSummary.currentSummary()
+        // Oturum düştüyse (sessionExpired) cüzdan display'i BOŞ olmalı — observeSession/observeWallet guard'ı
+        // ile simetrik (SS-132): WalletStore session-death'te reset edilMEZ → currentSummary() bayat coin/VIP
+        // döner. Stream'ler bunu birkaç async-hop sonra temizler; load anında da uygula ki `.loaded` İLK render
+        // (session-death sonrası ilk Profil açılışı) "yeniden giriş" ekranında bayat cüzdanı GÖSTERMESİN.
+        wallet = account.isSessionExpired ? .empty : await walletSummary.currentSummary()
         loadState = .loaded
     }
 

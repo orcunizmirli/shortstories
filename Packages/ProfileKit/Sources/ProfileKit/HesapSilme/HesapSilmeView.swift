@@ -39,6 +39,10 @@ public struct HesapSilmeView: View {
         } message: {
             Text("Bu işlem geri alınamaz. Kalan coin ve VIP hakkın geri ödenmez.")
         }
+        // App Store 5.1.1(v): geri-alınamaz silme İŞLENİRKEN swipe-to-dismiss sheet'i kapatıp oturumu sessizce
+        // sıfırlamasın — "Vazgeç" `.disabled(isDeleting)` + `dismiss()` guard'ıyla simetrik (swipe ikisini de
+        // baypas edip coordinator binding'i üzerinden modeli nil'lerdi).
+        .interactiveDismissDisabled(model.deletionState.isBusy)
     }
 
     // MARK: - Uyarı (silmeden ÖNCE — ONB-07 KC2)

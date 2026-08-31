@@ -504,6 +504,30 @@ testli. 1 HIGH cross-account + 1 MEDIUM lossy-decode DÜZELTİLDİ, 2 LOW ertele
   FavoritesService'in `needsResync`/repeat coalescing'i yok → switch refetch'i görünür Listem sync'iyle çakışırsa
   B'nin pull'u atlanabilir (switch sıralı → pencere dar). **Fix:** FavoritesService coalescing desenini mirror'la.
 
+### ProfileKit adversarial bug-hunt — ertelenen 1 kalem (2026-08-31)
+ProfilModel switch-anı account/wallet stream-türetimi + HesapBaglama state-machine + NotificationCenter
+optimistik/tombstone/fence sağlam ve testli. 1 MEDIUM load-path + 1 MEDIUM sheet-dismiss DÜZELTİLDİ, 1 LOW ertelendi:
+- **#1 ProfilModel.load() sessionExpired cüzdan-clear guard'ını kaçırıyor (MEDIUM CONFIRMED) → ✅ DÜZELTİLDİ:**
+  SS-132 fix'i `if account.isSessionExpired { wallet = .empty }` guard'ını observeSession/observeWallet'e ekledi ama
+  load()'a EKLEMEDİ → session-death sonrası Profil İLK açılışında load() `account=sessionExpired` ama koşulsuz
+  `wallet=currentSummary()` (WalletStore session-death'te reset edilmez → A'nın 500 coin+VIP'i) yazıp `.loaded`
+  render ediyordu → "yeniden giriş" ekranında bayat cüzdan bir frame görünürdü (stream'ler birkaç async-hop sonra
+  temizler). Fix: load() da `account.isSessionExpired ? .empty : currentSummary()` (stream guard'larıyla simetrik).
+  TDD testi (load-into-loggedOut → wallet boş, izole) revert-verify RED-doğrulandı; ProfileKit 165 test yeşil.
+- **#2 Yıkıcı/uçuştaki hesap sheet'lerinde interactiveDismissDisabled yok (MEDIUM CONFIRMED) → ✅ DÜZELTİLDİ:**
+  HesapSilme `.deleting` / HesapBaglama `.linking|.switching` sırasında "Vazgeç" `.disabled(isBusy)` + `dismiss()`
+  guard'ı vardı AMA swipe-to-dismiss coordinator binding'i üzerinden ikisini de baypas edip modeli nil'liyordu
+  (App Store 5.1.1(v) koruması: geri-alınamaz silme/switch arka planda tamamlanırken sheet sessizce kapanmasın).
+  Fix: iki ProfileKit view'una `.interactiveDismissDisabled(model...isBusy)` (view internal isBusy'ye erişir; yeni
+  public API yok). View-katmanı (unit-test edilemez — swipe modeli baypas eder), App derleme + ProfileKit build ile
+  doğrulandı.
+- **#3 AccountServiceAdapters.link() userID-koruma guard'ı yok (LOW PLAUSIBLE, defense-in-depth):** yalnız
+  switchToExistingAccount flush→reset→refetch + WalletStore reset yapar; link() `.linked`i sıfır-kayıp kabul edip
+  userID'nin korunduğuna GÜVENİR (409 yabancı-kimlik yolu). Uyumsuz `/auth/link` farklı userID'li `.linked`
+  dönerse coordinator'lar (userID-change gözler) modelleri reset eder ama WalletStore + repo'lar YIKILMAZ →
+  cross-account bakiye/entitlement sızıntısı. Uyumlu backend'de erişilemez. **Fix:** link() `.linked` dalında
+  dönen userId pre-link userID'den farklıysa switch-lifecycle'a yönlendir (ucuz guard, pahalı hata).
+
 ---
 
 ## Kod-içsel (prep gerektirmeyen) kalan iş — ayrı izlenir
