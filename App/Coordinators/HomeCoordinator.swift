@@ -212,6 +212,12 @@ final class HomeCoordinator {
     /// kalınmaz; 02 §8.2). NavigationPath SwiftUI tipidir → sıfırlama burada (koordinatör) kapsüllenir.
     func resetToRoot() {
         path = NavigationPath()
+        // `.home` sekme-kökü hedefi bağlamsal oynatmayı da İPTAL eder: `.play`→`.home` ardışığında uçuştaki
+        // `.play` seed'i (pendingPlayback + resolve Task) çözülüp feed'i o diziye remount ETMESİN → SON niyet
+        // (.home kök) kazanır (yoksa erken `.play` kazanırdı). seedGeneration bump uçuştaki seed-resolution'ı
+        // düşürür; pendingPlayback nil ise henüz-tüketilmemiş intent de temizlenir.
+        pendingPlayback = nil
+        seedGeneration &+= 1
     }
 
     func requestPlayback(_ intent: PlaybackIntent) {

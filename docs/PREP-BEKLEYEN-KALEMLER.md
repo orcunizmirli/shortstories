@@ -530,9 +530,9 @@ optimistik/tombstone/fence sağlam ve testli. 1 MEDIUM load-path + 1 MEDIUM shee
   cross-account bakiye/entitlement sızıntısı. Uyumlu backend'de erişilemez. **Fix:** link() `.linked` dalında
   dönen userId pre-link userID'den farklıysa switch-lifecycle'a yönlendir (ucuz guard, pahalı hata).
 
-### App-integration (routing/coordinator) adversarial bug-hunt — ertelenen 3 kalem (2026-08-31)
+### App-integration (routing/coordinator) adversarial bug-hunt — ertelenen 2 kalem (2026-08-31)
 Session-stream fan-out, lazy-model force-init, contextual-playback seed ordering, universal-link/cold-start
-routing sağlam. 1 MEDIUM nav-leak DÜZELTİLDİ, 3 LOW ertelendi:
+routing sağlam. 1 MEDIUM nav-leak + 1 LOW seed-cancel DÜZELTİLDİ, 2 LOW ertelendi:
 - **#1 Hesap-switch model'leri reset ediyor ama koordinatör nav-PATH'ini temizlemiyor (MEDIUM CONFIRMED) →
   ✅ DÜZELTİLDİ:** HomeCoordinator switch'te `path = NavigationPath()` yapar ama bu seansda eklenen Discover/
   Library observer'ları YALNIZ model reset ediyordu; Profile'ın observer'ı hiç yoktu → A'nın pushed DiziDetay'ı
@@ -541,11 +541,13 @@ routing sağlam. 1 MEDIUM nav-leak DÜZELTİLDİ, 3 LOW ertelendi:
   observer'larına path-reset + ProfileCoordinator'a observer (resetToRoot; ProfilModel stream-türetimli, model-
   reset gerekmez). 3 App-wiring testi genişletildi/eklendi (push-then-switch → path boş), 3'ü de revert-verify
   RED-doğrulandı.
-- **#2 `.home` deep-link'i uçuştaki contextual playback seed'ini iptal etmiyor (LOW CONFIRMED):** `.play`→`.home`
-  ardışık deeplink'te resetToRoot() yalnız path'i temizler; pendingPlayback/seedGeneration'a dokunmaz → uçuştaki
-  `srs_x` seed'i çözülüp feed'i srs_x'e remount eder → kullanıcının SON niyeti (.home kök) erken .play'e kaybeder.
-  `.home` ayrıca feed'i "For You"a re-seed etmez. **Fix:** resetToRoot()'ta (veya ayrı metod) pendingPlayback=nil
-  + seedGeneration bump → uçuştaki seed düşürülür.
+- **#2 `.home` deep-link'i uçuştaki contextual playback seed'ini iptal etmiyor (LOW CONFIRMED) → ✅ DÜZELTİLDİ:**
+  `.play`→`.home` ardışığında resetToRoot() yalnız path'i temizliyordu; pendingPlayback/seedGeneration'a
+  dokunmuyordu → uçuştaki `srs_x` seed'i çözülüp feed'i srs_x'e remount ediyor, SON niyet (.home kök) erken
+  .play'e kaybediyordu. Fix: resetToRoot()'a `pendingPlayback = nil` + `seedGeneration &+= 1` (uçuştaki seed-
+  resolution düşürülür; tüketilmemiş intent temizlenir). App testi (requestPlayback→handle(.home)→pendingPlayback
+  nil) revert-verify RED-doğrulandı; PlaybackFeedSeed/AccountSwitchFeedReset regresyon yok. NOT: `.home`'un feed'i
+  "For You"a re-seed edip etmemesi ayrı ürün-kararı (bu fix yalnız yanlış-seed yarışını kapatır).
 - **#3 Home & Library detay push'u idempotent değil (LOW CONFIRMED):** ikisi de hâlâ `NavigationPath` (element-peek
   edilemez, dedup yok) → player-feed rail / favori "Detaya Git" çift-tap'te iki özdeş `.diziDetay` → yığılmış çift
   ekran + çift Geri. Discover (showDetail) + Profile (appendIfNotTop) zaten guard'lı. **Fix:** Home/Library `path`'i

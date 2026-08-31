@@ -32,4 +32,18 @@ final class DeepLinkStackResetTests: XCTestCase {
 
         XCTAssertTrue(tab.profile.path.isEmpty) // stack köke sıfırlandı
     }
+
+    func testHomeDeepLinkCancelsInFlightPlaybackSeed() throws {
+        // App-integration hunt #2: `.play`→`.home` ardışığında `.home` uçuştaki bağlamsal playback seed'ini
+        // iptal etmeli → SON niyet (.home kök) kazanmalı (yoksa erken `.play` seed'i feed'i o diziye remount eder).
+        let tab = try makeTabCoordinator()
+        tab.requestPlayback(HomeCoordinator.PlaybackIntent(
+            seriesID: SeriesID("srs_x"), episodeNumber: nil, startPositionSec: 0
+        ))
+        XCTAssertNotNil(tab.home.pendingPlayback) // .play niyeti askıda (feed henüz tüketmedi)
+
+        tab.handle(.home) // .home sekme-kökü
+
+        XCTAssertNil(tab.home.pendingPlayback) // uçuştaki playback niyeti iptal edildi (son niyet .home kazanır)
+    }
 }
