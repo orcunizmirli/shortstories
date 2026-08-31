@@ -157,7 +157,11 @@ final class HomeCoordinator {
             viewModel: feedViewModel,
             playerPool: playerPool,
             prefetch: prefetch,
-            analytics: composition.dependencies.analytics,
+            // `decoratedAnalytics`: player-feed engagement event'leri (video_start/swipe_next/swipe_prev/
+            // video_stall) `ab_variants` deney boyutunu TAŞIMALI (08 §7.3) — aksi halde en yüksek-trafikli
+            // tüketim funnel'ı varyanta göre kırılamaz. BASE (`dependencies.analytics`) yerine decorated
+            // (diğer TÜM feature wiring'i gibi); exposure BASE'de kalır (ayrı ExperimentClient yolu, §7.3).
+            analytics: composition.decoratedAnalytics,
             delegate: self,
             entry: feedEntry
         )
