@@ -404,6 +404,30 @@ droppedItemCount, non-core tarih toleransı, yanlış-tip array alanı). 1 kalem
   kapalı" (isCoinPathClosedLock gibi) say — bedava-unlock DEĞİL. Server-contract-ihlaline karşı savunmacı
   clamp; WalletKit/UnlockSheet (App-katmanı) dokunuşu + "0-fiyat nasıl yorumlanmalı" ürün kararı → ertelendi.
 
+### DiscoverKit adversarial bug-hunt — ertelenen 2 kalem (2026-08-31)
+DiscoverKit bug-hunt (14 agent → 9 doğrulanmış). 7 CI-testli fix DÜZELTİLDİ (commit 3854329: recent-search
+newline, ilerleme-sayfası geçici-hata, loadMore sonsuz-sayfalama, öneri bayat/boş, CTA kilit-etiketi, load
+guard). 2 App-katmanı kalem ertelendi:
+- **#2 DiziDetay CTA/entitlement unlock/VIP SONRASI bayat (MEDIUM CONFIRMED, App entitlement-observation —
+  YÜKSEK ETKİ):** `accessibleEpisodeIDs`/`ctaLocked` yalnız load()/loadMoreEpisodes()'te hesaplanır; onAppear
+  `appeared` guard'ıyla bir kez çalışır. Kullanıcı coin ile Bölüm 6'yı açar → UnlockSheet kapanır, AYNI
+  DiziDetayModel'e dönülür ama accessibleEpisodeIDs Bölüm 6'yı içermez → CTA hâlâ 🔒, ızgarada kilitli, CTA'ya
+  tekrar dokunmak ZATEN SAHİP OLUNAN bölüm için UnlockSheet'i yeniden açar → **kullanıcı ödediği içeriği bu
+  ekrandan oynatamaz**. Ekran açıkken VIP olan kullanıcıya da tüm kilitli hücreler kilitli kalır.
+  WalletFlowCoordinator.onEpisodeUnlocked/onVIPActivated YALNIZ HomeCoordinator'a bağlı; DiziDetayModel
+  reload/gözlem YOK. **Fix:** DiziDetayModel'e entitlement-değişim gözlemi (WalletStore.entitlementUpdates
+  portu üzerinden re-derive) ya da unlock-sonrası reload tetiği + View .task/observe. Bu, PlayerKit #4
+  (VIP-expiry re-lock) ve genel "entitlement-değişimi UI'a yayılmıyor" cluster'ının parçası. App-wiring
+  gerektirir (App CI-dışı → odaklı pass). Kullanıcı-parası etkisi nedeniyle YÜKSEK öncelikli ertelenen.
+- **#9 DiscoverSessionStore cross-account (LOW CONFIRMED, App coordinator reset):** `DiscoverSessionStore.cached`
+  `public private(set)` ama reset/clear API'si YOK (yalnız save/init); DiscoverCoordinator'da uzun-ömürlü `let`
+  olarak tutulur, hesap/session gözlemcisi YOK — oysa uzun-ömürlü coordinator'lar hesap-değişiminde reset
+  edilmeli (RewardsCoordinator/HomeCoordinator deseni). A kullanıcısı tür filtresi seçip Kesfet yükler →
+  B'ye switch (aynı process, DiscoverCoordinator yeniden yaratılmaz) → B Kesfet açar, KesfetModel.init A'nın
+  selectedGenreID'sini okur → A'nın filtresiyle yükler (cross-account state sızıntısı). **Fix:** DiscoverSession
+  Store.reset() + DiscoverCoordinator'a session.stateUpdates gözlemcisi (userID-change → reset), cross-account
+  UI-state cluster deseniyle simetrik. App-wiring → odaklı pass.
+
 ---
 
 ## Kod-içsel (prep gerektirmeyen) kalan iş — ayrı izlenir
