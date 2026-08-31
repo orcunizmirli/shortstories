@@ -22,9 +22,33 @@ final class LibraryCoordinator {
     @ObservationIgnored private(set) lazy var listemModel: ListemModel =
         composition.makeListemModel(delegate: self)
 
+    /// Hesap değişimi gözlemcisi — app ömrü boyunca canlı (Home/Rewards ile simetrik): switch hangi
+    /// sekmede olursa olsun (Profil'den) yakalanır.
+    @ObservationIgnored private var accountObserver: Task<Void, Never>?
+
     init(composition: AppComposition, walletFlow: WalletFlowCoordinator) {
         self.composition = composition
         self.walletFlow = walletFlow
+        startObservingAccountSwitch()
+    }
+
+    /// Hesap DEĞİŞİMİNDE (userID farklı bir hesaba geçince) uzun-ömürlü `listemModel`'i sıfırlar — model
+    /// TabCoordinator ömrü boyunca yaşar, switch'te yeniden yaratılmaz → cross-account state (A'nın favorileri/
+    /// "devam et"/gizli-öğeleri) B'ye sızmasın (SS-132 sınıfı; Home/Rewards koordinatörleriyle simetrik). link
+    /// (guest→AYNI userID) ve session-death/re-auth (nil-geçiş) reset TETİKLEMEZ; yalnız farklı-hesaba geçiş.
+    private func startObservingAccountSwitch() {
+        let session = composition.dependencies.session
+        accountObserver = Task { [weak self] in
+            var lastUserID: String?
+            for await state in session.stateUpdates {
+                // lastUserID YALNIZ non-nil'de güncellenir → nil-ara-durumdan (loggedOut) geçen switch yakalanır.
+                guard let current = state.userID else { continue }
+                if let previous = lastUserID, previous != current {
+                    self?.listemModel.resetForAccountSwitch()
+                }
+                lastUserID = current
+            }
+        }
     }
 
     /// Deep link / Profil "izleme geçmişi" → segment seçimi (02 §8.2 `mylist?segment=`).

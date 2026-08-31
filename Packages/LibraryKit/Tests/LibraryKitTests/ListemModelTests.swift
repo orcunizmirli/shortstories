@@ -315,3 +315,41 @@ struct ListemModelTests {
         #expect(removeEvent.parameters["source"] == .string("listem"))
     }
 }
+
+// MARK: - Hesap değişimi reset (cross-account sızıntı — LibraryKit adversarial hunt HIGH)
+
+extension ListemModelTests {
+    @Test func resetForAccountSwitchHesapOzelDurumuTemizler() async throws {
+        // HIGH: model coordinator ömrü boyu yaşar → hesap-switch'te A'nın favorileri/"devam et"/gizli-öğeleri
+        // temizlenmezse B'ye SIZAR. resetForAccountSwitch bunları ANINDA temizler (B görmeden önce).
+        let history = try historyService()
+        try await history.recordProgress(Fixtures.progress(episode: "e1", series: "s1", at: 100))
+        let favorites = try favoritesService()
+        try await favorites.setFavorite(true, seriesID: SeriesID("s-fav"), at: Date(timeIntervalSince1970: 1000))
+        let model = try makeModel(
+            favorites: favorites,
+            history: history,
+            catalog: FakeLibraryCatalog(),
+            analytics: MockAnalytics(),
+            delegate: ListemDelegateSpy()
+        )
+        await model.load(.favorites)
+        await model.load(.continueWatching)
+        #expect(!model.favorites.isEmpty) // A'nın favorisi yüklü
+        #expect(!model.continueItems.isEmpty) // A'nın devam-et'i yüklü
+        let firstContinue = try #require(model.continueItems.first)
+        model.hideContinueItem(firstContinue) // gizli-öğe kümesini doldur
+
+        model.resetForAccountSwitch()
+
+        #expect(model.favorites.isEmpty) // A'nın favorileri temizlendi
+        #expect(model.continueItems.isEmpty) // A'nın devam-et'i temizlendi
+        #expect(model.favoritesState == .loading) // spinner, A verisi değil
+        #expect(model.continueState == .loading)
+        #expect(!model.isEditing)
+
+        // Gizli-öğe kümesi de temizlendi: reset sonrası yeniden yükle → önceden gizlenen öğe geri gelir.
+        await model.load(.continueWatching)
+        #expect(model.continueItems.contains { $0.episodeID == firstContinue.episodeID })
+    }
+}

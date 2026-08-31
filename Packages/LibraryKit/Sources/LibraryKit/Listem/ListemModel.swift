@@ -342,3 +342,29 @@ public final class ListemModel {
         )
     }
 }
+
+// MARK: - Hesap değişimi reset (type_body_length: same-file extension gövdeye sayılmaz)
+
+public extension ListemModel {
+    /// Hesap değişiminde hesap-ÖZEL bellek-içi durumu sıfırlar (model TabCoordinator ömrü boyu yaşar →
+    /// sıfırlanmazsa cross-account: A'nın favorileri/"devam et"/gizli-öğeleri B'ye SIZAR — SS-132 sınıfı).
+    /// Generation bump uçuştaki loadFavorites/loadContinue commit'ini fence eder; state temizliği A verisini
+    /// ANINDA gizler. Reload BURADA yapılMAZ: reset stateUpdates'te repo refetch'inden ÖNCE tetiklenir → burada
+    /// yüklersek A'nın (henüz silinmemiş) verisini diriltirdik; `appeared=false` ile reload sonraki onAppear/
+    /// .task'a (refetch SONRASI) bırakılır.
+    func resetForAccountSwitch() {
+        favoritesLoadGeneration += 1
+        continueLoadGeneration += 1
+        loadTask?.cancel()
+        loadTask = nil
+        favorites = []
+        continueItems = []
+        hiddenEpisodeIDs = []
+        loadedSegments = []
+        selectedForRemoval = []
+        isEditing = false
+        favoritesState = .loading
+        continueState = .loading
+        appeared = false
+    }
+}

@@ -86,6 +86,37 @@ struct ListemFavoritesRaceTests {
         #expect(model.continueItems.count == 1)
         #expect(!model.continueItems.contains { $0.episodeID == EpisodeID("e1") })
     }
+
+    @Test func resetForAccountSwitchFencesInFlightLoad() async throws {
+        // HIGH (LibraryKit hunt): A'nın loadFavorites'ı uçuştayken (seriesInfo bloklu) hesap-switch reset'i
+        // olursa, A'nın favorileri reset SONRASI commit edilMEMELİ (last-writer-wins → B'ye A sızması önlenir).
+        // resetForAccountSwitch generation bump'ı eskimiş commit'i düşürür.
+        let repo = try PersistenceStore(inMemory: true).makeFavoritesRepository()
+        let seriesX = SeriesID("x")
+        try await repo.addFavorite(seriesX, at: Date())
+        let service = try FavoritesService(repository: repo, remoting: FakeFavoritesRemoting())
+        let gate = SeriesInfoGate()
+        let catalog = GatedCatalog(base: FakeLibraryCatalog(infos: [seriesX: Fixtures.info("x")]), gate: gate)
+        let history = try ContinueWatchingService(
+            repository: PersistenceStore(inMemory: true).makeWatchHistoryRepository(),
+            remoting: FakeWatchProgressRemoting()
+        )
+        let model = ListemModel(
+            favoritesService: service,
+            continueWatchingService: history,
+            catalog: catalog,
+            analytics: MockAnalytics(),
+            delegate: ListemDelegateSpy()
+        )
+
+        async let loadA: Void = model.load(.favorites) // [x] okur, seriesInfo BLOKLANIR
+        await gate.waitForArrival()
+        model.resetForAccountSwitch() // hesap switch → generation bump (uçuştaki A fence'lenir)
+        await gate.open() // A serbest → A EN SON commit dener; guard eskimiş jetonu düşürür
+        await loadA
+
+        #expect(model.favorites.isEmpty) // A'nın favorisi B'ye commit EDİLMEDİ (fence)
+    }
 }
 
 // MARK: - İlk seriesInfo çağrısını bloklayan kapı (sonrakiler geçer) + gated katalog

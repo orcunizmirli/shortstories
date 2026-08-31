@@ -478,6 +478,30 @@ DÜZELTİLDİ, 2 LOW ertelendi:
   taşır → server SSV çift-krediyi engeller. Serileştirme UI'a (UnlockSheet butonu isLoading disable) bağlı. **Fix
   (opsiyonel):** service'e in-flight bayrağı.
 
+### LibraryKit (izleme-geçmişi/favoriler) adversarial bug-hunt — ertelenen 3 kalem (2026-08-31)
+FavoritesService reentrancy/optimistik-toggle/telafi-DELETE + ListemModel generation-guard'ları sağlam ve
+testli. 1 HIGH cross-account kusur DÜZELTİLDİ, 3 kalem ertelendi:
+- **#1 ListemModel hesap-değişiminde reset edilmiyor (HIGH CONFIRMED, cross-account) → ✅ DÜZELTİLDİ:**
+  LibraryCoordinator'da (Home/Rewards'ın aksine) HİÇ account-switch observer'ı yoktu; ListemModel (coordinator
+  ömrü boyu yaşar) reset+epoch-fence'siz → A'nın favorileri/"devam et"/gizli-öğeleri hesap-switch sonrası B'ye
+  SIZIYORDU (kullanıcının ÖZEL izleme verisi). Fix: ListemModel.resetForAccountSwitch() (favorites/continueItems/
+  hiddenEpisodeIDs/loadedSegments temizler, state=.loading, favorites/continue generation bump ile uçuştaki
+  load'u fence eder, appeared=false → reload onAppear/.task ile); reload BURADA yapılMAZ (reset stateUpdates'te
+  repo refetch'inden ÖNCE tetiklenir — b<c<d — yüklersek A'yı diriltirdik). LibraryCoordinator.startObserving
+  AccountSwitch (Home/Rewards mirror) switch'te reset eder. 3 test (state-clear + uçuştaki-load fence + App-wiring),
+  paket testleri bağımsız revert-verify RED-doğrulandı. LibraryKit 70 + App 2 test yeşil.
+- **#2 History wire STRICT array decode: tek bozuk eleman tüm cross-device geçmiş merge'ini düşürür (MEDIUM
+  PLAUSIBLE):** `LibraryRemotingAdapters.HistoryListWire.items: [WatchProgressWire]` strict → tek bozuk kayıt tüm
+  sayfa decode'unu fail eder → `synchronize()` `.decoding`'i yüzdürür → tüm caller'ların `try?`'ı yutar → cross-
+  device "devam et" sessizce hiç güncellenmez (all-or-nothing). ContentKit lossy-decode (commit 7b3bac9) ile AYNI
+  sınıf. **Fix:** items'ı eleman-bazlı lossy-decode et (bozuk kaydı atla), ContentKit LossyArray deseni. App-layer.
+- **#3 fetchServerProgress pagination dedup/stuck-cursor yok (LOW):** değişmeyen non-empty cursor 50 kez aynı
+  sayfayı çeker (maxHistoryPages cap infinite-loop'u önler; mergeServerProgress episodeID upsert dedup'lar → boşa
+  round-trip, bozulma değil). **Fix:** `nextCursor == cursor` (değişmedi) break + episodeID dedup.
+- **#4 ContinueWatchingService.synchronize coalescing guard yok (LOW):** `guard !isSyncing` örtüşen çağrıyı düşürür,
+  FavoritesService'in `needsResync`/repeat coalescing'i yok → switch refetch'i görünür Listem sync'iyle çakışırsa
+  B'nin pull'u atlanabilir (switch sıralı → pencere dar). **Fix:** FavoritesService coalescing desenini mirror'la.
+
 ---
 
 ## Kod-içsel (prep gerektirmeyen) kalan iş — ayrı izlenir
