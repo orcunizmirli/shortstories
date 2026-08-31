@@ -404,10 +404,18 @@ droppedItemCount, non-core tarih toleransı, yanlış-tip array alanı). 1 kalem
   kapalı" (isCoinPathClosedLock gibi) say — bedava-unlock DEĞİL. Server-contract-ihlaline karşı savunmacı
   clamp; WalletKit/UnlockSheet (App-katmanı) dokunuşu + "0-fiyat nasıl yorumlanmalı" ürün kararı → ertelendi.
 
-### DiscoverKit adversarial bug-hunt — ertelenen 2 kalem (2026-08-31)
-DiscoverKit bug-hunt (14 agent → 9 doğrulanmış). 7 CI-testli fix DÜZELTİLDİ (commit 3854329: recent-search
-newline, ilerleme-sayfası geçici-hata, loadMore sonsuz-sayfalama, öneri bayat/boş, CTA kilit-etiketi, load
-guard). 2 App-katmanı kalem ertelendi:
+### DiscoverKit adversarial bug-hunt — ertelenen 3 kalem (2026-08-31)
+DiscoverKit bug-hunt (14 agent → 9 doğrulanmış). 6 CI-testli fix DÜZELTİLDİ (commit 3854329 + self-review
+f327339: recent-search newline, loadMore sonsuz-sayfalama, öneri bayat/boş/ağ-hatası, CTA kilit-etiketi, load
+guard). 3 kalem ertelendi:
+- **#3 DiziDetay ilerleme-hedefi derin-sayfa GEÇİCİ hatasında yanlış .start CTA (LOW, izleme-yeri kaybı):**
+  ensureProgressEpisodeLoaded ilerleme bölümünün derin sayfasını çekerken GEÇİCİ hata alırsa (`try?` yutar) CTA
+  sessizce .start'a (Bölüm 1) düşer → kullanıcı kaldığı yeri kaybeder. **İLK fix'im (recompute-throws → hata
+  yüzdür) SELF-REVIEW'da REGRESYON çıktı** (`.content(.notFound)` → handleLoadError → `.removed` dead-end; canlı
+  dizi "yayında değil" + retry yok) → best-effort `try?`e geri alındı (regresyon-guard testi eklendi). **Doğru
+  fix:** progress'i `episodeId`+`positionSec` ile RESUME et (WatchProgress'te var) — ekranı BOZMADAN doğru
+  bölüme git; delegate `diziDetayStartWatching` episodeNumber yerine episodeId kabul etmeli (cross-package,
+  ContinueWatchingTarget + PlayerFeed sözleşmesi). Ekranı-bozan yerine izleme-yeri-koruyan çözüm.
 - **#2 DiziDetay CTA/entitlement unlock/VIP SONRASI bayat (MEDIUM CONFIRMED, App entitlement-observation —
   YÜKSEK ETKİ):** `accessibleEpisodeIDs`/`ctaLocked` yalnız load()/loadMoreEpisodes()'te hesaplanır; onAppear
   `appeared` guard'ıyla bir kez çalışır. Kullanıcı coin ile Bölüm 6'yı açar → UnlockSheet kapanır, AYNI
