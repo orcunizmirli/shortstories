@@ -35,9 +35,31 @@ final class ProfileCoordinator {
             )
         )
 
+    /// Hesap değişimi gözlemcisi — app ömrü boyunca canlı (Home/Discover/Library/Rewards ile simetrik).
+    @ObservationIgnored private var accountObserver: Task<Void, Never>?
+
     init(composition: AppComposition, walletFlow: WalletFlowCoordinator) {
         self.composition = composition
         self.walletFlow = walletFlow
+        startObservingAccountSwitch()
+    }
+
+    /// Hesap DEĞİŞİMİNDE Profil stack'ini köke sıfırlar — A'nın pushed BildirimMerkezi'si (hesap-özel
+    /// bildirimler) / Ayarlar'ı B'ye taşınmasın (SS-132 sınıfı nav-leak; Home/Discover/Library path-reset
+    /// simetriği). `ProfilModel` stream-türetimli olduğundan model-reset GEREKMEZ; yalnız path sıfırlanır.
+    /// link (guest→AYNI userID) ve session-death/re-auth (nil-geçiş) tetiklemez; yalnız farklı-hesaba geçiş.
+    private func startObservingAccountSwitch() {
+        let sessionManaging = composition.dependencies.session
+        accountObserver = Task { [weak self] in
+            var lastUserID: String?
+            for await state in sessionManaging.stateUpdates {
+                guard let current = state.userID else { continue }
+                if let previous = lastUserID, previous != current {
+                    self?.resetToRoot()
+                }
+                lastUserID = current
+            }
+        }
     }
 
     // MARK: - Cross-tab / deep link yardımcıları

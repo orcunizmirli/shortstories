@@ -20,6 +20,8 @@ final class AccountSwitchDiscoverResetTests: XCTestCase {
         let model = tab.discover.kesfetModel // lazy init → gözlemci bu instance'ı reset edecek
         model.selectGenre("romance") // A'nın tür filtresi
         XCTAssertEqual(model.selectedGenreID, "romance")
+        tab.discover.showDetail(SeriesID("srs_a1"), source: .kesfet) // A DiziDetay push eder
+        XCTAssertFalse(tab.discover.path.isEmpty)
 
         // Aynı userID'nin yeniden emisyonu (link/re-auth AYNI hesap = §3.3 sıfır-kayıp) reset ETMEMELİ.
         session.send(.linked(userID: "u1", provider: .apple))
@@ -40,6 +42,7 @@ final class AccountSwitchDiscoverResetTests: XCTestCase {
         }
         XCTAssertTrue(didReset) // hesap değişimi Kesfet filtresini/layout'unu sıfırladı
         XCTAssertNil(model.content) // A'nın per-user discover layout'u temizlendi
+        XCTAssertTrue(tab.discover.path.isEmpty) // A'nın pushed DiziDetay'ı B'ye taşınmadı
     }
 
     /// Self-review2 (Home/Rewards/Library ile simetrik): gözlemci nil-userID ara-durumundan (loggedOut) GEÇEN

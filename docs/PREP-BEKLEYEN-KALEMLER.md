@@ -530,9 +530,30 @@ optimistik/tombstone/fence sağlam ve testli. 1 MEDIUM load-path + 1 MEDIUM shee
   cross-account bakiye/entitlement sızıntısı. Uyumlu backend'de erişilemez. **Fix:** link() `.linked` dalında
   dönen userId pre-link userID'den farklıysa switch-lifecycle'a yönlendir (ucuz guard, pahalı hata).
 
----
-
-## Kod-içsel (prep gerektirmeyen) kalan iş — ayrı izlenir
+### App-integration (routing/coordinator) adversarial bug-hunt — ertelenen 3 kalem (2026-08-31)
+Session-stream fan-out, lazy-model force-init, contextual-playback seed ordering, universal-link/cold-start
+routing sağlam. 1 MEDIUM nav-leak DÜZELTİLDİ, 3 LOW ertelendi:
+- **#1 Hesap-switch model'leri reset ediyor ama koordinatör nav-PATH'ini temizlemiyor (MEDIUM CONFIRMED) →
+  ✅ DÜZELTİLDİ:** HomeCoordinator switch'te `path = NavigationPath()` yapar ama bu seansda eklenen Discover/
+  Library observer'ları YALNIZ model reset ediyordu; Profile'ın observer'ı hiç yoktu → A'nın pushed DiziDetay'ı
+  (Discover/Library) / Ayarlar-BildirimMerkezi'si (Profile) hesap-switch sonrası B'ye taşınıyordu (B, A'nın
+  ekranında açılıp Geri'ye basmak zorunda; nav-pozisyon + BildirimMerkezi hesap-özel). Fix: Discover/Library
+  observer'larına path-reset + ProfileCoordinator'a observer (resetToRoot; ProfilModel stream-türetimli, model-
+  reset gerekmez). 3 App-wiring testi genişletildi/eklendi (push-then-switch → path boş), 3'ü de revert-verify
+  RED-doğrulandı.
+- **#2 `.home` deep-link'i uçuştaki contextual playback seed'ini iptal etmiyor (LOW CONFIRMED):** `.play`→`.home`
+  ardışık deeplink'te resetToRoot() yalnız path'i temizler; pendingPlayback/seedGeneration'a dokunmaz → uçuştaki
+  `srs_x` seed'i çözülüp feed'i srs_x'e remount eder → kullanıcının SON niyeti (.home kök) erken .play'e kaybeder.
+  `.home` ayrıca feed'i "For You"a re-seed etmez. **Fix:** resetToRoot()'ta (veya ayrı metod) pendingPlayback=nil
+  + seedGeneration bump → uçuştaki seed düşürülür.
+- **#3 Home & Library detay push'u idempotent değil (LOW CONFIRMED):** ikisi de hâlâ `NavigationPath` (element-peek
+  edilemez, dedup yok) → player-feed rail / favori "Detaya Git" çift-tap'te iki özdeş `.diziDetay` → yığılmış çift
+  ekran + çift Geri. Discover (showDetail) + Profile (appendIfNotTop) zaten guard'lı. **Fix:** Home/Library `path`'i
+  `[AppRoute]`e çevir + appendIfNotTop (self-review3 Discover/Profile deseni), ya da append-öncesi top guard.
+- **#4 LibraryCoordinator.listemPlaySeries fence'siz Task (LOW PLAUSIBLE):** `latestProgress` await'i sırasında
+  A→B switch olursa Task A'nın record'unu (episode/pozisyon) B'nin feed'ine `requestPlayback` eder (dizi public
+  ama izleme-pozisyonu B'ye seed'lenir; çok dar — switch tek await'e denk gelmeli). **Fix:** await öncesi userID/
+  epoch yakala, değiştiyse requestPlayback'i düşür (RewardsKit epoch-fence deseni).
 - SS-050 kilit-sınırı reactivation (varsa gap), LibraryCatalog offline cache, WP-F1-G
   review'unda ertelenen küçük optimizasyonlar (CatalogCache `lastAccessAt`/tahliye-bütçe,
   ListemModel batch-delete). Bunlar prep GEREKTİRMEZ; sürekli döngüde ele alınır.

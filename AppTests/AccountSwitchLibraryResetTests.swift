@@ -23,6 +23,8 @@ final class AccountSwitchLibraryResetTests: XCTestCase {
         }
         let loadedState = model.favoritesState
         XCTAssertNotEqual(loadedState, .loading) // ilk yükleme tamamlandı (terminal durum)
+        tab.library.listemOpenDetail(seriesID: SeriesID("srs_a1")) // A DiziDetay push eder
+        XCTAssertFalse(tab.library.path.isEmpty)
 
         // Aynı userID'nin yeniden emisyonu (link/re-auth AYNI hesap = §3.3 sıfır-kayıp) reset ETMEMELİ.
         session.send(.linked(userID: "u1", provider: .apple))
@@ -43,6 +45,7 @@ final class AccountSwitchLibraryResetTests: XCTestCase {
         }
         XCTAssertTrue(didReset) // hesap değişimi modeli sıfırladı
         XCTAssertTrue(model.favorites.isEmpty) // hesap-özel state temizlendi
+        XCTAssertTrue(tab.library.path.isEmpty) // A'nın pushed DiziDetay'ı B'ye taşınmadı
     }
 
     /// Self-review2 (Home/Rewards ile simetrik): gözlemci nil-userID ara-durumundan (loggedOut) GEÇEN gerçek

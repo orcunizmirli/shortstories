@@ -50,6 +50,7 @@ final class DiscoverCoordinator {
                 guard let current = state.userID else { continue }
                 if let previous = lastUserID, previous != current {
                     self?.kesfetModel.resetForAccountSwitch()
+                    self?.path = [] // A'nın pushed DiziDetay'ı B'ye taşınmasın (HomeCoordinator path-reset simetriği)
                 }
                 lastUserID = current
             }

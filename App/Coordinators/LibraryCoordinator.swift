@@ -45,6 +45,7 @@ final class LibraryCoordinator {
                 guard let current = state.userID else { continue }
                 if let previous = lastUserID, previous != current {
                     self?.listemModel.resetForAccountSwitch()
+                    self?.path = NavigationPath() // A'nın pushed DiziDetay'ı B'ye taşınmasın (HomeCoordinator simetriği)
                 }
                 lastUserID = current
             }
