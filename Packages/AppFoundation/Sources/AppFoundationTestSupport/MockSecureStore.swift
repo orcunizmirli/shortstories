@@ -91,3 +91,34 @@ public final class WriteFailingSecureStore: SecureStoring, @unchecked Sendable {
         try backing.removeData(forKey: key)
     }
 }
+
+/// Belirli bir anahtarın OKUMA'sını (`arm()` sonrası) `keychainUnavailable` ile koparan çift; diğer işlemler
+/// `backing`'e devredilir. setAtomically'nin yedek-okuma glitch'inde yıkıcı rollback yapMAMASINI test eder.
+public final class ReadFailingSecureStore: SecureStoring, @unchecked Sendable {
+    public let backing = MockSecureStore()
+    private let failReadFor: SecureStoreKey
+    private var armed = false
+
+    public init(failReadFor key: SecureStoreKey) {
+        failReadFor = key
+    }
+
+    public func arm() {
+        armed = true
+    }
+
+    public func data(forKey key: SecureStoreKey) throws -> Data? {
+        if armed, key == failReadFor {
+            throw AppError.storage(.keychainUnavailable)
+        }
+        return try backing.data(forKey: key)
+    }
+
+    public func setData(_ data: Data, forKey key: SecureStoreKey) throws {
+        try backing.setData(data, forKey: key)
+    }
+
+    public func removeData(forKey key: SecureStoreKey) throws {
+        try backing.removeData(forKey: key)
+    }
+}

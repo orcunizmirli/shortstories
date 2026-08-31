@@ -34,4 +34,25 @@ struct SecureStoringAtomicTests {
         #expect(try store.string(forKey: .refreshToken) == "old-refresh") // geri alındı
         #expect(try store.data(forKey: .accessToken) == nil) // önceden yoktu → kaldırıldı
     }
+
+    @Test func yedekOkumasiKoparsaHicYazmadanFirlatir() throws {
+        // audit LOW (self-review): yedek okuması GEÇİCİ koparsa (keychainUnavailable) eski kod `try?` ile nil
+        // KAYDEDİP yazıma devam ederdi → sonraki write-fail'de rollback GERÇEK değeri SİLER. Fix: `try` yedek
+        // okunamazsa HİÇ yazmadan FIRLAT (fail-safe) → mevcut değerler DEĞİŞMEZ, çağıran tekrar dener.
+        let store = ReadFailingSecureStore(failReadFor: .accessToken)
+        try store.backing.setString("old-refresh", forKey: .refreshToken)
+        try store.backing.setString("old-access", forKey: .accessToken)
+        store.arm() // bundan sonra .accessToken OKUMASI kopar
+
+        #expect(throws: (any Error).self) {
+            try store.setAtomically([
+                (.refreshToken, Data("new-refresh".utf8)),
+                (.accessToken, Data("new-access".utf8))
+            ])
+        }
+
+        // Hiçbir yazım yapılmadı → mevcut değerler KORUNDU (yıkıcı rollback/silme YOK).
+        #expect(try store.backing.string(forKey: .refreshToken) == "old-refresh")
+        #expect(try store.backing.string(forKey: .accessToken) == "old-access")
+    }
 }

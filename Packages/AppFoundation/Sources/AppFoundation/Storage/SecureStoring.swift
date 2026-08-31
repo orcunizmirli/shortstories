@@ -48,11 +48,16 @@ public extension SecureStoring {
     /// hepsi-yeni ya hepsi-eski). Native Keychain transaction YOK; rollback yazması da koparsa (nadir) tam
     /// garanti değildir, ama yaygın torn-write'ı (linkSession snapshot↔token ayrışması) engeller. Anahtarlar
     /// AYRI kalır (okuyucular değişmez); yalnız yazım atomikleşir.
+    ///
+    /// Yedek okuması `try` (self-review, audit LOW): geçici bir okuma glitch'i (`keychainUnavailable`) YEDEK'i
+    /// `nil` KAYDEDERSE, sonraki rollback o anahtarı `removeData` ile GERÇEK değerini SİLER (restore yerine) →
+    /// kurtarılabilir hata token/snapshot KAYBINA yükselir. Yedek okunamıyorsa HİÇBİR yazım yapmadan FIRLAT
+    /// (fail-safe: yazım başlamadığı için rollback gerekmez; çağıran tekrar dener).
     func setAtomically(_ writes: [(key: SecureStoreKey, data: Data)]) throws {
         var previous: [(key: SecureStoreKey, data: Data?)] = []
         previous.reserveCapacity(writes.count)
         for (key, _) in writes {
-            previous.append((key, try? data(forKey: key)))
+            try previous.append((key, data(forKey: key)))
         }
         do {
             for (key, value) in writes {

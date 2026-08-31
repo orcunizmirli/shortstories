@@ -42,15 +42,19 @@ public struct APIClient: APIClientProtocol {
         var attempt = 0
         var hasRecoveredAuth = false
         var usedBearer: String?
+        // Kurtarmanın döndürdüğü TAZE access token: retry, keychain re-read yerine BUNU kullanır. Keychain access
+        // yazımı best-effort koptuysa (performRefresh) interceptor BAYAT token okur → gereksiz 2. 401/sessionExpired;
+        // performRefresh "çağırana taze access'i döndür" der, bu onu fiilen kullanır (audit LOW).
+        var recoveredBearer: String?
         while true {
             do {
-                return try await performOnce(endpoint, usedBearer: &usedBearer)
+                return try await performOnce(endpoint, usedBearer: &usedBearer, overrideBearer: recoveredBearer)
             } catch let error as AppError {
                 // 401 (TOKEN_EXPIRED / kod yok) → tek-uçuş refresh → orijinal istek BİR KEZ
                 // tekrar (03 §8.2). İkinci 401 refresh tetiklemez; refresh hatası olduğu gibi yüzer.
                 let isRecoverable = error == .auth(.sessionExpired) && endpoint.requiresAuth && !hasRecoveredAuth
                 if isRecoverable, let tokenRefresher {
-                    try await tokenRefresher.refreshAccessToken(ifStaleTokenWas: usedBearer)
+                    recoveredBearer = try await tokenRefresher.refreshAccessToken(ifStaleTokenWas: usedBearer)
                     hasRecoveredAuth = true
                     continue
                 }
@@ -68,7 +72,7 @@ public struct APIClient: APIClientProtocol {
                 guard endpoint.requiresAuth, !hasRecoveredAuth, let tokenRefresher else {
                     throw AppError.auth(.sessionExpired)
                 }
-                try await tokenRefresher.recoverFromInvalidToken(ifStaleTokenWas: usedBearer)
+                recoveredBearer = try await tokenRefresher.recoverFromInvalidToken(ifStaleTokenWas: usedBearer)
                 hasRecoveredAuth = true
             } catch let signal as RetryAfterSignal {
                 // 429 + Retry-After (05 §10.2): retry hakkı varsa backoff YERİNE sunucunun
@@ -124,9 +128,22 @@ public struct APIClient: APIClientProtocol {
         endpoint.method == .get || endpoint.idempotencyKey != nil
     }
 
+    /// Kurtarma sonrası retry: refresh/recover'ın döndürdüğü TAZE token'ı interceptor'ın keychain-okumasının
+    /// ÜZERİNE uygular (best-effort access yazımı koptuysa bayat token gönderilmesini önler — audit LOW).
+    private static func applyingOverrideBearer(_ bearer: String?, to request: URLRequest, requiresAuth: Bool) -> URLRequest {
+        guard requiresAuth, let bearer else { return request }
+        var adapted = request
+        adapted.setValue("Bearer \(bearer)", forHTTPHeaderField: "Authorization")
+        return adapted
+    }
+
     // MARK: - Tek deneme
 
-    private func performOnce<E: Endpoint>(_ endpoint: E, usedBearer: inout String?) async throws -> E.Response {
+    private func performOnce<E: Endpoint>(
+        _ endpoint: E,
+        usedBearer: inout String?,
+        overrideBearer: String? = nil
+    ) async throws -> E.Response {
         var request = try makeRequest(endpoint)
         let context = RequestContext(requiresAuth: endpoint.requiresAuth)
         do {
@@ -140,6 +157,7 @@ public struct APIClient: APIClientProtocol {
         } catch {
             throw AppError.unexpected(underlying: "Interceptor hatası: \(error)")
         }
+        request = Self.applyingOverrideBearer(overrideBearer, to: request, requiresAuth: endpoint.requiresAuth)
         // Geç-401 yarışı için: bu denemenin kullandığı token, kurtarma çağrısına
         // bayat-token kontrolü olarak geçirilir (bkz. AuthTokenRefreshing).
         usedBearer = request.value(forHTTPHeaderField: "Authorization").map { header in

@@ -112,6 +112,42 @@ extension URLProtocolStubSerialTests {
             #expect(refresher.callCount == 1)
         }
 
+        @Test func kurtarmaSonrasiRetryTazeTokeniGonderirBayatDegil() async throws {
+            // audit LOW (self-review): refresh TAZE access döndürür ama keychain access-yazımı best-effort
+            // koparsa interceptor BAYAT token okur; send() dönen tazeyi ATIP re-read'e güvenirse retry bayat
+            // gönderip 2. 401 → gereksiz sessionExpired. Fix: dönen taze token retry'da override edilir.
+            let store = MockSecureStore()
+            try store.setString("at_old", forKey: .accessToken) // keychain BAYAT (yazım koptu, refresh güncellemedi)
+            let localRefresher = SpyTokenRefresher()
+            localRefresher.stub(.success("at_new")) // refresh tazeyi döndürür ama store'u GÜNCELLEMEZ
+            let authedClient = try APIClient(
+                configuration: APIConfiguration(
+                    environment: .development,
+                    baseURL: #require(URL(string: "https://api.test.local/v1"))
+                ),
+                urlSession: URLProtocolStub.makeSession(),
+                interceptors: [AuthInterceptor(secureStore: store)],
+                tokenRefresher: localRefresher
+            )
+            URLProtocolStub.setHandler { request in
+                if URLProtocolStub.receivedRequests.count < 1 {
+                    return (URLProtocolStub.httpResponse(for: request, status: 401), Data()) // 1. istek (bayat) → 401
+                }
+                // 2. istek TAZE token taşımalı (override); bayatsa 401 kalır → send sessionExpired atardı.
+                let ok = request.value(forHTTPHeaderField: "Authorization") == "Bearer at_new"
+                return (
+                    URLProtocolStub.httpResponse(for: request, status: ok ? 200 : 401),
+                    Data(#"{"value":"ok"}"#.utf8)
+                )
+            }
+
+            let response = try await authedClient.send(AuthedEndpoint())
+
+            #expect(response == Payload(value: "ok")) // taze token gönderildi → 200 (bayat olsaydı sessionExpired)
+            #expect(URLProtocolStub.receivedRequests.count == 2)
+            #expect(localRefresher.callCount == 1)
+        }
+
         @Test func refreshSonrasiTekrarDa401IseSessionExpiredFirlarVeIkinciRefreshYapilmaz() async {
             URLProtocolStub.setHandler { request in
                 (URLProtocolStub.httpResponse(for: request, status: 401), Data())

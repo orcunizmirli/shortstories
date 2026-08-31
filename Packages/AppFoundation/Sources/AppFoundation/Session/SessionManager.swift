@@ -230,15 +230,25 @@ extension SessionManager: RefreshFailureHandling {
     /// yeniden kurulur ve yeni access token döner — `deviceId` korunduğu için sunucu aynı
     /// misafir hesabını döndürebilir. Bağlı hesap: `.loggedOut`a geçilir, `nil` döner (F2).
     public func handleRefreshFailure() async -> String? {
-        let linkedIdentity: (userID: String, provider: AuthProvider)? = {
-            if case let .linked(userID, provider) = state {
-                return (userID, provider)
+        let linkedIdentity: (userID: String, provider: AuthProvider)?
+        if case let .linked(userID, provider) = state {
+            linkedIdentity = (userID, provider)
+        } else {
+            // State `.linked` değil → snapshot'tan linked kimliği belirle. `try` DEĞİL `try?` (audit MEDIUM,
+            // self-review): GEÇİCİ okuma hatası (keychainUnavailable) linked/guest ayrımını imkansız kılar; `try?`
+            // onu `nil`e çevirip YIKICI guest-fallback'e (token+snapshot SİLME, guest'e düşürme) sokuyordu →
+            // linked kullanıcı SESSİZCE guest olur (05 §4.2 ihlali). Geçici hatada HİÇBİR ŞEY bozmadan nil dön
+            // (sonraki 401 tekrar dener); yalnız GENUINE yokluk (nil/decode-fail) guest-fallback'e gider.
+            do {
+                if let snapshot = try storedSnapshot(), let provider = snapshot.provider {
+                    linkedIdentity = (snapshot.userID, provider)
+                } else {
+                    linkedIdentity = nil
+                }
+            } catch {
+                return nil
             }
-            if let snapshot = try? storedSnapshot(), let provider = snapshot.provider {
-                return (snapshot.userID, provider)
-            }
-            return nil
-        }()
+        }
 
         clearStoredTokens()
 
