@@ -4,8 +4,9 @@ import Foundation
 /// `AsyncStream` abonesine dağıtır. `WalletStore` entitlement ve bakiye değişimlerini
 /// (SS-097; ≤5 sn hedefi push tabanlı olduğundan anında) bununla yayınlar.
 ///
-/// Concurrency: durum `NSLock` ile korunur; `AsyncStream.Continuation` Sendable olduğundan
-/// kilit dışında güvenle yield edilir. Combine YOK (kanon §2).
+/// Concurrency: durum `NSLock` ile korunur. Abone SEED'i kayıtla AYNI kilit altında yield edilir
+/// (aksi halde eşzamanlı `send()` araya girip aboneyi [V_yeni, V_eski] sırasıyla besler → bayat kalır);
+/// `send()` yayınları aktör-serialize olduğundan kilit dışında yield edilir. Combine YOK (kanon §2).
 ///
 /// Current-value (BehaviorSubject) semantiği: SON yayınlanan değer saklanır ve yeni abone
 /// KAYIT ANINDA onunla tohumlanır. Bakiye/entitlement "mevcut durum" akışlarıdır — tüketici
@@ -24,13 +25,14 @@ final class AsyncMulticast<Element: Sendable>: @unchecked Sendable {
     func subscribe() -> AsyncStream<Element> {
         let id = UUID()
         return AsyncStream { continuation in
-            let seed: Element? = lock.withLock {
+            lock.withLock {
                 continuations[id] = continuation
-                return latest
-            }
-            // Kayıt ile atomik: geç abone mevcut değeri kaçırmaz (send-then-subscribe telafisi).
-            if let seed {
-                continuation.yield(seed)
+                // Seed'i KAYITLA AYNI kilit altında yield et: eşzamanlı `send()` kayıt ile seed-yield arasına
+                // girip aboneyi [V_yeni, V_eski] sırasıyla besleyemez (geç abone V_eski'de bayat kalırdı).
+                // `yield` yalnız buffer'a ekler — bloklamaz, senkron termination tetiklemez → kilit altında güvenli.
+                if let latest {
+                    continuation.yield(latest)
+                }
             }
             continuation.onTermination = { [weak self] _ in
                 guard let self else { return }
