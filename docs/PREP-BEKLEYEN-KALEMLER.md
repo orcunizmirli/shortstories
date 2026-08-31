@@ -374,6 +374,12 @@ isAuthorizing, #2 reaktivasyon `.none` guard, #3 reorder kimlik-tabanlı, #5 aut
   korur; yalnız görsel overlay + re-aktivasyon gate'lenir → north-star korunur; "iade in-session erişimi geri almaz"
   ile uyumlu). TDD: FeedUnlockReducerTests (revert reducer, 7 test) + HomeFeedRevokeRelockTests (wiring, 3 test) —
   RED→GREEN + 2 revert-verify (revert-apply + false-lock gate); 256 App testi yeşil. App CI-dışı → yerel doğrulandı.
+  - **REGRESYON DÜZELTMESİ (adversaryal-hunt yakaladı, self-review KAÇIRDI):** ilk fix `applyUnlock` (bireysel coin/
+    reklam unlock) bölümlerini de izliyordu; reklam-unlock `WalletStore.unlockedEpisodes`'a girmez (oturum-yerel,
+    yalnız coin path) → `hasAccess`=false → re-verify onları YANLIŞ re-lock ediyordu (hak edilmiş reklam-kilidi paywall'a
+    döner). Kök: bireysel unlock KALICI (server-kayıtlı), yalnız VIP-grant REVOCABLE. **Fix:** izleme kümesi
+    `clientOptimisticUnlocks`→`vipGrantedEpisodes` (yalnız applyVIPUnlock izler; applyUnlock KÜMEDEN ÇIKARIR). TDD:
+    testIndividuallyUnlockedEpisodeIsNotRelocked (RED→GREEN + revert-verify); 265 App testi yeşil.
 
 ### AppFoundation adversarial bug-hunt — ertelenen 2 kalem (2026-08-31)
 AppFoundation bug-hunt (9 agent → 5 doğrulanmış). Ortak tema: `try?` geçici keychain hatasını yıkıcıya

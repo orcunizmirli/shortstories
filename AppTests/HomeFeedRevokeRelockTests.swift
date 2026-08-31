@@ -14,17 +14,32 @@ import XCTest
 /// sürülür (gözlemci akışı `accountObserver` deseninin aynısı; App target CI dışı → yerel doğrulanır).
 @MainActor
 final class HomeFeedRevokeRelockTests: XCTestCase {
-    func testRevokedClientOptimisticUnlockIsRelockedInFeed() async throws {
+    func testRevokedVIPGrantedEpisodeIsRelockedInFeed() async throws {
         let home = try makeHome()
         home.feedViewModel.feedState = FeedState(items: [makeItem(episode: "e1", kind: .locked, unlockPrice: 50)])
-        home.applyUnlock(EpisodeID("e1")) // client-optimistik açar + izler
+        home.applyVIPUnlock() // VIP tüm kilitlileri açar → e1 VIP-grant (REVOCABLE)
         XCTAssertEqual(home.feedViewModel.feedState.items.first?.episode?.access.kind, .unlocked)
 
-        // Entitlement düşüşü: e1'e erişim yok (VIP-expiry/iade) → re-lock beklenir.
+        // VIP-expiry: e1 hasAccess yok (VIP yok, coin-owned değil) → re-lock beklenir.
         await home.revertRevokedOptimisticUnlocks(entitlement: MockEntitlement(accessible: []))
 
         XCTAssertEqual(home.feedViewModel.feedState.items.first?.episode?.access.kind, .locked)
         XCTAssertEqual(home.feedViewModel.feedState.items.first?.episode?.access.unlockPrice, 50) // CTA fiyatı korunur
+    }
+
+    /// REGRESYON (e2564bc): bireysel unlock (`applyUnlock` — coin VEYA reklam) KALICI (server-kayıtlı, tek-seferlik).
+    /// Reklam-unlock `WalletStore.unlockedEpisodes`'a GİRMEZ (oturum-yerel, yalnız coin path) → `hasAccess`'te
+    /// GÖRÜNMEZ → re-verify onu YANLIŞ re-lock etmemeli (kullanıcı reklamı izleyip hak etti). Yalnız VIP-grant revocable.
+    func testIndividuallyUnlockedEpisodeIsNotRelocked() async throws {
+        let home = try makeHome()
+        home.feedViewModel.feedState = FeedState(items: [makeItem(episode: "e1", kind: .locked, unlockPrice: 50)])
+        home.applyUnlock(EpisodeID("e1")) // bireysel unlock (reklam/coin) — KALICI, revocable DEĞİL
+        XCTAssertEqual(home.feedViewModel.feedState.items.first?.episode?.access.kind, .unlocked)
+
+        // Entitlement düşüşü + reklam-unlock hasAccess'te yok → re-lock ETMEMELİ (aksi halde ödenmiş/hak edilmiş kilit).
+        await home.revertRevokedOptimisticUnlocks(entitlement: MockEntitlement(accessible: []))
+
+        XCTAssertEqual(home.feedViewModel.feedState.items.first?.episode?.access.kind, .unlocked) // KALICI: re-lock yok
     }
 
     func testHistoricalCatalogUnlockedIsNotRelocked() async throws {
@@ -32,7 +47,7 @@ final class HomeFeedRevokeRelockTests: XCTestCase {
         // entitlement-düşüşünde DOKUNULMAMALI → geçmiş-oturum satın-alması kilitlenmez.
         let home = try makeHome()
         home.feedViewModel.feedState = FeedState(items: [makeItem(episode: "e9", kind: .unlocked)]) // izlenmeyen
-        XCTAssertTrue(home.clientOptimisticUnlocks.isEmpty)
+        XCTAssertTrue(home.vipGrantedEpisodes.isEmpty)
 
         await home.revertRevokedOptimisticUnlocks(entitlement: MockEntitlement(accessible: []))
 

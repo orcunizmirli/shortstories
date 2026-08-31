@@ -79,8 +79,8 @@ final class HomeCoordinator {
     private let feedResolver: PlaybackFeedResolver
     /// Hesap-değişimi gözlemcisi — app ömrü boyunca canlı (RewardsCoordinator deseni).
     @ObservationIgnored private var accountObserver: Task<Void, Never>?
-    /// Client-optimistik `.unlocked` işaretli bölümler (#4); entitlement düşüşünde yalnız bunlar yeniden-doğrulanır.
-    @ObservationIgnored var clientOptimisticUnlocks: Set<EpisodeID> = []
+    /// VIP-grant (applyVIPUnlock) ile işaretli VIP-REVOCABLE bölümler (#4); bireysel coin/reklam unlock KALICI, girmez.
+    @ObservationIgnored var vipGrantedEpisodes: Set<EpisodeID> = []
     /// Entitlement-düşüşü gözlemcisi — app ömrü boyunca canlı ([weak self], `accountObserver` deseni).
     @ObservationIgnored var entitlementObserver: Task<Void, Never>?
 
@@ -134,7 +134,7 @@ final class HomeCoordinator {
     private func resetForAccountSwitch() {
         seedGeneration &+= 1
         feedViewModel.feedState = FeedState()
-        clientOptimisticUnlocks = [] // feedState boşaldı → A'nın client-optimistik izleri B'ye taşınmaz
+        vipGrantedEpisodes = [] // feedState boşaldı → A'nın VIP-grant izleri B'ye taşınmaz
         feedEntry = nil
         pendingPlayback = nil
         activeEpisodeID = nil

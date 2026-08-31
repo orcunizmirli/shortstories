@@ -15,7 +15,10 @@ extension HomeCoordinator {
             to: feedViewModel.feedState.items
         ) else { return }
         feedViewModel.feedState = FeedState(items: updatedItems)
-        clientOptimisticUnlocks.insert(episodeID) // #4: entitlement-düşüşünde yeniden-doğrulamak için izle
+        // Bireysel unlock (coin/reklam) KALICI (server-kayıtlı, tek-seferlik) → VIP-REVOCABLE setinden ÇIKAR:
+        // reklam-unlock WalletStore.unlockedEpisodes'a girmediğinden hasAccess'te görünmez; izlenirse re-verify
+        // onu YANLIŞ re-lock ederdi (regresyon e2564bc). Yalnız VIP-grant (applyVIPUnlock) revocable.
+        vipGrantedEpisodes.remove(episodeID)
     }
 
     /// VIP aktivasyonu → feed'deki TÜM kilitli bölümleri oynatılabilir işaretle (diff'li apply, remount YOK;
@@ -29,7 +32,7 @@ extension HomeCoordinator {
         }
         guard let updatedItems = FeedUnlockReducer.applyingVIPUnlock(to: feedViewModel.feedState.items) else { return }
         feedViewModel.feedState = FeedState(items: updatedItems)
-        clientOptimisticUnlocks.formUnion(markedIDs) // #4: VIP'in açtığı tüm bölümler → düşüşte yeniden-doğrula
+        vipGrantedEpisodes.formUnion(markedIDs) // #4: VIP'in açtığı bölümler REVOCABLE → düşüşte yeniden-doğrula
     }
 
     /// VIP-expiry/iade IN-SESSION re-lock (#4): VIP/coin bölüm izlerken abonelik expire/iade olursa
@@ -47,12 +50,12 @@ extension HomeCoordinator {
         }
     }
 
-    /// #4 re-lock: izlenen client-optimistik `.unlocked` bölümlerden entitlement'i KALMAYANLARI (`hasAccess`
-    /// false) feed'de geri `.locked` yapar. Katalog-historik `.unlocked` izlenmez → dokunulmaz (false-lock yok).
-    /// `await hasAccess` sırasında hesap değişimi (resetForAccountSwitch izlemeyi temizler) araya girerse revoked,
-    /// GÜNCEL izleme kümesiyle kesiştirilir → A'nın revoked'ı B'nin feed'ini kilitlemez (cross-account fence).
+    /// #4 re-lock: VIP-grant ile işaretli bölümlerden entitlement'i KALMAYANLARI (`hasAccess` false → VIP-expiry)
+    /// feed'de geri `.locked` yapar. Bireysel coin/reklam unlock KALICI (izlenmez) + katalog-historik `.unlocked`
+    /// izlenmez → dokunulmaz (false-lock yok). `await hasAccess` sırasında hesap değişimi (resetForAccountSwitch
+    /// izlemeyi temizler) araya girerse revoked GÜNCEL kümeyle kesiştirilir → A'nın revoked'ı B'yi kilitlemez.
     func revertRevokedOptimisticUnlocks(entitlement: any EntitlementChecking) async {
-        let tracked = clientOptimisticUnlocks // snapshot: await sırasında (reset/yeni unlock) değişebilir
+        let tracked = vipGrantedEpisodes // snapshot: await sırasında (reset/unlock) değişebilir
         guard !tracked.isEmpty else { return }
         var revoked: Set<EpisodeID> = []
         for episodeID in tracked {
@@ -63,11 +66,11 @@ extension HomeCoordinator {
         }
         // Cross-account fence: await sırasında resetForAccountSwitch izlemeyi temizlediyse (hesap geçişi),
         // yalnız HÂLÂ izlenen bölümlere uygula → A'nın revoked'ı B'nin feed'ini kilitlemez.
-        revoked.formIntersection(clientOptimisticUnlocks)
+        revoked.formIntersection(vipGrantedEpisodes)
         guard !revoked.isEmpty else { return }
         if let updated = FeedUnlockReducer.revertingRevokedUnlocks(of: revoked, to: feedViewModel.feedState.items) {
             feedViewModel.feedState = FeedState(items: updated)
         }
-        clientOptimisticUnlocks.subtract(revoked)
+        vipGrantedEpisodes.subtract(revoked)
     }
 }
