@@ -58,6 +58,24 @@ final class WireContractDecodeTests: XCTestCase {
         XCTAssertNil(absentCursor.nextCursor, "nextCursor yoksa → son sayfa (çökme yok)")
     }
 
+    func testHistoryListDropsMalformedItemButKeepsValidOnes() throws {
+        // MEDIUM (LibraryKit hunt): tek bozuk history kaydı (eksik durationSec) TÜM sayfayı — ve cross-device
+        // geçmiş merge'ini — düşürmesin. Eleman-bazlı lossy decode: bozuk atlanır, geçerliler akar (7b3bac9 sınıfı).
+        let json = """
+        { "items": [
+            { "episodeId": "ep_ok1", "seriesId": "srs_1", "positionSec": 10.0,
+              "durationSec": 100.0, "completed": false, "watchedAt": "2026-07-11T09:31:02Z" },
+            { "episodeId": "ep_bad", "seriesId": "srs_2", "positionSec": 5.0,
+              "completed": true, "watchedAt": "2026-07-11T09:31:02Z" },
+            { "episodeId": "ep_ok2", "seriesId": "srs_3", "positionSec": 20.0,
+              "durationSec": 200.0, "completed": true, "watchedAt": "2026-07-11T09:31:02Z" }
+          ], "nextCursor": null }
+        """
+        let wire = try decode(HistoryListWire.self, json)
+        XCTAssertEqual(wire.items.count, 2, "bozuk (durationSec eksik) atlanır; 2 geçerli kalır")
+        XCTAssertEqual(wire.items.map(\.record.episodeID), [EpisodeID("ep_ok1"), EpisodeID("ep_ok2")])
+    }
+
     // MARK: - #3 GET /missions yanıt zarfı: `missions` (05 satır 941)
 
     func testMissionListDecodesMissionsKey() throws {

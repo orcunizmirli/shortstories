@@ -478,9 +478,9 @@ DÜZELTİLDİ, 2 LOW ertelendi:
   taşır → server SSV çift-krediyi engeller. Serileştirme UI'a (UnlockSheet butonu isLoading disable) bağlı. **Fix
   (opsiyonel):** service'e in-flight bayrağı.
 
-### LibraryKit (izleme-geçmişi/favoriler) adversarial bug-hunt — ertelenen 3 kalem (2026-08-31)
+### LibraryKit (izleme-geçmişi/favoriler) adversarial bug-hunt — ertelenen 2 kalem (2026-08-31)
 FavoritesService reentrancy/optimistik-toggle/telafi-DELETE + ListemModel generation-guard'ları sağlam ve
-testli. 1 HIGH cross-account kusur DÜZELTİLDİ, 3 kalem ertelendi:
+testli. 1 HIGH cross-account + 1 MEDIUM lossy-decode DÜZELTİLDİ, 2 LOW ertelendi:
 - **#1 ListemModel hesap-değişiminde reset edilmiyor (HIGH CONFIRMED, cross-account) → ✅ DÜZELTİLDİ:**
   LibraryCoordinator'da (Home/Rewards'ın aksine) HİÇ account-switch observer'ı yoktu; ListemModel (coordinator
   ömrü boyu yaşar) reset+epoch-fence'siz → A'nın favorileri/"devam et"/gizli-öğeleri hesap-switch sonrası B'ye
@@ -491,10 +491,12 @@ testli. 1 HIGH cross-account kusur DÜZELTİLDİ, 3 kalem ertelendi:
   AccountSwitch (Home/Rewards mirror) switch'te reset eder. 3 test (state-clear + uçuştaki-load fence + App-wiring),
   paket testleri bağımsız revert-verify RED-doğrulandı. LibraryKit 70 + App 2 test yeşil.
 - **#2 History wire STRICT array decode: tek bozuk eleman tüm cross-device geçmiş merge'ini düşürür (MEDIUM
-  PLAUSIBLE):** `LibraryRemotingAdapters.HistoryListWire.items: [WatchProgressWire]` strict → tek bozuk kayıt tüm
-  sayfa decode'unu fail eder → `synchronize()` `.decoding`'i yüzdürür → tüm caller'ların `try?`'ı yutar → cross-
-  device "devam et" sessizce hiç güncellenmez (all-or-nothing). ContentKit lossy-decode (commit 7b3bac9) ile AYNI
-  sınıf. **Fix:** items'ı eleman-bazlı lossy-decode et (bozuk kaydı atla), ContentKit LossyArray deseni. App-layer.
+  PLAUSIBLE) → ✅ DÜZELTİLDİ:** `HistoryListWire.items` strict idi → tek bozuk kayıt tüm sayfa decode'unu fail
+  ediyordu → `synchronize()` `.decoding`'i yüzdürür → caller'ların `try?`'ı yutar → cross-device "devam et"
+  sessizce hiç güncellenmezdi (all-or-nothing). ContentKit lossy-decode (commit 7b3bac9) ile AYNI sınıf. Fix:
+  `HistoryListWire`'a custom `init(from:)` + self-contained `SkippableProgress` (eleman-bazlı lossy: bozuk kayıt
+  atlanır, kalanı akar; array-değil/eksik → []). ContentKit LossyArray App'ten import edilmediğinden yerel.
+  App TDD testi (bozuk durationSec atlanır, 2 geçerli kalır) revert-verify RED-doğrulandı.
 - **#3 fetchServerProgress pagination dedup/stuck-cursor yok (LOW):** değişmeyen non-empty cursor 50 kez aynı
   sayfayı çeker (maxHistoryPages cap infinite-loop'u önler; mergeServerProgress episodeID upsert dedup'lar → boşa
   round-trip, bozulma değil). **Fix:** `nextCursor == cursor` (değişmedi) break + episodeID dedup.

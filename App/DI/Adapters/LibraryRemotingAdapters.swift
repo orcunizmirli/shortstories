@@ -173,4 +173,39 @@ struct WatchProgressWire: Codable, Sendable {
 struct HistoryListWire: Decodable, Sendable {
     let items: [WatchProgressWire]
     let nextCursor: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case items, nextCursor
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        nextCursor = try container.decodeIfPresent(String.self, forKey: .nextCursor)
+        // items ELEMAN-BAZLI lossy decode: tek bozuk kayıt (eksik/geçersiz alan) TÜM sayfayı — ve dolayısıyla
+        // tüm cross-device geçmiş merge'ini — düşürmesin (ContentKit LossyArray sınıfı, commit 7b3bac9;
+        // `decodeIfPresent` yalnız eksik/null field'ı korur, present-but-invalid'ı değil). Alan yok/array-değil
+        // (proxy bug) → [] (savunmacı; tüm zarf düşmez). Sync all-or-nothing yerine best-effort birleşir.
+        guard var itemsContainer = try? container.nestedUnkeyedContainer(forKey: .items) else {
+            items = []
+            return
+        }
+        var result: [WatchProgressWire] = []
+        while !itemsContainer.isAtEnd {
+            // `SkippableProgress` HER ZAMAN decode olur (dış imleci bir eleman ilerletir); içteki
+            // WatchProgressWire bozuksa `value == nil` → o kayıt atlanır, kalanı akar.
+            let wrapped = try itemsContainer.decode(SkippableProgress.self)
+            if let value = wrapped.value {
+                result.append(value)
+            }
+        }
+        items = result
+    }
+
+    private struct SkippableProgress: Decodable {
+        let value: WatchProgressWire?
+
+        init(from decoder: Decoder) throws {
+            value = try? WatchProgressWire(from: decoder)
+        }
+    }
 }
