@@ -123,7 +123,9 @@ public struct DiziDetayView: View {
 
     private var ctaTitle: LocalizedStringKey {
         guard let target = model.ctaTarget, target.kind == .resume else {
-            return "İzlemeye Başla"
+            // #7: baştan-başlat hedefi de KİLİTLİ olabilir (paywall ilk yayınlanan bölümden başlar / freeEpisodeCount==0)
+            // → kilit rozetini göster (aksi halde ücretsizmiş gibi görünüp dokununca UnlockSheet açar).
+            return model.ctaLocked ? "İzlemeye Başla 🔒" : "İzlemeye Başla"
         }
         return model.ctaLocked
             ? "Devam Et · Bölüm \(target.episodeNumber) 🔒"

@@ -112,6 +112,7 @@ public final class AramaModel {
             suggestions = []
             phase = .browsing
         case let .scheduleSuggest(query, token):
+            suggestions = [] // #5: önceki sorgunun bayat önerileri yeni metinle gösterilmesin (debounce+ağ bitene dek)
             phase = .suggesting
             debounceTask?.cancel()
             let interval = debounceInterval
@@ -128,6 +129,14 @@ public final class AramaModel {
         guard machine.isCurrent(token) else { return }
         guard let incoming = try? await search.suggest(query: query) else { return }
         guard machine.isCurrent(token) else { return } // await sırasında yeni tuş geldiyse at
+        // #6: öneri BOŞsa `.suggesting`de BLANK ekran gösterme → browse (son+popüler) fallback'e dön; kullanıcı
+        // yine de submit ile tam sonuç arayabilir (öneri yokluğu ≠ sonuç yokluğu).
+        guard !incoming.isEmpty else {
+            suggestions = []
+            phase = .browsing
+            trackSearchQuery(query: query, resultCount: 0, isAutocomplete: true)
+            return
+        }
         suggestions = incoming
         phase = .suggesting
         trackSearchQuery(query: query, resultCount: incoming.count, isAutocomplete: true)

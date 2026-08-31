@@ -14,6 +14,14 @@ struct SearchInputMachineTests {
         #expect(SearchInputMachine.normalize(long).count == SearchInputMachine.maxQueryLength)
     }
 
+    @Test func normalizeGomuluSatirbasiniBosluğaCevirir() {
+        // #1: gömülü '\n' KRİTİK temizlenmeli — RecentSearchStore listeyi '\n'-ayraçlı saklar; aksi halde
+        // "foo\nbar" sonraki load()te iki phantom çipe bölünür. Eski normalize yalnız baş/son trim ediyordu.
+        #expect(SearchInputMachine.normalize("foo\nbar") == "foo bar")
+        #expect(SearchInputMachine.normalize("a\r\nb") == "a b" || SearchInputMachine.normalize("a\r\nb") == "a  b")
+        #expect(!SearchInputMachine.normalize("multi\nline\nquery").contains("\n"))
+    }
+
     @Test func belowMinLengthBrowses() {
         var machine = SearchInputMachine()
         #expect(machine.onInput("") == .browse)

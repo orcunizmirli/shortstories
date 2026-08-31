@@ -20,9 +20,12 @@ public struct SearchInputMachine: Equatable, Sendable {
 
     public init() {}
 
-    /// Baştaki/sondaki boşlukları atar, 100 karaktere kırpar (paste guard).
+    /// GÖMÜLÜ satırbaşlarını BOŞLUĞA çevirir (arama sorgusu tek-satırdır), baştaki/sondaki boşlukları atar,
+    /// 100 karaktere kırpar (paste guard). Gömülü `\n` temizliği KRİTİK: RecentSearchStore listeyi `\n`-ayraçlı
+    /// saklar; aksi halde `add("foo\nbar")` sonraki `load()`te iki phantom çipe bölünüp sıra/dedup/kapasiteyi bozar.
     public static func normalize(_ raw: String) -> String {
-        String(raw.trimmingCharacters(in: .whitespacesAndNewlines).prefix(maxQueryLength))
+        let singleLine = raw.components(separatedBy: .newlines).joined(separator: " ")
+        return String(singleLine.trimmingCharacters(in: .whitespacesAndNewlines).prefix(maxQueryLength))
     }
 
     /// Yazarken debounce kararı.

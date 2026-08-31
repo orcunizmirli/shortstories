@@ -52,6 +52,9 @@ public final class DiziDetayModel {
     /// görünümde bölümler/cursor/scroll/optimistik favori EZİLMESİN.
     private var appeared = false
     private var loadTask: Task<Void, Never>?
+    /// load() uçuş guard'ı (#8): View'in .error/.offline "Tekrar Dene" butonu load()'u DOĞRUDAN çağırır →
+    /// hızlı çift-dokunma iki eşzamanlı load() başlatıp episodes/cursor/erişim state'ini yarıştırır.
+    private var isLoadingDetail = false
     /// toggleFavorite in-flight guard: örtüşen toggle'lar sunucudan sapmasın.
     private var isTogglingFavorite = false
 
@@ -91,6 +94,9 @@ public final class DiziDetayModel {
     }
 
     public func load() async {
+        guard !isLoadingDetail else { return } // #8: çift "Tekrar Dene" dokunması eşzamanlı load'u yarıştırmasın
+        isLoadingDetail = true
+        defer { isLoadingDetail = false }
         loadState = .loading
         do {
             async let detailTask = catalog.seriesDetail(id: seriesID)
@@ -99,10 +105,10 @@ public final class DiziDetayModel {
             let page = try await episodesTask
             series = detail
             episodes = page.items
-            episodesCursor = page.nextCursor
+            episodesCursor = page.items.isEmpty ? nil : page.nextCursor // #4 simetrik: boş+cursor sonsuz sayfalama önle
             releaseInfo = ReleaseScheduleInfo.resolve(series: detail)
             episodeBlocks = EpisodeBlocks.make(episodeCount: detail.episodeCount)
-            await recompute()
+            try await recompute()
             isFavorite = await favorites.isFavorite(seriesID)
             loadState = .loaded
             trackDetailView(detail)
@@ -126,13 +132,15 @@ public final class DiziDetayModel {
 
     /// Geçmiş → CTA hedefi + bölüm erişilebilirlik kümesi + CTA kilit durumu (tümü tekrar
     /// hesaplanır; yeni bölüm sayfası yüklendiğinde de çağrılır).
-    private func recompute() async {
+    private func recompute() async throws {
         guard let series else { return }
         let progress = await history.latestProgress(forSeries: seriesID)
         hasHistory = progress != nil
         // İlerleme bölümü ilk sayfada değilse CTA'yı doğru türetmek için o sayfayı çek —
-        // aksi halde resolve() baştan-başlat'a düşer ve PlayerFeed yanlış bölüme girer (§4.4).
-        await ensureProgressEpisodeLoaded(progress)
+        // aksi halde resolve() baştan-başlat'a düşer ve PlayerFeed yanlış bölüme girer (§4.4). GEÇİCİ hata
+        // yutulmaz (#3): aksi halde progress-sayfası ağ hatasında CTA sessizce Bölüm 1'e düşüp kullanıcının
+        // kaldığı yeri kaybederdi → hata YÜZER, load() retry gösterir (bölüm gerçekten yoksa yine .start).
+        try await ensureProgressEpisodeLoaded(progress)
         let target = ContinueWatchingTarget.resolve(series: series, episodes: episodes, progress: progress)
         // CTA hedef bölümü (izlenen+1) sayfa sınırında SONRAKİ cursor sayfasında olabilir; kilit türetimi
         // ve primaryCTA yönlendirmesi hedef Episode'unu YÜKLÜ ister → onu da çek. Aksi halde aşağıdaki
@@ -163,15 +171,18 @@ public final class DiziDetayModel {
     /// ileri sayfala. `WatchProgress` yalnız `episodeId` taşır; hedef bölüm numarasını türetmek
     /// için o bölümün Episode'unu yüklemek gerekir. Tekrarlanan/ilerlemeyen cursor'da durur
     /// (bayat ilerleme ya da kaldırılmış bölümde sonsuz döngü koruması).
-    private func ensureProgressEpisodeLoaded(_ progress: WatchProgress?) async {
+    private func ensureProgressEpisodeLoaded(_ progress: WatchProgress?) async throws {
         guard let progress else { return }
         var visitedCursors: Set<String> = []
         while !episodes.contains(where: { $0.id == progress.episodeId }) {
+            // Sayfa BİTTİ (cursor nil) ya da ilerlemeyen cursor → bölüm gerçekten yok (bayat/kaldırılmış) → legit çık.
             guard let cursor = episodesCursor, !visitedCursors.contains(cursor) else { return }
             visitedCursors.insert(cursor)
-            guard let page = try? await catalog.episodes(seriesId: seriesID, cursor: cursor) else { return }
+            // GEÇİCİ hata YUTULMAZ (#3): `try?` yerine `try` → progress-sayfası ağ hatası CTA'yı sessizce yanlış
+            // Bölüm 1'e düşürmek yerine YÜZER (load retry). Sonsuz döngü koruması visitedCursors'tadır.
+            let page = try await catalog.episodes(seriesId: seriesID, cursor: cursor)
             appendUniqueEpisodes(page.items)
-            episodesCursor = page.nextCursor
+            episodesCursor = page.items.isEmpty ? nil : page.nextCursor // #4 simetrik
         }
     }
 
@@ -319,8 +330,10 @@ public final class DiziDetayModel {
         defer { isLoadingEpisodes = false }
         guard let page = try? await catalog.episodes(seriesId: seriesID, cursor: cursor) else { return }
         appendUniqueEpisodes(page.items)
-        episodesCursor = page.nextCursor
-        await recompute()
+        // #4: boş items + non-nil cursor (sunucu/proxy bug) → cursor nil'lenmezse her scroll-sonu loadMore'u
+        // SONSUZ yeniden tetikler (AramaModel.loadMore ile simetrik guard).
+        episodesCursor = page.items.isEmpty ? nil : page.nextCursor
+        try? await recompute() // best-effort CTA tazeleme (loadMore'da geçici hata mevcut ekranı bozmasın)
     }
 }
 
