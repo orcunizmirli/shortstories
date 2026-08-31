@@ -78,6 +78,36 @@ struct NotificationCenterConcurrencyTests {
         #expect(Set(model.notifications.map(\.id)).count == model.notifications.count)
     }
 
+    // MARK: - F4b: delete telafisi araya giren load-FAILURE durumunu düşürmemeli (adversaryal-hunt LOW)
+
+    /// Delete `await` sırasında araya giren retry-load OFFLINE hata verirse (`.errorWithCache`; `listEpoch`
+    /// yalnız load-BAŞARISINDA bump'lanır → epoch fence bunu YAKALAMAZ), delete telafisi bayat `.loaded`
+    /// snapshot'ıyla `.errorWithCache`'i EZMEMELİ — aksi halde offline hata "loaded/boş inbox" yanlış etiketlenir.
+    @Test func deleteCompensationPreservesInterleavedLoadFailureState() async {
+        let gateway = GatedNotificationsGateway(gatedLabels: ["delete#0"])
+        gateway.setFirstPage(NotificationsPage(items: [note("a"), note("b")], nextCursor: nil))
+        let model = make(gateway)
+
+        await model.load() // fetch#0 → [a, b], .loaded
+        gateway.setDeleteError(.network(.offline))
+
+        let deleteTask = Task { await model.delete(NotificationID("a")) } // delete#0 (gated) → optimistik [b]
+        await gateway.gate.arrivals("delete#0")
+
+        // Araya giren retry-load BAŞARISIZ (fetch#1 gated değil → hemen hata): .errorWithCache + offline banner.
+        gateway.setFetchError(.network(.offline))
+        await model.load() // fetch#1 → offline → .errorWithCache
+        #expect(model.loadState == .errorWithCache)
+
+        gateway.gate.open("delete#0") // delete hata → telafi (a geri eklenir)
+        await deleteTask.value
+
+        // FIX: telafi araya giren `.errorWithCache`'i bayat `.loaded` ile EZMEMELİ (offline banner ile tutarlı).
+        #expect(model.loadState == .errorWithCache)
+        #expect(model.showsOfflineBanner)
+        #expect(model.notifications.map(\.id.rawValue).sorted() == ["a", "b"]) // a telafiyle geri eklendi
+    }
+
     // MARK: - F3: markAllRead telafisi araya giren load ile tazelenmiş listeyi ezmemeli
 
     @Test func markAllReadCompensationDoesNotClobberFreshList() async {

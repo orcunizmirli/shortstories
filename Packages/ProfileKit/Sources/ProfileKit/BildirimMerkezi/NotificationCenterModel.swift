@@ -244,7 +244,12 @@ public final class NotificationCenterModel {
             guard epoch == listEpoch else { return } // araya giren authoritative load kazandı (F2)
             guard !notifications.contains(where: { $0.id == id }) else { return } // dedup: yineleme yok
             notifications.insert(removed, at: min(index, notifications.count)) // konum clamp'li
-            loadState = previousLoadState // silme-öncesi duruma tam dön (F4 telafisi)
+            // Silme-öncesi duruma dön (F4 telafisi) AMA `await` sırasında araya giren load-FAILURE
+            // (`.errorWithCache`; `listEpoch` yalnız load-BAŞARISINDA bump'lanır → epoch fence bunu yakalamaz)
+            // bayat `.loaded` snapshot'la DÜŞÜRÜLMESİN → hata durumu (offline banner ile tutarlı) KORUNUR (F4b).
+            if loadState != .errorWithCache {
+                loadState = previousLoadState
+            }
         }
     }
 

@@ -172,7 +172,9 @@ BolumListesi scheduled-bölüm MEDIUM); 1'i veri-modeli sınırı gereği ertele
 RewardsKit (CheckIn/OdulMerkezi/Tasks) adversarial bug-hunt'ının 9 kept bulgusundan 3'ü düzeltildi
 (2 commit: check-in refresh generation-guard MEDIUM + claim lastSeen-persist LOW; reconcileClaimed
 günlük-reset unpin MEDIUM); 3'ü App-wiring/port-versiyonlama gerektirdiği için ertelendi:
-- **OdulMerkeziModel hesap-değişiminde reset yok (OdulMerkeziModel.swift:79, MEDIUM CONFIRMED):** model
+- **OdulMerkeziModel hesap-değişiminde reset yok (OdulMerkeziModel.swift:79, MEDIUM CONFIRMED — ✅ DÜZELTİLDİ):**
+  `OdulMerkeziModel.resetForAccountSwitch()` (claimedTaskIDs/checkInState/hasLoaded temizler + accountEpoch bump)
+  + `RewardsCoordinator` account-switch gözlemcisi wiring'i (odulMerkeziModel + referralModel reset) mevcut. model
   TabCoordinator ile bir kez kurulup uygulama ömrü boyunca yaşar; kimlik/generation guard'ı ve reset yolu
   YOK. `claimedTaskIDs` (ve `hasLoaded` gate'i nedeniyle bayat `coinBalance`) hesap/oturum değişiminde
   önceki kimlikten TAŞINIR → yeni hesabın aynı-id görevleri çapraz-hesap `.claimed` sabitlenir (claim
@@ -200,13 +202,29 @@ günlük-reset unpin MEDIUM); 3'ü App-wiring/port-versiyonlama gerektirdiği i�
     `pushBalance` ayrı `_version` (0,1,2…) yayar → App-adapter testinde currentBalance vs stream version'ları
     ayrık olabilir. Üretim hatası değil (OdulMerkezi FakeRewardsWallet ile koşar, o tutarlı). Şu an version'a
     dayanan App-adapter testi yok → latent; ileride adapter version testi eklenirse fake hizalanmalı.
-- **claim/applyAuthoritativeBalance epoch guard yok (OdulMerkeziModel.swift:267/289, MEDIUM/LOW PLAUSIBLE):**
+- **claim/applyAuthoritativeBalance epoch guard yok (OdulMerkeziModel.swift:267/289, MEDIUM/LOW PLAUSIBLE — ✅ DÜZELTİLDİ):**
+  `accountEpoch` + TÜM apply-after-await yolları (claimToday/claimTask/+Tasks/load/runRefresh) await-öncesi `let epoch =
+  accountEpoch` + apply-öncesi `guard epoch == accountEpoch` (OdulMerkeziModel+Tasks.swift) uygulanmış.
   claimToday/claimTask `await claim()` ÖNCESİ epoch yakalamaz, SONRASINDA apply-öncesi doğrulamaz →
   uçuştaki claim yanıtı bir bağlam/hesap değişiminden sonra uygulanınca cross-account/bayat kredi; ayrıca
   eşzamanlı iki claim'de geç dönen DAHA ESKİ bakiye anlık-görüntüsü yeniyi ezebilir. Yukarıdaki reset
   (§hesap-değişimi) + akış-versiyonlama ile AYNI altyapıyı paylaşır → o iki fix'le birlikte ele alınacak.
   (Not: todayReward computed var'ının schedule fallback'i [OdulMerkeziModel.swift:159, LOW] → **DÜZELTİLDİ
   (b523b27):** paylaşılan CheckInCycle.todayReward(for:) — buton etiketi + takvim bugün hücresi tek kaynak.)
+
+### ProfileKit hesap-yaşam-döngüsü adversarial bug-hunt (2026-09-01)
+ProfileKit (HesapSilme/HesapBaglama/BildirimMerkezi/Profil/Ayarlar) hunt: HIGH/MEDIUM yok (F1–F6 concurrency
+testleri sıkı; double-confirm silme gate'i airtight). 1 LOW düzeltildi + 1 accepted-contract:
+- **NotificationCenterModel.delete telafisi araya giren load-FAILURE'ı düşürüyordu (LOW — ✅ DÜZELTİLDİ):** delete
+  `await`'i sırasında retry-load OFFLINE hata verirse `.errorWithCache` set edilir ama `listEpoch` yalnız load-
+  BAŞARISINDA bump'lanır → delete-catch epoch fence'i (guard epoch==listEpoch) yakalamaz → bayat `.loaded`
+  snapshot `.errorWithCache`'i ezerdi (offline hata "loaded/boş inbox" yanlış etiketlenir). **Fix:** telafi
+  `if loadState != .errorWithCache { loadState = previousLoadState }` — araya giren hata durumu KORUNUR. TDD:
+  deleteCompensationPreservesInterleavedLoadFailureState (RED→GREEN); 166 ProfileKit testi yeşil.
+- **ProfilModel same-provider A→B switch iç wallet-reset yok (LOW, ACCEPTED-contract):** `AccountSummary.make`
+  userID'yi düşürür → observeSession same-provider switch'i algılayamaz; wallet reset'i dış `WalletStore.reset`
+  broadcast'ine (observeWallet) dayanır. Server-otoriter-para ile tutarlı (dış broadcast otoriter reset; session-
+  death sticky-clear zaten var). ProfileKit'ten exploit edilemez → iç redundant defense EKLENMEDİ (accepted).
 
 ### ContentKit bug-hunt — ertelenen 1 kalem (2026-08-30)
 ContentKit (Wire decode/Models/API) adversarial bug-hunt'ının 3 kept bulgusundan 2'si düzeltildi
