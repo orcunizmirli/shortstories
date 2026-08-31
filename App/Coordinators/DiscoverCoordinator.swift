@@ -27,9 +27,33 @@ final class DiscoverCoordinator {
     @ObservationIgnored private(set) lazy var kesfetModel: KesfetModel =
         composition.makeKesfetModel(session: session, delegate: self)
 
+    /// Hesap değişimi gözlemcisi — app ömrü boyunca canlı (Home/Rewards/Library ile simetrik): switch hangi
+    /// sekmede olursa olsun (Profil'den) yakalanır.
+    @ObservationIgnored private var accountObserver: Task<Void, Never>?
+
     init(composition: AppComposition, walletFlow: WalletFlowCoordinator) {
         self.composition = composition
         self.walletFlow = walletFlow
+        startObservingAccountSwitch()
+    }
+
+    /// Hesap DEĞİŞİMİNDE (userID farklı bir hesaba geçince) uzun-ömürlü Kesfet oturum-durumunu (per-user
+    /// `/discover` cache'i + tür filtresi) sıfırlar — model + session sekme ömrü boyu yaşar, switch'te yeniden
+    /// yaratılmaz → cross-account state B'ye sızmasın (SS-132; Home/Rewards/Library ile simetrik). link
+    /// (guest→AYNI userID) ve session-death/re-auth (nil-geçiş) reset TETİKLEMEZ; yalnız farklı-hesaba geçiş.
+    private func startObservingAccountSwitch() {
+        let sessionManaging = composition.dependencies.session
+        accountObserver = Task { [weak self] in
+            var lastUserID: String?
+            for await state in sessionManaging.stateUpdates {
+                // lastUserID YALNIZ non-nil'de güncellenir → nil-ara-durumdan (loggedOut) geçen switch yakalanır.
+                guard let current = state.userID else { continue }
+                if let previous = lastUserID, previous != current {
+                    self?.kesfetModel.resetForAccountSwitch()
+                }
+                lastUserID = current
+            }
+        }
     }
 
     // MARK: - Deep link / cross-tab yardımcıları (TabCoordinator.handle çağırır)

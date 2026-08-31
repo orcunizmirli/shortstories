@@ -56,4 +56,12 @@ public final class DiscoverSessionStore {
     public func save(_ content: DiscoverContent, at date: Date) {
         cached = CachedDiscover(content: content, storedAt: date)
     }
+
+    /// Hesap değişiminde oturum-içi durumu temizler: `/discover` `private, max-age` (per-user) cache'i +
+    /// seçili tür filtresi başka hesaba SIZMASIN (SS-132 sınıfı; store sekme ömrü boyu yaşadığından reset
+    /// edilmezse A'nın kişiselleştirilmiş layout'u/filtresi B'ye taşınırdı). KesfetModel.resetForAccountSwitch çağırır.
+    public func reset() {
+        cached = nil
+        selectedGenreID = nil
+    }
 }

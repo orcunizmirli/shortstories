@@ -99,6 +99,20 @@ public final class KesfetModel {
         await revalidate()
     }
 
+    /// Hesap değişiminde hesap-özel durumu temizler: `/discover` per-user (`private` cache) layout'u + seçili
+    /// tür filtresi B'ye SIZMASIN (SS-132 sınıfı). `revalidateGeneration` bump uçuştaki discover() commit'ini
+    /// fence eder; state + session temizlenir. Reload BURADA yapılMAZ — onAppear guard'sız yeniden yükler
+    /// (B Kesfet'i açınca taze çeker); switch anında yüklersek A'nın hâlâ-geçerli token'ıyla A layout'unu diriltirdik.
+    public func resetForAccountSwitch() {
+        revalidateGeneration += 1
+        session.reset()
+        content = nil
+        selectedGenreID = nil
+        showsOfflineBanner = false
+        loadState = .idle
+        trackedScreenView = false
+    }
+
     private func revalidate() async {
         revalidateGeneration += 1
         let token = revalidateGeneration

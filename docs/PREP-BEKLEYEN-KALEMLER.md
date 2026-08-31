@@ -404,10 +404,11 @@ droppedItemCount, non-core tarih toleransı, yanlış-tip array alanı). 1 kalem
   kapalı" (isCoinPathClosedLock gibi) say — bedava-unlock DEĞİL. Server-contract-ihlaline karşı savunmacı
   clamp; WalletKit/UnlockSheet (App-katmanı) dokunuşu + "0-fiyat nasıl yorumlanmalı" ürün kararı → ertelendi.
 
-### DiscoverKit adversarial bug-hunt — ertelenen 2 kalem (2026-08-31)
+### DiscoverKit adversarial bug-hunt — ertelenen 1 kalem (2026-08-31)
 DiscoverKit bug-hunt (14 agent → 9 doğrulanmış). 6 CI-testli fix DÜZELTİLDİ (commit 3854329 + self-review
 f327339: recent-search newline, loadMore sonsuz-sayfalama, öneri bayat/boş/ağ-hatası, CTA kilit-etiketi, load
-guard). **#2 (entitlement-gözlem) sonradan DÜZELTİLDİ (2026-08-31, aşağıda ✅).** Kalan 2 ertelenen kalem:
+guard). **#2 (entitlement-gözlem) + #9 (DiscoverSessionStore cross-account) sonradan DÜZELTİLDİ (2026-08-31, ✅).**
+Kalan 1 ertelenen kalem (#3 episodeId-resume, aşağıda):
 - **#3 DiziDetay ilerleme-hedefi derin-sayfa GEÇİCİ hatasında yanlış .start CTA (LOW, izleme-yeri kaybı):**
   ensureProgressEpisodeLoaded ilerleme bölümünün derin sayfasını çekerken GEÇİCİ hata alırsa (`try?` yutar) CTA
   sessizce .start'a (Bölüm 1) düşer → kullanıcı kaldığı yeri kaybeder. **İLK fix'im (recompute-throws → hata
@@ -429,14 +430,15 @@ guard). **#2 (entitlement-gözlem) sonradan DÜZELTİLDİ (2026-08-31, aşağıd
   favorites-await penceresinde gelen cold-start/deep-link broadcast'ı YUTULMASIN). 2 TDD testi (post-load
   re-derive + yükleme-penceresi yarışı, ikisi de revert-verify RED-doğrulandı). DiscoverKit 151 test yeşil,
   App lokal derlendi, tam-repo lint temiz. Diğer teardown/lifecycle/paywall-bypass hipotezleri REFUTED.
-- **#9 DiscoverSessionStore cross-account (LOW CONFIRMED, App coordinator reset):** `DiscoverSessionStore.cached`
-  `public private(set)` ama reset/clear API'si YOK (yalnız save/init); DiscoverCoordinator'da uzun-ömürlü `let`
-  olarak tutulur, hesap/session gözlemcisi YOK — oysa uzun-ömürlü coordinator'lar hesap-değişiminde reset
-  edilmeli (RewardsCoordinator/HomeCoordinator deseni). A kullanıcısı tür filtresi seçip Kesfet yükler →
-  B'ye switch (aynı process, DiscoverCoordinator yeniden yaratılmaz) → B Kesfet açar, KesfetModel.init A'nın
-  selectedGenreID'sini okur → A'nın filtresiyle yükler (cross-account state sızıntısı). **Fix:** DiscoverSession
-  Store.reset() + DiscoverCoordinator'a session.stateUpdates gözlemcisi (userID-change → reset), cross-account
-  UI-state cluster deseniyle simetrik. App-wiring → odaklı pass.
+- **#9 DiscoverSessionStore cross-account (LOW CONFIRMED, App coordinator reset) → ✅ DÜZELTİLDİ:** Discover
+  SessionStore + KesfetModel sekme ömrü boyu yaşar, DiscoverCoordinator (Home/Rewards/Library'nin AKSİNE)
+  hesap-switch gözlemcisi YOKTU → A'nın per-user `/discover` layout'u (`private, max-age=600` cache) + seçili tür
+  filtresi B'ye sızıyordu. Fix: DiscoverSessionStore.reset() + KesfetModel.resetForAccountSwitch() (content/
+  selectedGenreID/session temizler, revalidateGeneration bump ile uçuştaki discover() commit'ini fence eder,
+  loadState=.idle → onAppear guard'sız reload) + DiscoverCoordinator.startObservingAccountSwitch (4. tab-coordinator,
+  pattern tamamlandı). 3 test (state-clear + uçuştaki-revalidate fence — bağımsız revert-verify RED + App-wiring
+  loggedOut-ara-durum). DiscoverKit 153 test + App 2 test yeşil. Reload BURADA yapılmaz (reset stateUpdates'te
+  switch-token rotasyonundan önce → A layout'u dirilmesin; onAppear post-switch reload eder).
 
 ### WalletKit (para-çekirdeği) adversarial bug-hunt — ertelenen 1 kalem (2026-08-31)
 Para-DURUMU sağlam savunulmuş (version-monotonic SET, account-epoch fence, iki-katman IAP idempotency,

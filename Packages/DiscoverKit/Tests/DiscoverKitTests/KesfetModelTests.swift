@@ -286,3 +286,45 @@ struct KesfetModelTests {
         #expect(CacheFreshness.discoverTTL == .seconds(600))
     }
 }
+
+// MARK: - Hesap değişimi reset (#9 cross-account — SS-132 sınıfı)
+
+extension KesfetModelTests {
+    @Test func resetForAccountSwitchHesapOzelDurumuTemizler() async {
+        // model + session sekme ömrü boyu yaşar → hesap-switch'te A'nın per-user discover layout'u (`private`
+        // cache) + tür filtresi temizlenmezse B'ye sızar. resetForAccountSwitch ikisini de temizler.
+        let catalog = SpyCatalog(discover: .success(makeContent()))
+        let session = DiscoverSessionStore()
+        let model = makeModel(catalog: catalog, session: session)
+        await model.load() // A'nın discover'ı yüklendi + session'a cache'lendi
+        model.selectGenre("romance") // A'nın tür filtresi
+        #expect(model.content != nil)
+        #expect(session.cached != nil)
+        #expect(session.selectedGenreID == "romance")
+
+        model.resetForAccountSwitch()
+
+        #expect(model.content == nil) // A'nın layout'u temizlendi
+        #expect(model.selectedGenreID == nil) // A'nın filtresi temizlendi ("Tümü")
+        #expect(model.loadState == .idle)
+        #expect(session.cached == nil) // per-user cache temizlendi
+        #expect(session.selectedGenreID == nil)
+    }
+
+    @Test func resetForAccountSwitchFencesInFlightRevalidate() async {
+        // Fence: A'nın revalidate()'i uçuştayken hesap-switch reset'i olursa, A'nın discover'ı reset SONRASI
+        // commit edilMEMELİ (last-writer-wins → B'ye A layout'u sızması önlenir). revalidateGeneration bump fence'ler.
+        let catalog = GatedCatalog(discoverResults: [.success(makeContent(banner: "accountA"))])
+        let session = DiscoverSessionStore()
+        let model = KesfetModel(catalog: catalog, session: session, analytics: MockAnalytics(), delegate: nil, now: { now })
+
+        async let load: Void = model.load() // cache yok → revalidate uçuşta (gate'te)
+        await catalog.gate.arrivals("0", 1)
+        model.resetForAccountSwitch() // hesap switch → generation bump
+        catalog.gate.open("0") // A'nın discover'ı çözülür
+        await load
+
+        #expect(model.content == nil) // A'nın layout'u B'ye commit EDİLMEDİ (fence)
+        #expect(session.cached == nil)
+    }
+}
