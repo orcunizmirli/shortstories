@@ -38,10 +38,13 @@ struct SeriesWire: Decodable, Sendable {
         releasedEpisodeCount = try container.decode(Int.self, forKey: .releasedEpisodeCount)
         freeEpisodeCount = try container.decode(Int.self, forKey: .freeEpisodeCount)
         releaseState = try container.decode(Series.ReleaseState.self, forKey: .releaseState)
-        nextEpisodeAt = try container.decodeIfPresent(Date.self, forKey: .nextEpisodeAt)
+        // Non-core tarihler LOSSY (audit): `nextEpisodeAt` UI etiketi, `updatedAt` cache metadata — bozuk/parse-
+        // edilemez bir tarih TÜM (çekirdeği geçerli) seriyi düşürmesin (detay yolunda tam-ekran hata, liste
+        // yolunda sessiz kayıp). Bozuk `updatedAt` → `.distantPast` (çok bayat say → tazeleme zorlanır).
+        nextEpisodeAt = container.decodeLossyDate(forKey: .nextEpisodeAt)
         stats = try container.decode(SeriesStatsWire.self, forKey: .stats)
         localeInfo = try container.decode(LocaleInfoWire.self, forKey: .localeInfo)
-        updatedAt = try container.decode(Date.self, forKey: .updatedAt)
+        updatedAt = container.decodeLossyDate(forKey: .updatedAt) ?? .distantPast
     }
 
     private enum CodingKeys: String, CodingKey {

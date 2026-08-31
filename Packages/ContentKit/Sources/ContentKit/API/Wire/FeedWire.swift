@@ -65,19 +65,30 @@ extension PageWire<FeedItemWire> {
             items: mapped,
             nextCursor: nextCursor,
             ttlSec: ttlSec,
-            droppedItemCount: items.count - mapped.count
+            // decode-aşaması (lossy) + mapping-aşaması düşüşleri BİRLİKTE — sessiz kayıp yok invariantı.
+            droppedItemCount: decodeDroppedCount + (items.count - mapped.count)
         )
     }
 }
 
 extension PageWire<EpisodeWire> {
     func toDomain() -> Page<Episode> {
-        Page(items: items.map { $0.toDomain() }, nextCursor: nextCursor, ttlSec: ttlSec)
+        Page(
+            items: items.map { $0.toDomain() },
+            nextCursor: nextCursor,
+            ttlSec: ttlSec,
+            droppedItemCount: decodeDroppedCount // decode-aşaması düşüşleri de sayaca girsin (audit)
+        )
     }
 }
 
 extension PageWire<SeriesWire> {
     func toDomain() -> Page<Series> {
-        Page(items: items.map { $0.toDomain() }, nextCursor: nextCursor, ttlSec: ttlSec)
+        Page(
+            items: items.map { $0.toDomain() },
+            nextCursor: nextCursor,
+            ttlSec: ttlSec,
+            droppedItemCount: decodeDroppedCount
+        )
     }
 }

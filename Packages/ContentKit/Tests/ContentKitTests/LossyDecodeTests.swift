@@ -80,6 +80,55 @@ struct LossyDecodeTests {
         #expect(wire.genres.isEmpty)
         #expect(wire.tags.isEmpty)
     }
+
+    @Test func yanlisTipCollectionsAlaniDiscoveriDusurmez() throws {
+        // audit LOW (#5): "collections" ARRAY yerine OBJE gelirse (sunucu/proxy bug) eski kod unkeyedContainer'da
+        // throw edip TÜM /discover'ı düşürürdü → Keşfet boş ekran. Fix: yanlış-tip alan yutulur, collections [].
+        let json = #"{"banners":[],"collections":{}}"#
+        let wire = try Fixtures.decoder.decode(DiscoverWire.self, from: Data(json.utf8))
+        #expect(wire.collections.isEmpty)
+        #expect(wire.banners.isEmpty)
+    }
+
+    @Test func bozukNonCoreTarihSeriyiDusurmez() throws {
+        // audit (#2): non-core tarih (nextEpisodeAt UI etiketi, updatedAt cache metadata) BOZUK gelirse eski
+        // STRICT decode TÜM (çekirdeği geçerli) seriyi düşürürdü (detayda tam-ekran hata). Fix: bozuk → nil /
+        // distantPast; seri düşmez.
+        let json = """
+        {
+          "id": "srs_d", "title": "Geçerli", "synopsis": "s",
+          "coverURL": "https://cdn.test/c.jpg", "bannerURL": null,
+          "genres": [], "tags": [],
+          "episodeCount": 3, "releasedEpisodeCount": 2, "freeEpisodeCount": 1,
+          "releaseState": "ongoing", "nextEpisodeAt": "yakinda",
+          "stats": {"viewCount":1,"favoriteCount":1,"trendingRank":null},
+          "localeInfo": {"audioLanguage":"en","subtitleLanguages":["en"]},
+          "updatedAt": "soon"
+        }
+        """
+        let wire = try Fixtures.decoder.decode(SeriesWire.self, from: Data(json.utf8))
+        #expect(wire.id == "srs_d") // çekirdek geçerli → seri düşmedi
+        #expect(wire.nextEpisodeAt == nil) // bozuk tarih → nil
+        #expect(wire.updatedAt == .distantPast) // bozuk cache-timestamp → sentinel (çok bayat)
+    }
+
+    @Test func decodeAsamasiDusenItemDroppedCountaGirer() throws {
+        // audit (#1/#4/#6): LossyArray decode-aşamasında bozuk item'ı sessizce düşürüyordu ve droppedItemCount
+        // 0 raporluyordu → "sessiz kayıp yok" invariantı decode-aşamasında ihlaldi. Fix: decode-düşüşü sayaca girer.
+        let valid = """
+        {"id":"e1","seriesId":"srs","index":1,"durationSec":60,"thumbnailURL":"https://cdn.test/e1.jpg",\
+        "access":{"kind":"free","unlockPrice":null,"adUnlockEligible":false}}
+        """
+        // durationSec (zorunlu) EKSİK → EpisodeWire decode throw → LossyArray atlar.
+        let broken = """
+        {"id":"e2","seriesId":"srs","index":2,"thumbnailURL":"https://cdn.test/e2.jpg",\
+        "access":{"kind":"free","unlockPrice":null,"adUnlockEligible":false}}
+        """
+        let json = "{\"items\":[\(valid),\(broken)],\"nextCursor\":null,\"ttlSec\":300}"
+        let page = try Fixtures.decoder.decode(PageWire<EpisodeWire>.self, from: Data(json.utf8)).toDomain()
+        #expect(page.items.count == 1) // e2 düştü
+        #expect(page.droppedItemCount == 1) // decode-aşaması düşüşü sayaca girdi (eskiden 0)
+    }
 }
 
 private struct LossyItem: Decodable, Equatable {
