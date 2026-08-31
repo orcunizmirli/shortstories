@@ -60,6 +60,22 @@ struct WalletStoreUnlockTests {
         #expect(!analytics.eventNames.contains("unlock_success"))
     }
 
+    @Test func confirmAdUnlockBolumuAcarBakiyeyeDokunmaz() async {
+        // FINDING 1 (coin-ekonomisi hunt): reklam-unlock (server SSV başarısı) `confirmUnlocked` ile AYNI entitlement
+        // etkisi (bölüm açılır → `hasAccess` true, DiziDetay/BolumListesi tutarlı) AMA bakiye DEĞİŞMEZ (reklam
+        // ücretsiz — coin harcanmaz). Coin `unlock` ile simetrik entitlement yolu.
+        let store = await makeStore(remote: FakeWalletRemote()) // seed 100 coin
+        let balanceBefore = await store.currentBalance()
+        let accessBefore = await store.hasAccess(to: EpisodeID("ep_9"))
+        #expect(!accessBefore)
+
+        await store.confirmAdUnlock(episodeID: EpisodeID("ep_9"))
+
+        #expect(await store.hasAccess(to: EpisodeID("ep_9"))) // hasAccess açıldı
+        #expect(await store.isEpisodeUnlocked(EpisodeID("ep_9")))
+        #expect(await store.currentBalance() == balanceBefore) // bakiye DEĞİŞMEDİ (reklam ücretsiz)
+    }
+
     @Test func basariliUnlockServerSnapshotUygular() async {
         let remote = FakeWalletRemote()
         remote.unlockResults = [.success(.unlocked(

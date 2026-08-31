@@ -152,6 +152,28 @@ struct UnlockSheetAdRowTests {
         model.onDisappear()
     }
 
+    @Test func reklamUnlockCuzdanEntitlementineYansir() async {
+        // FINDING 1 (coin-ekonomisi entegrasyon hunt): reklam-unlock WalletStore entitlement'ine YANSIMALI (coin ile
+        // simetrik) — aksi halde `hasAccess` false kalır → DiziDetay/BolumListesi bölümü kilitli sanıp paywall'u
+        // tekrar açar (sahip olunan içerik oynatılamaz). Bakiye DEĞİŞMEZ (reklam ücretsiz).
+        let gateway = FakeWalletGateway(balance: CoinBalance(purchasedCoins: 0, earnedCoins: 0))
+        let ad = FakeRewardedAdUnlocking(
+            availability: .available(remaining: 3, dailyCap: 5),
+            watchResult: .unlocked(remainingToday: 2)
+        )
+        let delegate = SpyUnlockSheetDelegate()
+        let model = makeModel(gateway: gateway, delegate: delegate, rewardedAdUnlock: ad)
+        await model.begin()
+
+        await model.watchAd()
+
+        #expect(gateway.confirmAdUnlockCalls == [EpisodeID("ep_12")]) // cüzdana yansıdı (entitlement)
+        #expect(await gateway.isEpisodeUnlocked(EpisodeID("ep_12"))) // hasAccess artık true
+        #expect(gateway.unlockCallCount == 0) // coin unlock YOK — bakiye değişmez
+        #expect(delegate.unlocked == [EpisodeID("ep_12")]) // feed/sheet akışı korunur
+        model.onDisappear()
+    }
+
     // MARK: - Cap-reached / erken-kapatma / fill-yok / red
 
     @Test func watchCapReachedSatiriDevreDisiYaparUnlockYok() async {

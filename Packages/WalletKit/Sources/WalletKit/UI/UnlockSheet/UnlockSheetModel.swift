@@ -207,10 +207,8 @@ public final class UnlockSheetModel {
         )
     }
 
-    /// İki canlı akış (bakiye + entitlement) AYRI görevlerde gözlenir; her akış görev DIŞINDA
-    /// yakalanır ve görev `self`'i yalnız ZAYIF tutup her turda güçlüye terfi ettirir → askıda
-    /// `for await` self'i tutmaz (retain-cycle yok; onDisappear atlansa bile model dealloc olur ve
-    /// sonraki emisyonda döngü kırılır).
+    /// İki canlı akış (bakiye + entitlement) AYRI görevlerde gözlenir; akış görev DIŞINDA yakalanır, görev `self`'i
+    /// ZAYIF tutup her turda güçlüye terfi eder → retain-cycle yok (onDisappear atlansa bile sonraki emisyonda kırılır).
     private func startObserving() {
         guard !isDisposed else { return }
         if balanceTask == nil {
@@ -276,6 +274,9 @@ public final class UnlockSheetModel {
         switch result {
         case let .unlocked(remainingToday):
             trackUnlockAd(remainingToday: remainingToday) // kanonik funnel (08 §3.4 unlock_ad); WalletKit sahipli
+            // Coin `unlock`→`confirmUnlocked` ile SİMETRİK: reklam-unlock'u cüzdan entitlement'ine yansıt (açık işaretle
+            // + broadcast) → `hasAccess` açılır, DiziDetay/BolumListesi kilitli sanmaz. Bakiye değişmez (reklam ücretsiz).
+            await wallet.confirmAdUnlock(episodeID: episodeID)
             completeUnlock()
         case .dismissedEarly:
             break // ödül YOK, hak düşmez, satır olduğu gibi (sessiz — kullanıcı seçimi).
@@ -331,9 +332,8 @@ public final class UnlockSheetModel {
         delegate?.unlockSheetDidDismiss()
     }
 
-    /// CoinMagazasi'ndan başarılı satın alma sonrası geri dönüş (06 §6.3). Bakiye canlı yayından
-    /// zaten güncel; otomatik-unlock AÇIKSA bekleyen bölüm sormadan açılır (binge, §6.4), aksi
-    /// halde kullanıcı son dokunuşu kendisi yapar (sürpriz harcama/iade riski).
+    /// CoinMagazasi'ndan başarılı satın alma sonrası dönüş (06 §6.3). Bakiye canlı yayından güncel; otomatik-unlock
+    /// AÇIKSA bekleyen bölüm sormadan açılır (binge §6.4), aksi halde kullanıcı son dokunuşu yapar (sürpriz-harcama).
     public func returnedFromCoinStore() async {
         // Bakiye canlı yayından güncel olmalı; yine de otoritatif değeri okuyup drift'i kapatırız.
         balance = await wallet.currentBalance()

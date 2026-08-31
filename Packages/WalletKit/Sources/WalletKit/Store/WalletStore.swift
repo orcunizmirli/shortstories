@@ -144,6 +144,11 @@ public actor WalletStore: EntitlementChecking {
 
     /// StoreKit `currentEntitlements`'tan iyimser VIP tohumlar (06 §4.5): yalnız sunucu aboneliği henüz
     /// gelmemişken. Sunucu snapshot'ı geldiğinde ezilir; uyuşmazlık loglanır.
+    /// Reklam-ile-açma ONAYI (server SSV): `confirmUnlocked` ile aynı entitlement etkisi AMA bakiyeye DOKUNMAZ (ücretsiz).
+    public func confirmAdUnlock(episodeID: EpisodeID) {
+        confirmUnlocked(episodeID)
+    }
+
     public func seedEntitlementFromStoreKit(hasActiveSubscription: Bool) {
         guard !hasServerSubscription, hasActiveSubscription else { return }
         storeKitOptimisticVIP = true
@@ -160,11 +165,9 @@ public actor WalletStore: EntitlementChecking {
         SpendPlanner.plan(spending: amount, from: snapshot.balance)
     }
 
-    /// İyimser kilit açma — iyimserlik BAKİYEDE DEĞİL, UNLOCK DURUMUNDA (kanon §5; 05 §5.2; 06 §2.4 kural 3:
-    /// istemci bakiyeyi ASLA lokal aritmetikle güncellemez). Akış: (a) bölümü hemen açık işaretle (entitlement),
-    /// (b) bakiye YALNIZ sunucu snapshot'ından SET edilir (lokal çıkarma/yayın YOK), (c) server reddinde
-    /// (INSUFFICIENT_COINS/PRICE_CHANGED) iyimser kilit geri alınır + tipli sonuç döner. Aynı anda en fazla 1
-    /// bekleyen unlock (06 §6.4) — ikincisi `transactionConflict` döner.
+    /// İyimser kilit açma — iyimserlik BAKİYEDE DEĞİL, UNLOCK DURUMUNDA (kanon §5; 06 §2.4 kural 3: istemci bakiyeyi
+    /// ASLA lokal aritmetikle güncellemez). Akış: (a) bölümü açık işaretle, (b) bakiye YALNIZ sunucu snapshot'ından
+    /// SET, (c) server reddinde iyimser kilit geri alınır + tipli sonuç. En fazla 1 bekleyen unlock (06 §6.4).
     public func unlock(episodeID: EpisodeID, expectedPrice: Int) async -> UnlockResult {
         guard pendingUnlock == nil else {
             return .failed(.wallet(.transactionConflict))
@@ -178,9 +181,8 @@ public actor WalletStore: EntitlementChecking {
             }
         }
 
-        // (a) İyimser entitlement: bölümü açık işaretle (hasAccess açılır → PlayerKit ön-kontrolü geçer). Bakiyeye
-        // DOKUNULMAZ, yayınlanmaz. `lastUnlocked` YAYINLANMAZ (ONAYLANMIŞ-unlock sinyali → UnlockSheet kapanır);
-        // iyimser yayın onu taşırsa sheet server reddinden önce kapanıp red-işleme ölü-kod olur (audit HIGH).
+        // (a) İyimser entitlement: bölümü açık işaretle (hasAccess açılır). Bakiye/`lastUnlocked` YAYINLANMAZ
+        // (`lastUnlocked` onaylanmış-unlock sinyali; iyimser taşırsa sheet server reddinden önce kapanır — audit HIGH).
         let wasUnlocked = unlockedEpisodes.contains(episodeID)
         if !wasUnlocked {
             optimisticallyMarkUnlocked(episodeID)
@@ -323,9 +325,8 @@ public actor WalletStore: EntitlementChecking {
             .reduce(0) { $0 - $1.amount }
     }
 
-    /// İYİMSER kilit (server ONAYI ÖNCESİ): `hasAccess`'i açar + entitlement yayınlar ama `lastUnlocked`
-    /// YAYMAZ. `lastUnlocked` "onaylanmış unlock" (sheet kapanır) sinyali olduğundan iyimser yayında
-    /// taşınmaz — aksi halde UnlockSheet server reddinden önce kapanır (audit HIGH; red-işleme ölü-kod).
+    /// İYİMSER kilit (server onayı ÖNCESİ): `hasAccess`'i açar + entitlement yayınlar ama `lastUnlocked` YAYMAZ
+    /// (o "onaylanmış unlock"→sheet-kapanır sinyali; aksi halde sheet server reddinden önce kapanır — audit HIGH).
     private func optimisticallyMarkUnlocked(_ episodeID: EpisodeID) {
         let (inserted, _) = unlockedEpisodes.insert(episodeID)
         if inserted {
@@ -333,9 +334,8 @@ public actor WalletStore: EntitlementChecking {
         }
     }
 
-    /// ONAYLANMIŞ kilit (server success): sette olduğundan emin olur ve `lastUnlocked` YAYAR — UnlockSheet
-    /// gözlemcisi bununla `completeUnlock` eder. İyimser adım zaten eklemişse insert no-op'tur; yayın yine
-    /// yapılır (onay sinyali). İlk kez açılıyorsa (idempotent re-unlock / wasUnlocked) da doğru çalışır.
+    /// ONAYLANMIŞ kilit (server success): sette olduğundan emin olur + `lastUnlocked` YAYAR (UnlockSheet gözlemcisi
+    /// `completeUnlock` eder). İyimser adım eklemişse insert no-op; yayın yine yapılır. Idempotent re-unlock da OK.
     private func confirmUnlocked(_ episodeID: EpisodeID) {
         unlockedEpisodes.insert(episodeID)
         broadcastEntitlement(lastUnlocked: episodeID)

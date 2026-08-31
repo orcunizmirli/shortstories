@@ -92,6 +92,22 @@ final class FakeWalletGateway: WalletGateway, @unchecked Sendable {
         }
     }
 
+    private(set) var confirmAdUnlockCalls: [EpisodeID] = []
+
+    func confirmAdUnlock(episodeID: EpisodeID) async {
+        let subscription = lock.withLock { () -> SubscriptionStatus in
+            confirmAdUnlockCalls.append(episodeID)
+            _unlocked.insert(episodeID)
+            return _subscription
+        }
+        entitlementCast.send(EntitlementSnapshot(
+            isVIP: subscription.grantsFullAccess,
+            vipExpiresAt: subscription.expiresAt,
+            isInGracePeriod: subscription.isInGracePeriod,
+            lastUnlockedEpisode: episodeID
+        ))
+    }
+
     func balanceUpdates() -> AsyncStream<CoinBalance> {
         balanceCast.subscribe()
     }

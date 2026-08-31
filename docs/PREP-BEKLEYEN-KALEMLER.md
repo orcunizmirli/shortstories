@@ -226,6 +226,23 @@ testleri sıkı; double-confirm silme gate'i airtight). 1 LOW düzeltildi + 1 ac
   broadcast'ine (observeWallet) dayanır. Server-otoriter-para ile tutarlı (dış broadcast otoriter reset; session-
   death sticky-clear zaten var). ProfileKit'ten exploit edilemez → iç redundant defense EKLENMEDİ (accepted).
 
+### Coin-ekonomisi END-TO-END entegrasyon adversarial bug-hunt (2026-09-01)
+Unlock (coin/ad/VIP) → WalletStore → entitlement broadcast → feed re-lock → OdulMerkezi/Profil/CoinShop bakiye
+entegrasyonu hunt'ı: 3 gerçek cross-component bug (coin-unlock tutarlılığı, VIP re-lock, version-monotonic bakiye,
+account-fence'ler SAĞLAM doğrulandı):
+- **#1 AD-unlock DiziDetay/BolumListesi'ye görünmez (MEDIUM — ✅ DÜZELTİLDİ):** ad-unlock (network-only) WalletStore'a
+  dokunmaz + entitlement broadcast etmez; DiziDetay/BolumListesi yalnız `hasAccess`'e dayanır → ad ile açılan bölüm 🔒
+  kalır, tekrar tıklanınca sahip-olunan içeriğe paywall açılır (DiziDetay'dan oynatılamaz). **Fix:** `WalletGateway.
+  confirmAdUnlock(episodeID:)` (WalletStore: `confirmUnlocked` — bölüm açık işaretle + `lastUnlocked` broadcast, bakiye
+  DEĞİŞMEZ); `UnlockSheetModel.watchAd` `.unlocked`'ta çağrılır → coin `unlock` ile simetrik, tüm `hasAccess`-tüketiciler
+  tutarlı. TDD: reklamUnlockCuzdanEntitlementineYansir + confirmAdUnlockBolumuAcarBakiyeyeDokunmaz (RED→GREEN); 305 WalletKit yeşil.
+- **#2 Check-in/görev claim'i WalletStore'a ulaşmaz → OdulMerkezi vs Profil/CoinShop ıraksak bakiye (MEDIUM, PENDING):**
+  claim doğrudan API'ye gider, WalletStore'a yansımaz; refresh yalnız cold-start/switch/purchase'ta → oturum-içi
+  ıraksama (finansal kayıp yok — server otoriter; app-restart'ta düzelir). **Fix:** başarılı claim sonrası `walletStore.
+  refresh()` (App-wiring: RewardsCoordinator/claim-delegate → composition.walletStore.refresh).
+- **#3 AD-unlock account-epoch fence yok + WalletFlow sheet switch'te reset olmaz (LOW, ACCEPTED):** tam-ekran modal
+  reklam mid-ad hesap-switch'i engeller; post-ad pencere alt-saniye + feed-reset + server-reload mitige → near-unreachable.
+
 ### ContentKit bug-hunt — ertelenen 1 kalem (2026-08-30)
 ContentKit (Wire decode/Models/API) adversarial bug-hunt'ının 3 kept bulgusundan 2'si düzeltildi
 (2 commit: SeriesWire genres/tags lossy MEDIUM + boş-string nextCursor normalize LOW); 1'i cross-package
