@@ -10,7 +10,6 @@ public actor WalletStore: EntitlementChecking {
     private let remote: any WalletRemoting
     private let analytics: any AnalyticsTracking
     private let log: any Logging
-    private let makeIdempotencyKey: @Sendable () -> String
     private let now: @Sendable () -> Date
     /// Kazanç-hızı danışma monitörü (SS-100). Earned-kese ARTIŞLARI raporlanır (`FraudSignalInterceptor`).
     /// `nil` = bağlı değil (F1/test). Yalnız GÖZLEM: bakiye/entitlement akışını ETKİLEMEZ.
@@ -36,14 +35,12 @@ public actor WalletStore: EntitlementChecking {
         analytics: any AnalyticsTracking,
         log: any Logging,
         now: @escaping @Sendable () -> Date = { Date() },
-        makeIdempotencyKey: @escaping @Sendable () -> String = { UUID().uuidString },
         earnVelocityRecorder: (any EarnVelocityRecording)? = nil
     ) {
         self.remote = remote
         self.analytics = analytics
         self.log = log
         self.now = now
-        self.makeIdempotencyKey = makeIdempotencyKey
         self.earnVelocityRecorder = earnVelocityRecorder
         subscription = .none
         snapshot = Self.initialSnapshot(now: now)
@@ -162,7 +159,7 @@ public actor WalletStore: EntitlementChecking {
     /// İyimser kilit açma — iyimserlik BAKİYEDE DEĞİL, UNLOCK DURUMUNDA (kanon §5; 06 §2.4 kural 3: istemci bakiyeyi
     /// ASLA lokal aritmetikle güncellemez). Akış: (a) bölümü açık işaretle, (b) bakiye YALNIZ sunucu snapshot'ından
     /// SET, (c) server reddinde iyimser kilit geri alınır + tipli sonuç. En fazla 1 bekleyen unlock (06 §6.4).
-    public func unlock(episodeID: EpisodeID, expectedPrice: Int) async -> UnlockResult {
+    public func unlock(episodeID: EpisodeID, expectedPrice: Int, idempotencyKey: String) async -> UnlockResult {
         guard pendingUnlock == nil else {
             return .failed(.wallet(.transactionConflict))
         }
@@ -182,7 +179,10 @@ public actor WalletStore: EntitlementChecking {
             optimisticallyMarkUnlocked(episodeID)
         }
 
-        let key = makeIdempotencyKey()
+        // Idempotency-Key ÇAĞIRANDAN gelir (05 §4.5): UnlockSheet onay-dokunuşunda üretilir ve ağ-hatası
+        // retry'larında AYNI anahtar yeniden kullanılır → sunucu tekilleştirmesi çift-harcamayı önler. Anahtarı
+        // burada üretseydik her retry YENİ anahtar olur, dedup hiç çalışmazdı (request-body hunt HIGH).
+        let key = idempotencyKey
         let epoch = accountEpoch // await'ten ÖNCE yakala (§575 audit HIGH)
         do {
             let outcome = try await remote.unlock(

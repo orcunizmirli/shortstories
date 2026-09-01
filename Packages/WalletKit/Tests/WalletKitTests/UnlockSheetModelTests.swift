@@ -1,7 +1,26 @@
 import AppFoundation
 import AppFoundationTestSupport
+import Foundation
 import Testing
 @testable import WalletKit
+
+/// Deterministik sıralı Idempotency-Key fabrikası (key-1, key-2, …) — reuse/yeni-key davranışını doğrular.
+private final class SequentialKeys: @unchecked Sendable {
+    private let lock = NSLock()
+    private var counter = 0
+    private(set) var generated: [String] = []
+
+    var factory: @Sendable () -> String {
+        { [self] in
+            lock.withLock {
+                counter += 1
+                let key = "key-\(counter)"
+                generated.append(key)
+                return key
+            }
+        }
+    }
+}
 
 /// UnlockSheet ekran modeli (SS-093): birincil aksiyon dallanması, coin-yetersiz → mağaza,
 /// fiyat değişimi, otomatik-unlock (binge), VIP upsell, kapatma + analitik.
@@ -30,7 +49,8 @@ struct UnlockSheetModelTests {
         delegate: SpyUnlockSheetDelegate,
         context ctx: UnlockContext? = nil,
         config: UnlockOptionsConfig = .phase1,
-        vipIntroEligible: Bool = false
+        vipIntroEligible: Bool = false,
+        makeIdempotencyKey: @escaping @Sendable () -> String = { UUID().uuidString }
     ) -> UnlockSheetModel {
         UnlockSheetModel(
             context: ctx ?? context(),
@@ -38,7 +58,8 @@ struct UnlockSheetModelTests {
             analytics: analytics,
             delegate: delegate,
             config: config,
-            vipIntroEligible: vipIntroEligible
+            vipIntroEligible: vipIntroEligible,
+            makeIdempotencyKey: makeIdempotencyKey
         )
     }
 
@@ -333,6 +354,47 @@ extension UnlockSheetModelTests {
 
         #expect(delegate.unlocked == [EpisodeID("ep_12")])
         #expect(delegate.unlockedViaVIP.isEmpty) // bireysel → viaVIP=false
+        model.onDisappear()
+    }
+}
+
+// MARK: - Idempotency-Key sabitliği (request-body hunt HIGH / 05 §4.5-§6.3)
+
+@MainActor
+extension UnlockSheetModelTests {
+    @Test func agHatasiRetryAyniIdempotencyKeyiKullanir() async {
+        // Ağ-hatası retry'ı AYNI key ile gitmeli → sunucu dedup çift-harcamayı önler (aksi halde dedup çalışmaz).
+        let gateway = FakeWalletGateway(balance: CoinBalance(purchasedCoins: 100, earnedCoins: 0))
+        gateway.unlockResults = [.failed(.network(.offline)), .success(.fixture(episode: "ep_12", coinsSpent: 70))]
+        let delegate = SpyUnlockSheetDelegate()
+        let keys = SequentialKeys()
+        let model = makeModel(gateway: gateway, delegate: delegate, makeIdempotencyKey: keys.factory)
+        await model.begin()
+
+        await model.primaryAction() // 1. deneme → .failed(.network)
+        await model.primaryAction() // 2. deneme (retry) → .success
+
+        #expect(gateway.unlockCalls.count == 2)
+        #expect(gateway.unlockCalls[0].key == gateway.unlockCalls[1].key) // retry AYNI key'i kullandı
+        #expect(keys.generated.count == 1) // key yalnız BİR kez üretildi (intent'e sabit)
+        model.onDisappear()
+    }
+
+    @Test func fiyatDegisimiReconfirmYeniIdempotencyKeyKullanir() async {
+        // 409 PRICE_CHANGED sonrası re-confirm YENİ key (yeni gövde → aynı key 422 payload-mismatch olurdu).
+        let gateway = FakeWalletGateway(balance: CoinBalance(purchasedCoins: 200, earnedCoins: 0))
+        gateway.unlockResults = [.priceChanged(currentPrice: 90), .success(.fixture(episode: "ep_12", coinsSpent: 90))]
+        let delegate = SpyUnlockSheetDelegate()
+        let keys = SequentialKeys()
+        let model = makeModel(gateway: gateway, delegate: delegate, makeIdempotencyKey: keys.factory)
+        await model.begin()
+
+        await model.primaryAction() // → .priceChanged (key1, sonra düşürülür)
+        await model.primaryAction() // re-confirm → .success (key2, YENİ)
+
+        #expect(gateway.unlockCalls.count == 2)
+        #expect(gateway.unlockCalls[0].key != gateway.unlockCalls[1].key) // yeni intent → FARKLI key
+        #expect(keys.generated.count == 2)
         model.onDisappear()
     }
 }

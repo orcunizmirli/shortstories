@@ -1005,6 +1005,28 @@ ContentKit DIŞINDA EL-YAZIMI liste zarflarındaydı; hepsi aynı per-element lo
   tetikli, GÜVENLİ başarısız (crash/blank yok). Fix `.unknown` case + switch default gerektirir (`UnknownDecodable`
   disiplini); düşük öncelik, gerekçeyle ertelendi.
 
+### Request-body / query encoding sözleşme hunt'ı — 1 HIGH düzeltildi (2026-09-01)
+Giden istek gövdeleri + money-query'leri docs/05 sözleşmesine karşı denetlendi. Zarf-anahtarı/nesting/alan-varlığı/
+tip boyutu (`entries`-vs-`items` sınıfı) TÜM canlı isteklerde sözleşmeye SADIK (unlock `{episodeId,expectedPrice}`,
+verify `{productId,jwsTransaction,kind}`, progress `{entries:[…]}`, checkin/mission boş-gövde+`Idempotency-Key`
+header+`X-Timezone`, auth/devices tam-alan — hepsi doğrulandı; `.useDefaultKeys` camelCase sözleşmeyle eşleşir).
+Tek gerçek defekt idempotency-key STABİLİTESİNDE (scope #2):
+- **#1 /wallet/unlock Idempotency-Key her denemede yeniden üretiliyordu → sözleşmenin dayandığı retry-dedup HİÇ
+  çalışmıyordu, çift-harcama emniyeti devre dışıydı (HIGH → ✅ DÜZELTİLDİ):** `WalletStore.unlock` içeride
+  `makeIdempotencyKey()` (UUID) üretiyordu → ağ-hatası sonrası kullanıcı-retry'ı (UnlockSheetModel.performUnlock
+  yeniden çağrılır) YENİ key gönderiyordu → sunucu K1↔K2 dedup edemez. Sözleşme (05:867) açıkça "onay-dokunuşunda
+  üretir ve **retry'larda AYNI anahtarı yeniden kullanır**"; §6.3 "hiçbir çift-dokunma/ağ-kopması/app-öldürme
+  senaryosunda çift harcama olmaz" şart koşar. Gerçek çift-harcama penceresi: istemci timeout'ta vazgeçer, sunucunun
+  ilk charge'ı henüz episode-unlock'u commit etmemişken yeni-key retry "henüz açık değil" kontrolünü geçer → iki
+  charge. (IAP verify ZATEN doğru: `VerifiedTransaction.idempotencyKey` transaction'a sabit.) **Fix:** key'i
+  UnlockSheetModel'e (intent sahibi) taşıdım — `currentIdempotencyKey` onay-dokunuşunda üretilir, ağ-hatası
+  retry'ında KORUNUR (aynı key → dedup), yeni intent'te (satın-alma dönüşü `returnedFromCoinStore` / fiyat-değişimi
+  409) nil'lenir (yeni key; aksi halde aynı key sunucuda cache'li 402/422 döndürürdü). WalletStore artık key'i
+  ÇAĞIRANDAN alır (protokol+impl imza; makeIdempotencyKey alanı kaldırıldı). TDD: ağ-retry→AYNI key (revert-verify
+  RED: key-1≠key-2), fiyat-değişimi→YENİ key; 318 WalletKit testi yeşil. NOT: `PATCH /me` ucu HİÇ yok → Ayarlar/
+  Onboarding tercihleri (preferredGenres/appLanguage/subtitleLanguage/notificationOptIn) server'a YAZILMIYOR —
+  eksik-istek (mis-encode değil), non-money; F2 wiring kalemi (docs/05 §4.1).
+
 - SS-050 kilit-sınırı reactivation (varsa gap), LibraryCatalog offline cache, WP-F1-G
   review'unda ertelenen küçük optimizasyonlar (CatalogCache `lastAccessAt`/tahliye-bütçe,
   ListemModel batch-delete). Bunlar prep GEREKTİRMEZ; sürekli döngüde ele alınır.

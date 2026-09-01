@@ -52,14 +52,14 @@ struct WalletStorePendingUnlockTests {
         await store.apply(walletSnapshot: .fixture(purchased: 100, version: 1))
 
         // (1) unlock(A) uçuşta (gateA'da asılı) → pendingUnlock = A.
-        let taskA = Task { await store.unlock(episodeID: EpisodeID("ep_A"), expectedPrice: 10) }
+        let taskA = Task { await store.unlock(episodeID: EpisodeID("ep_A"), expectedPrice: 10, idempotencyKey: "k1") }
         await waitUntil { remote.unlockCallCount == 1 }
 
         // (2) Hesap değişimi: reset() → pendingUnlock = nil, epoch++.
         await store.reset()
 
         // (3) unlock(B) uçuşta (gateB'de asılı) → pendingUnlock = B.
-        let taskB = Task { await store.unlock(episodeID: EpisodeID("ep_B"), expectedPrice: 10) }
+        let taskB = Task { await store.unlock(episodeID: EpisodeID("ep_B"), expectedPrice: 10, idempotencyKey: "k1") }
         await waitUntil { remote.unlockCallCount == 2 }
 
         // (4) A çözülür → epoch-fenced conflict → defer çalışır (B'nin marker'ını SİLMEMELİ).
@@ -69,7 +69,7 @@ struct WalletStorePendingUnlockTests {
 
         // (5) B hâlâ uçuşta → 3. unlock çakışma dönmeli (marker B korundu). Eski koşulsuz `defer` B'yi
         //     sildiğinden guard geçer, conflict DÖNMEZ → RED.
-        let resultC = await store.unlock(episodeID: EpisodeID("ep_C"), expectedPrice: 10)
+        let resultC = await store.unlock(episodeID: EpisodeID("ep_C"), expectedPrice: 10, idempotencyKey: "k1")
         #expect(resultC == .failed(.wallet(.transactionConflict)))
 
         // Temizlik: B'yi serbest bırak (task sızıntısı olmasın).

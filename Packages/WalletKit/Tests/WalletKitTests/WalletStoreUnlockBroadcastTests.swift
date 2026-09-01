@@ -25,7 +25,7 @@ struct WalletStoreUnlockBroadcastTests {
         await store.apply(walletSnapshot: .fixture(purchased: 100, version: 1))
         var iterator = store.entitlementUpdates().makeAsyncIterator()
 
-        _ = await store.unlock(episodeID: EpisodeID("ep_9"), expectedPrice: 60)
+        _ = await store.unlock(episodeID: EpisodeID("ep_9"), expectedPrice: 60, idempotencyKey: "k1")
 
         // İlk yayın İYİMSER (server yanıtından önce) → lastUnlocked TAŞIMAZ (sheet erken kapanmasın).
         let optimistic = await iterator.next()
@@ -43,7 +43,7 @@ struct WalletStoreUnlockBroadcastTests {
         await store.apply(walletSnapshot: .fixture(purchased: 100, version: 1))
         var iterator = store.entitlementUpdates().makeAsyncIterator()
 
-        _ = await store.unlock(episodeID: EpisodeID("ep_9"), expectedPrice: 70)
+        _ = await store.unlock(episodeID: EpisodeID("ep_9"), expectedPrice: 70, idempotencyKey: "k1")
 
         // Ne iyimser ne rollback yayını lastUnlocked=ep_9 taşımalı (aksi halde sheet reddi görmeden kapanır).
         let optimistic = await iterator.next()

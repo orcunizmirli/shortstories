@@ -19,7 +19,7 @@ public protocol WalletGateway: Sendable {
     func isEpisodeUnlocked(_ episodeID: EpisodeID) async -> Bool
 
     /// Coin ile kilit açma (SS-095): optimistic entitlement + server-otoritatif mutabakat.
-    func unlock(episodeID: EpisodeID, expectedPrice: Int) async -> UnlockResult
+    func unlock(episodeID: EpisodeID, expectedPrice: Int, idempotencyKey: String) async -> UnlockResult
 
     /// Hesap-jenerasyon token'ı (§575): reklam-watch gibi cross-actor bir server await'ini BAŞLATMADAN önce
     /// okunur; onay/kredi await SONRASI `ifCurrentEpoch:` ile fence edilir (araya hesap-değişimi girdiyse düşer).

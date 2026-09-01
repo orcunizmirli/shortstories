@@ -32,7 +32,7 @@ struct EntitlementTests {
         let before = await store.hasAccess(to: EpisodeID("ep_5"))
         #expect(!before)
 
-        _ = await store.unlock(episodeID: EpisodeID("ep_5"), expectedPrice: 60)
+        _ = await store.unlock(episodeID: EpisodeID("ep_5"), expectedPrice: 60, idempotencyKey: "k1")
 
         let after = await store.hasAccess(to: EpisodeID("ep_5"))
         let other = await store.hasAccess(to: EpisodeID("ep_6"))
@@ -135,7 +135,7 @@ struct EntitlementTests {
         await store.apply(walletSnapshot: .fixture(purchased: 100, version: 1))
         var iterator = store.entitlementUpdates().makeAsyncIterator()
 
-        _ = await store.unlock(episodeID: EpisodeID("ep_42"), expectedPrice: 60)
+        _ = await store.unlock(episodeID: EpisodeID("ep_42"), expectedPrice: 60, idempotencyKey: "k1")
 
         // İyimser yayın (server ONAYI ÖNCESİ) lastUnlocked TAŞIMAZ (sheet erken kapanmasın, audit HIGH);
         // ONAYLANMIŞ unlock ikinci yayında lastUnlocked taşır.

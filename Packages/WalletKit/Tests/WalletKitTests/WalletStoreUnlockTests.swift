@@ -48,7 +48,7 @@ struct WalletStoreUnlockTests {
         let store = WalletStore(remote: remote, analytics: analytics, log: MockLogger())
         await store.apply(walletSnapshot: .fixture(purchased: 100, version: 1))
 
-        _ = await store.unlock(episodeID: EpisodeID("ep_9"), expectedPrice: 60)
+        _ = await store.unlock(episodeID: EpisodeID("ep_9"), expectedPrice: 60, idempotencyKey: "k1")
 
         let event = analytics.events.first { $0.name == "unlock_coin" }
         #expect(event?.parameters["series_id"] == .string("srs_7"))
@@ -86,7 +86,7 @@ struct WalletStoreUnlockTests {
         ))]
         let store = await makeStore(remote: remote)
 
-        let result = await store.unlock(episodeID: EpisodeID("ep_9"), expectedPrice: 60)
+        let result = await store.unlock(episodeID: EpisodeID("ep_9"), expectedPrice: 60, idempotencyKey: "k1")
 
         #expect(result == .success(.fixture(episode: "ep_9", coinsSpent: 60)))
         let balance = await store.currentBalance()
@@ -113,7 +113,7 @@ struct WalletStoreUnlockTests {
         let seeded = await iterator.next()
         #expect(seeded == CoinBalance(purchasedCoins: 100, earnedCoins: 0))
 
-        _ = await store.unlock(episodeID: EpisodeID("ep_9"), expectedPrice: 60)
+        _ = await store.unlock(episodeID: EpisodeID("ep_9"), expectedPrice: 60, idempotencyKey: "k1")
 
         // Sonraki (ve tek yeni) bakiye yayını SERVER snapshot'ı olmalı; lokal-düşülmüş 40 ASLA yayınlanmaz.
         let afterUnlock = await iterator.next()
@@ -137,7 +137,7 @@ struct WalletStoreUnlockTests {
         remote.unlockResults = [.failure(.network(.offline))]
         let store = await makeStore(remote: remote)
 
-        let result = await store.unlock(episodeID: EpisodeID("ep_9"), expectedPrice: 60)
+        let result = await store.unlock(episodeID: EpisodeID("ep_9"), expectedPrice: 60, idempotencyKey: "k1")
 
         #expect(result == .failed(.network(.offline)))
         // Rollback: optimistic 40 → geri 100.
@@ -153,7 +153,7 @@ struct WalletStoreUnlockTests {
         // Bakiye 30 < 60 → optimistic düşüm YAPILMAZ (covered değil).
         let store = await makeStore(remote: remote, seed: .fixture(purchased: 30, version: 1))
 
-        let result = await store.unlock(episodeID: EpisodeID("ep_9"), expectedPrice: 60)
+        let result = await store.unlock(episodeID: EpisodeID("ep_9"), expectedPrice: 60, idempotencyKey: "k1")
 
         #expect(result == .insufficientCoins(shortfall: 30))
         let balance = await store.currentBalance()
@@ -165,7 +165,7 @@ struct WalletStoreUnlockTests {
         remote.unlockResults = [.success(.priceChanged(currentPrice: 75))]
         let store = await makeStore(remote: remote)
 
-        let result = await store.unlock(episodeID: EpisodeID("ep_9"), expectedPrice: 60)
+        let result = await store.unlock(episodeID: EpisodeID("ep_9"), expectedPrice: 60, idempotencyKey: "k1")
 
         #expect(result == .priceChanged(currentPrice: 75))
         let balance = await store.currentBalance()
@@ -182,8 +182,8 @@ struct WalletStoreUnlockTests {
         ]
         let store = await makeStore(remote: remote)
 
-        _ = await store.unlock(episodeID: EpisodeID("ep_9"), expectedPrice: 60)
-        _ = await store.unlock(episodeID: EpisodeID("ep_9"), expectedPrice: 60)
+        _ = await store.unlock(episodeID: EpisodeID("ep_9"), expectedPrice: 60, idempotencyKey: "k1")
+        _ = await store.unlock(episodeID: EpisodeID("ep_9"), expectedPrice: 60, idempotencyKey: "k1")
 
         // SET semantiği: iki kez 40 uygulandı → hâlâ 40 (2x düşüm ile −20 DEĞİL).
         let balance = await store.currentBalance()
@@ -202,14 +202,14 @@ struct WalletStoreUnlockTests {
         ))]
         let store = await makeStore(remote: remote)
 
-        async let first = store.unlock(episodeID: EpisodeID("ep_9"), expectedPrice: 60)
+        async let first = store.unlock(episodeID: EpisodeID("ep_9"), expectedPrice: 60, idempotencyKey: "k1")
         // İkincisi ilk askıdayken çalışır → çakışma.
         var secondResult: UnlockResult = .failed(.unexpected(underlying: "unset"))
         // İlk isteğin remote'a ulaşıp askıya alınmasını bekle.
         while remote.unlockCallCount < 1 {
             await Task.yield()
         }
-        secondResult = await store.unlock(episodeID: EpisodeID("ep_10"), expectedPrice: 60)
+        secondResult = await store.unlock(episodeID: EpisodeID("ep_10"), expectedPrice: 60, idempotencyKey: "k1")
         await gate.open()
         let firstResult = await first
 

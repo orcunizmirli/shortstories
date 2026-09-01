@@ -36,7 +36,7 @@ struct WalletStoreAccountEpochTests {
         ))]
         let store = makeStore(remote)
 
-        let unlockTask = Task { await store.unlock(episodeID: EpisodeID("ep_A"), expectedPrice: 60) }
+        let unlockTask = Task { await store.unlock(episodeID: EpisodeID("ep_A"), expectedPrice: 60, idempotencyKey: "k1") }
         await waitUntil { remote.unlockCallCount == 1 } // unlock kapıda asılı (epoch yakalandı)
 
         // Hesap değişimi: reset (epoch bump) + Y hesabının snapshot'ı.

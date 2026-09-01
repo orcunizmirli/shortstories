@@ -2,70 +2,7 @@ import AppFoundation
 import Foundation
 import Observation
 
-/// UnlockSheet'in tetiklendiği bağlam (06 §6.1). `unlockPrice` feed metadata'sından gelir
-/// (05 `unlockPrice`); istemci varsayılan fiyat üretmez — yoksa buton devre dışı (06 §6.6).
-public struct UnlockContext: Sendable, Equatable {
-    public let seriesID: SeriesID
-    public let episodeID: EpisodeID
-    public let seriesTitle: String
-    public let episodeNumber: Int
-    public let unlockPrice: Int?
-    public let teaserText: String?
-    public let source: UnlockPromptSource
-    /// Dizi bazlı otomatik-unlock (binge) tercihi — server'da saklanır (06 §6.4).
-    public let autoUnlockEnabled: Bool
-
-    public init(
-        seriesID: SeriesID,
-        episodeID: EpisodeID,
-        seriesTitle: String,
-        episodeNumber: Int,
-        unlockPrice: Int?,
-        teaserText: String? = nil,
-        source: UnlockPromptSource,
-        autoUnlockEnabled: Bool = false
-    ) {
-        self.seriesID = seriesID
-        self.episodeID = episodeID
-        self.seriesTitle = seriesTitle
-        self.episodeNumber = episodeNumber
-        self.unlockPrice = unlockPrice
-        self.teaserText = teaserText
-        self.source = source
-        self.autoUnlockEnabled = autoUnlockEnabled
-    }
-}
-
-/// UnlockSheet tetik kaynağı (08 §3.4 `source`).
-public enum UnlockPromptSource: String, Sendable, Equatable {
-    case autoAdvance = "auto_advance"
-    case bolumListesi = "bolum_listesi"
-    case diziDetay = "dizi_detay"
-}
-
-/// Inline hata sebebi (06 §6.6). View lokalize eder; model semantik taşır (test-edilebilirlik).
-public enum UnlockErrorReason: Equatable, Sendable {
-    /// "Bağlantı sorunu, tekrar dene" — coin düşülmediği server snapshot ile teyit edilir.
-    case network
-    /// "Fiyat güncellendi" — server 409, fiyat güncellendi, otomatik harcama yapılmaz.
-    case priceChanged
-}
-
-/// UnlockSheet intent sözleşmesi — App koordinatörü bağlar (02 §4.6 akışları). Zayıf referans,
-/// MainActor (SwiftUI sunum katmanı).
-@MainActor
-public protocol UnlockSheetDelegate: AnyObject {
-    /// Kilit açıldı → player devam (06 §4.3). `viaVIP`: VIP-türevli (REVOCABLE) mı, bireysel coin/ad (KALICI) mı.
-    func unlockSheetDidUnlock(episodeID: EpisodeID, viaVIP: Bool)
-    /// Coin yetersiz / eksi bakiye → CoinMagazasi sheet içi push (06 §6.3).
-    func unlockSheetRequestsCoinStore()
-    /// VIP upsell'e dokunuldu → VIPAbonelik push (06 §6.2 üçüncül seçenek).
-    func unlockSheetRequestsVIP()
-    /// Kullanıcı sheet'i kapattı → player kilit ekranında kalır (06 §6.2/6; ödemeye zorlanmaz).
-    func unlockSheetDidDismiss()
-    /// Otomatik-unlock (binge) tercihi değişti — dizi bazlı, server'a yazılır (06 §6.4).
-    func unlockSheet(setAutoUnlock enabled: Bool, seriesID: SeriesID)
-}
+// UnlockContext / UnlockPromptSource / UnlockErrorReason / UnlockSheetDelegate → UnlockSheetTypes.swift.
 
 /// UnlockSheet ekran modeli (SS-093). @Observable/@MainActor; SwiftUI View ince kalır, tüm
 /// türetim `UnlockSheetViewState` (saf) + bu modelin durum makinesindedir. Bakiye/entitlement
@@ -109,6 +46,7 @@ public final class UnlockSheetModel {
     /// Reklam-ile-aç portu (SS-114). Enjekte edilmezse (Faz 1) satır görünmez; App adaptörü bağlar (RewardsKit import yok).
     private let rewardedAdUnlock: (any RewardedAdUnlocking)?
     private let now: @Sendable () -> Date
+    private let makeIdempotencyKey: @Sendable () -> String
     private weak var delegate: (any UnlockSheetDelegate)?
 
     private var balanceTask: Task<Void, Never>?
@@ -116,6 +54,9 @@ public final class UnlockSheetModel {
     private var shownAt: Date?
     private var resolved = false
     private var started = false
+    /// Güncel unlock intent'inin Idempotency-Key'i (05 §4.5): onay-dokunuşunda üretilir, ağ-hatası retry'ında
+    /// AYNI kalır (dedup → çift-harcama yok); yeni intent'te (satın-alma dönüşü / fiyat değişimi) nil'lenir.
+    private var currentIdempotencyKey: String?
     /// Sheet kapandı (`onDisappear`) — `begin()` await'te askıdayken gözlem görevleri kurulmasın (kalıcı sızıntı önlemi).
     private var isDisposed = false
 
@@ -127,7 +68,8 @@ public final class UnlockSheetModel {
         rewardedAdUnlock: (any RewardedAdUnlocking)? = nil,
         config: UnlockOptionsConfig = .phase1,
         vipIntroEligible: Bool = false,
-        now: @escaping @Sendable () -> Date = { Date() }
+        now: @escaping @Sendable () -> Date = { Date() },
+        makeIdempotencyKey: @escaping @Sendable () -> String = { UUID().uuidString }
     ) {
         seriesTitle = context.seriesTitle
         episodeNumber = context.episodeNumber
@@ -146,6 +88,7 @@ public final class UnlockSheetModel {
         self.config = UnlockOptionsConfig(coinEnabled: config.coinEnabled, adEnabled: false, vipEnabled: config.vipEnabled)
         self.vipIntroEligible = vipIntroEligible
         self.now = now
+        self.makeIdempotencyKey = makeIdempotencyKey
     }
 
     /// Saf görünüm durumu — View doğrudan çizer.
@@ -336,6 +279,8 @@ public final class UnlockSheetModel {
     /// CoinMagazasi'ndan başarılı satın alma sonrası dönüş (06 §6.3). Bakiye canlı yayından güncel; otomatik-unlock
     /// AÇIKSA bekleyen bölüm sormadan açılır (binge §6.4), aksi halde kullanıcı son dokunuşu yapar (sürpriz-harcama).
     public func returnedFromCoinStore() async {
+        // Satın-alma dönüşü = YENİ intent → önceki key'i düşür (sonraki deneme yeni Idempotency-Key, 05).
+        currentIdempotencyKey = nil
         // Bakiye canlı yayından güncel olmalı; yine de otoritatif değeri okuyup drift'i kapatırız.
         balance = await wallet.currentBalance()
         if autoUnlockEnabled, case .sufficient = viewState.coinState {
@@ -349,7 +294,11 @@ public final class UnlockSheetModel {
         guard !isUnlocking, !resolved, let price = unlockPrice else { return }
         isUnlocking = true
         errorReason = nil
-        let result = await wallet.unlock(episodeID: episodeID, expectedPrice: price)
+        // Key intent'e sabit: nil ise üret, doluysa (ağ-hatası retry'ı) AYNI key → sunucu dedup çift-harcamayı
+        // önler (05 §4.5/§6.3; request-body hunt HIGH). WalletStore üretseydi her retry yeni key, dedup çalışmazdı.
+        let key = currentIdempotencyKey ?? makeIdempotencyKey()
+        currentIdempotencyKey = key
+        let result = await wallet.unlock(episodeID: episodeID, expectedPrice: price, idempotencyKey: key)
         isUnlocking = false
         // await sırasında entitlement gözlemi kilidi çözmüş olabilir (başka cihaz VIP / başka yerden unlock →
         // completeUnlock). Çözülmüşse sonucu YOK SAY: kapalı/açık sheet'e mağaza-push veya fiyat/hata mutasyonu olmaz.
@@ -359,14 +308,18 @@ public final class UnlockSheetModel {
         case .success:
             completeUnlock()
         case .insufficientCoins:
-            // Bakiye server snapshot'ıyla güncellendi; CTA otomatik "insufficient" olur → mağaza.
+            // Bakiye server snapshot'ıyla güncellendi; CTA otomatik "insufficient" olur → mağaza. Key,
+            // satın-alma dönüşünde (`returnedFromCoinStore`) düşürülür → sonraki deneme yeni intent, yeni key.
             delegate?.unlockSheetRequestsCoinStore()
         case let .priceChanged(currentPrice):
+            // 409: yeni gövde (farklı expectedPrice) → aynı key 422 payload-mismatch olurdu; key'i düşür.
+            currentIdempotencyKey = nil
             if let currentPrice {
                 unlockPrice = currentPrice
             }
             errorReason = .priceChanged
         case let .failed(error):
+            // Ağ/belirsiz hata: sunucu işlemiş OLABİLİR → key'i KORU; retry AYNI key'le gider (dedup).
             errorReason = .network
             analytics.track("unlock_failed", parameters: ["reason": .string(AnalyticsMapping.reason(error))])
         }
@@ -378,7 +331,9 @@ public final class UnlockSheetModel {
         resolved = true
         delegate?.unlockSheetDidUnlock(episodeID: episodeID, viaVIP: viaVIP)
     }
+}
 
+extension UnlockSheetModel {
     private func trackPromptShown() {
         var parameters: [String: AnalyticsValue] = [
             "series_id": .string(seriesID.rawValue),

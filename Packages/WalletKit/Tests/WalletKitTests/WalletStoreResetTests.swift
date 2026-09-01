@@ -22,7 +22,7 @@ struct WalletStoreResetTests {
         let store = makeStore(remote)
         await store.apply(walletSnapshot: .fixture(purchased: 500, version: 10))
         await store.apply(subscription: .vip())
-        _ = await store.unlock(episodeID: EpisodeID("ep_A"), expectedPrice: 60)
+        _ = await store.unlock(episodeID: EpisodeID("ep_A"), expectedPrice: 60, idempotencyKey: "k1")
 
         // Ön koşul: önceki hesabın state'i dolu.
         #expect(await store.currentBalance() != .zero)

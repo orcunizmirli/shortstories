@@ -27,8 +27,14 @@ final class FakeWalletGateway: WalletGateway, @unchecked Sendable {
     private var _subscription: SubscriptionStatus
     private var _unlocked: Set<EpisodeID> = []
 
+    struct UnlockCall: Sendable {
+        let episodeID: EpisodeID
+        let price: Int
+        let key: String
+    }
+
     var unlockResults: [UnlockResult] = []
-    private(set) var unlockCalls: [(episodeID: EpisodeID, price: Int)] = []
+    private(set) var unlockCalls: [UnlockCall] = []
     private(set) var snapshotReads = 0
 
     /// Eşzamanlılık kancaları: seed okumasını / unlock çağrısını beklet (askıya al).
@@ -90,8 +96,8 @@ final class FakeWalletGateway: WalletGateway, @unchecked Sendable {
         lock.withLock { _epoch += 1 }
     }
 
-    func unlock(episodeID: EpisodeID, expectedPrice: Int) async -> UnlockResult {
-        lock.withLock { unlockCalls.append((episodeID, expectedPrice)) }
+    func unlock(episodeID: EpisodeID, expectedPrice: Int, idempotencyKey: String) async -> UnlockResult {
+        lock.withLock { unlockCalls.append(UnlockCall(episodeID: episodeID, price: expectedPrice, key: idempotencyKey)) }
         if let gate = unlockGate {
             await gate()
         }
