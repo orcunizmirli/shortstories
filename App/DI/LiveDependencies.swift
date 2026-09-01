@@ -46,7 +46,11 @@ struct LiveDependencies: Dependencies {
 
         apiClient = APIClient(
             configuration: configuration,
-            interceptors: Self.makeInterceptors(secureStore: secureStore, velocityReporter: velocityReporter),
+            interceptors: Self.makeInterceptors(
+                secureStore: secureStore,
+                velocityReporter: velocityReporter,
+                apiHost: configuration.baseURL.host // Bearer yalnız API host'una (auth hunt LOW, defense-in-depth)
+            ),
             tokenRefresher: refreshCoordinator
         )
         session = sessionManager
@@ -67,10 +71,11 @@ struct LiveDependencies: Dependencies {
     @MainActor
     static func makeInterceptors(
         secureStore: any SecureStoring,
-        velocityReporter: (any EarnVelocityReporting)?
+        velocityReporter: (any EarnVelocityReporting)?,
+        apiHost: String? = nil
     ) -> [any RequestInterceptor] {
         [
-            AuthInterceptor(secureStore: secureStore),
+            AuthInterceptor(secureStore: secureStore, apiHost: apiHost),
             TimezoneInterceptor(),
             FraudSignalInterceptor(probe: liveDeviceIntegrityProbe(), velocityReporter: velocityReporter)
         ]

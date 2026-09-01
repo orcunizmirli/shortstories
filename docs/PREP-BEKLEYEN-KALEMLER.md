@@ -925,6 +925,44 @@ multicast'lerde `onTermination` ile otomatik abonelik-silme + `finish`; continua
   birim-testi KOŞMAZ (`:10-11`; cihaz/sim perf-koşusu doğrular) → TDD RED yazılamaz. Doğrulanmış-sağlam çekirdeğe
   riskli/test-siz değişiklik yerine belgelendi. Gelecekte `isolated deinit`e geçilirse eksiksizlik için eklenebilir.
 
+### Auth/Session/Networking/Storage güvenlik hunt'ı — HIGH YOK, 2 MEDIUM+LOW düzeltildi (2026-09-01)
+Server-authoritative para modeli için erişim-kontrolünün özü olan katman (SessionManager, TokenRefreshCoordinator,
+AuthInterceptor, KeychainSecureStore, APIClient auth-recovery) odaklı güvenlik taramasından geçti. **HIGH YOK;
+katman büyük ölçüde sağlam** — DOĞRULANAN korumalar: off-domain token sızıntısı YOK (`APIClient.makeRequest` URL'i
+her zaman `configuration.baseURL`'den kurar; `Endpoint` yalnız path/query verir; medya ayrı `AssetDownloading`
+port'u + imzalı-URL, app bearer'ı taşımaz); refresh single-flight (actor + `singleFlight`; refresh `bareClient`'te
+→ 401-on-refresh recovery'ye re-enter etmez → `sessionExpired`); 401-replay tam-bir-kez (`hasRecoveredAuth`) + yeni
+token'la yeniden kurulur (`applyingOverrideBearer`); Keychain `...AfterFirstUnlockThisDeviceOnly` (non-syncable/
+backup), UserDefaults'ta token yok, plaintext secret loglanmaz; error-body decode hiçbir erişim kapısını açmaz.
+- **#1 linkSession Keychain yazımı koparsa bellek-içi kimlik yine de yükseliyordu (MEDIUM CONFIRMED → ✅ DÜZELTİLDİ):**
+  `SessionManager.linkSession` `setAtomically` catch'i BOŞtu ve yine `setState(.linked(B))` yapıyordu. AuthInterceptor
+  access token'ı HER istekte Keychain'den TAZE okuduğundan (linkSession token'ı bellekte tutmaz), yazım koparsa
+  Keychain A'da kalır (rollback) → state B ama sunucu A ile doğrular (SWITCH durumunda çapraz-hesap: "B" A'nın coin/
+  geçmiş/profilini görür/harcar). **Fix:** catch'te state'i YÜKSELTMEDEN erken dön → disk (token kaynağı) ile tutarlı
+  kal; switch sessizce başarısız olur (kullanıcı eskide kalır, yeniden dener). TDD: `linkSessionKeychainYazimiKoparsa
+  KimlikYukseltilmez` (WriteFailingSecureStore) RED→GREEN; eski "yükselt-yine-de" davranışını encode eden 2 test
+  (torn-write + refresh-torn) güvenli invaryanta güncellendi (asıl amaçları — atomik rollback / saatli-bomba önleme
+  — korundu); 326 AppFoundation testi yeşil.
+- **#4 AuthInterceptor host-scope etmiyordu (LOW, defense-in-depth → ✅ DÜZELTİLDİ):** Bearer'ı `requiresAuth` her
+  isteğe host kontrolü olmadan ekliyordu (bugün güvenli çünkü APIClient yapıca base-host'u zorluyor). **Fix:** opsiyonel
+  `apiHost` param (nil=kısıtsız, yalnız izole test; canlı wiring `configuration.baseURL.host` geçer) + `adapt` host
+  guard'ı → gelecekte yabancı-host (CDN/analytics/3P) bir istek zincire girse bile token SIZMAZ. TDD: yabancı-host→
+  Bearer yok / eşleşen-host→Bearer var; revert-verify RED (guard'sız evil.cdn'e "Bearer" sızıyor).
+- **#2 Çıkışta token-temizliği best-effort (`try?`) → Keychain delete koparsa relaunch'ta oturum dirilir (MEDIUM,
+  ERTELENDİ):** `handleRefreshFailure`→`clearStoredTokens` `try?`; delete koparsa token'lar diskte kalır, state
+  `.loggedOut` olur, ama relaunch `restoreFromKeychain` snapshot+token görüp `.linked` diriltir. DAR: keychain delete
+  transient hata + access token refresh-token ölümünden sonra hâlâ server-geçerli + relaunch penceresi (çoğu vakada
+  bir sonraki 401 tekrar loggedOut'a düşürür). Robust fix stored-schema "logout tombstone" (opsiyonel `loggedOut: Bool?`
+  ile decode-güvenli migration) veya doğrulamalı-silme gerektirir — doğrulanmış-sağlam session çekirdeğine migration-
+  hassas değişiklik; ayrı, dikkatli ele alınacak. Gerekçeyle belgelendi.
+- **#3 TokenRefreshCoordinator rotasyon-guard'ında artık TOCTOU (LOW, ERTELENDİ):** post-access oku (:130) ile yaz
+  (:139/143) ayrı Keychain op; araya `linkSession` yazımı girerse guard rotasyonu görmez → B token'larını A'nın
+  rotasyonuyla ezebilir. Pencere çok dar; guard yaygın durumu kapatıyor → defense-in-depth. Fix: link+refresh yazımını
+  ortak kilit/generation ile serialize. Ertelendi (nadir yarış, sağlam çekirdek).
+- **#5 Guest `TOKEN_INVALID` kurtarması orijinal (idempotent-olmayan) isteği YENİ guest kimliğiyle replay eder (LOW,
+  ERTELENDİ):** guest→guest, düşük etki (linked hesaplar `sessionExpired` fırlatır, replay etmez; ilk deneme 401
+  unauth olduğu için çift-execute yok). Fix: idempotent-olmayan isteği kimlik-değişiminde otomatik replay etme.
+
 - SS-050 kilit-sınırı reactivation (varsa gap), LibraryCatalog offline cache, WP-F1-G
   review'unda ertelenen küçük optimizasyonlar (CatalogCache `lastAccessAt`/tahliye-bütçe,
   ListemModel batch-delete). Bunlar prep GEREKTİRMEZ; sürekli döngüde ele alınır.
