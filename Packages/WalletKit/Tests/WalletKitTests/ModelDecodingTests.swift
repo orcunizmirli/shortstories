@@ -89,6 +89,66 @@ struct ModelDecodingTests {
         #expect(wire.transactions[0].amount == -45)
     }
 
+    @Test func unlockResponseBozukLedgerSatiriUnlockuCokertmez() throws {
+        // wire-decode hunt HIGH: transactions DISPLAY-ONLY; bozuk TEK satır (amount:null) tüm unlock 200'ünü
+        // (sunucu coin'i ÇEKTİ + bölümü AÇTI) çökertip WalletStore'u rollback + .failed'e sokuyordu → kullanıcı
+        // ödedi ama "başarısız" (idempotent retry aynı gövde → kalıcı). Lossy: bozuk satır atlanır, unlock+wallet AKAR.
+        let json = """
+        { "unlock": { "id": "ulk_1", "episodeId": "ep_9", "seriesId": "srs_9",
+            "method": "coins", "coinsSpent": 60, "unlockedAt": "2026-07-11T09:32:00Z" },
+          "wallet": { "purchasedCoins": 105, "earnedCoins": 0, "firstTopUpEligible": false,
+            "updatedAt": "2026-07-11T09:32:00Z", "version": 119 },
+          "transactions": [
+            { "id": "txn_ok", "type": "episodeUnlock", "amount": -60, "bucket": "purchased",
+              "balanceAfter": 105, "refId": "ep_9", "note": null, "createdAt": "2026-07-11T09:32:00Z" },
+            { "id": "txn_bad", "type": "episodeUnlock", "amount": null, "bucket": "purchased",
+              "balanceAfter": 45, "refId": "ep_9", "note": null, "createdAt": "2026-07-11T09:32:00Z" }
+          ]
+        }
+        """
+        let wire = try decode(UnlockResponseWire.self, json)
+
+        #expect(wire.unlock.episodeID == EpisodeID("ep_9")) // money-kritik alanlar AKTI
+        #expect(wire.wallet.version == 119)
+        #expect(wire.transactions.count == 1) // yalnız geçerli satır (bozuk atlandı)
+        #expect(wire.transactions[0].id == "txn_ok")
+    }
+
+    @Test func verifyResponseBozukTransactionKrediyiCokertmez() throws {
+        // wire-decode hunt HIGH: verify transaction DISPLAY-ONLY; bozuk (balanceAfter yok) tüm verify'ı
+        // çökertip re-verify döngüsüne sokuyordu (coin server-side kredili). Lossy: transaction nil, granted+wallet AKAR.
+        let json = """
+        { "granted": { "coins": 1000, "bonusCoins": 200, "firstPurchaseBonusApplied": false },
+          "wallet": { "purchasedCoins": 1205, "earnedCoins": 0, "firstTopUpEligible": false,
+            "updatedAt": "2026-07-11T09:00:00Z", "version": 124 },
+          "transaction": { "id": "txn_bad", "type": "iapPurchase", "amount": 1200, "bucket": "purchased",
+            "refId": null, "note": null, "createdAt": "2026-07-11T09:00:00Z" } }
+        """
+        let wire = try decode(VerifyResponseWire.self, json)
+
+        #expect(wire.granted?.coins == 1000) // kredi alanları AKTI
+        #expect(wire.wallet?.version == 124)
+        #expect(wire.transaction == nil) // bozuk transaction düştü (verify çökmedi)
+    }
+
+    @Test func packagesCatalogBozukPaketEkraniBosaltmaz() throws {
+        // wire-decode hunt MEDIUM: bozuk TEK paket (baseCoins:null) tüm katalogu çökertip Coin Mağazası'nı
+        // BOŞALTIYORDU. Lossy: bozuk paket atlanır, geçerliler AKAR.
+        let json = """
+        { "packages": [
+            { "productId": "com.shortseries.coins.tier3", "baseCoins": 1000, "bonusPercent": 20,
+              "bonusCoins": 200, "firstTopUpBonusCoins": 1000, "badge": "EN POPÜLER" },
+            { "productId": "com.shortseries.coins.broken", "baseCoins": null, "bonusPercent": 0,
+              "bonusCoins": 0, "firstTopUpBonusCoins": 0, "badge": null }
+          ], "firstTopUpEligible": true, "ttlSec": 600 }
+        """
+        let catalog = try decode(CoinPackageCatalog.self, json)
+
+        #expect(catalog.packages.count == 1) // yalnız geçerli paket
+        #expect(catalog.packages[0].totalCoins == 1200)
+        #expect(catalog.packages[0].badge == "EN POPÜLER")
+    }
+
     @Test func verifyCoinResponseDecode() throws {
         let json = """
         { "granted": { "coins": 1000, "bonusCoins": 200, "firstPurchaseBonusApplied": false },

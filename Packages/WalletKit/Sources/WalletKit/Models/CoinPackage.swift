@@ -53,4 +53,17 @@ public struct CoinPackageCatalog: Sendable, Equatable, Decodable {
         self.firstTopUpEligible = firstTopUpEligible
         self.ttlSec = ttlSec
     }
+
+    private enum CodingKeys: String, CodingKey {
+        case packages, firstTopUpEligible, ttlSec
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        // `packages` LOSSY: bozuk TEK paket (ör. baseCoins null) tüm katalogu düşürüp Coin Mağazası'nı
+        // boşaltmasın (wire-decode hunt MEDIUM) — geçerli paketler akar.
+        packages = container.decodeLossyArray(CoinPackage.self, forKey: .packages)
+        firstTopUpEligible = try container.decode(Bool.self, forKey: .firstTopUpEligible)
+        ttlSec = try container.decode(Int.self, forKey: .ttlSec)
+    }
 }

@@ -142,7 +142,9 @@ struct UnlockResponseWire: Decodable, Sendable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         unlock = try container.decode(UnlockRecord.self, forKey: .unlock)
         wallet = try container.decode(WalletSnapshot.self, forKey: .wallet)
-        transactions = try container.decodeIfPresent([CoinTransaction].self, forKey: .transactions) ?? []
+        // `transactions` DISPLAY-ONLY (trackUnlockCoin/spentInBucket) → LOSSY: bozuk tek satır money-kritik
+        // unlock+wallet'ı düşürmesin (wire-decode hunt HIGH). Otoriter unlock/wallet strict kalır (fail-closed).
+        transactions = container.decodeLossyArray(CoinTransaction.self, forKey: .transactions)
     }
 }
 
@@ -153,4 +155,18 @@ struct VerifyResponseWire: Decodable, Sendable {
     let wallet: WalletSnapshot?
     let transaction: CoinTransaction?
     let subscription: SubscriptionStatus?
+
+    private enum CodingKeys: String, CodingKey {
+        case granted, wallet, transaction, subscription
+    }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        granted = try container.decodeIfPresent(GrantedCoins.self, forKey: .granted)
+        wallet = try container.decodeIfPresent(WalletSnapshot.self, forKey: .wallet)
+        subscription = try container.decodeIfPresent(SubscriptionStatus.self, forKey: .subscription)
+        // `transaction` DISPLAY-ONLY → LOSSY: yok/null/bozuk → nil (verify çökmesin; coin server-side kredili →
+        // re-verify döngüsü/kilitlenme olmasın, wire-decode hunt HIGH). Otoriter granted/wallet strict kalır.
+        transaction = try? container.decode(CoinTransaction.self, forKey: .transaction)
+    }
 }
