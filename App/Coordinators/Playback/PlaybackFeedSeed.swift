@@ -29,7 +29,10 @@ enum PlaybackIntentMapper {
         in episodes: [Episode]
     ) -> EpisodeID? {
         if let episodeID = intent.episodeID {
-            return episodeID
+            // Üyelik doğrula (episodeNumber yoluyla simetrik): bölüm kaldırılmış / >maxEpisodePages ise
+            // yüklü listede YOK → nil dön ki çağıran firstPlayable'a düşsün (var-olmayan bölüme işaret eden
+            // seed → PlayerKit'in phantom-fallback'ine güvenmek yerine resolver sahiplenir).
+            return episodes.contains(where: { $0.id == episodeID }) ? episodeID : nil
         }
         if let number = intent.episodeNumber {
             return episodes.first(where: { $0.index == number })?.id
@@ -38,15 +41,17 @@ enum PlaybackIntentMapper {
     }
 
     /// Intent + çözülmüş bölüm → `FeedEntry`. Konum negatif→0 kırpması ve süreye kırpma
-    /// `FeedEntry`/`FeedSeedPolicy` içindedir; burada yalnız değer taşınır.
+    /// `FeedEntry`/`FeedSeedPolicy` içindedir; burada yalnız değer taşınır. `startPositionSec` override'ı
+    /// nil ise intent'ten alınır; fallback'te (hedef bölüm çözülemedi) çağıran 0 geçer.
     static func makeEntry(
         for intent: HomeCoordinator.PlaybackIntent,
-        resolvedEpisodeID: EpisodeID?
+        resolvedEpisodeID: EpisodeID?,
+        startPositionSec: Double? = nil
     ) -> FeedEntry {
         FeedEntry(
             seriesID: intent.seriesID,
             episodeID: resolvedEpisodeID,
-            startPositionSeconds: intent.startPositionSec
+            startPositionSeconds: startPositionSec ?? intent.startPositionSec
         )
     }
 
@@ -93,10 +98,14 @@ struct PlaybackFeedResolver: Sendable {
         guard let series = try? await catalog.seriesDetail(id: intent.seriesID) else { return nil }
         let episodes = await loadEpisodes(seriesID: intent.seriesID, matching: intent)
         guard !episodes.isEmpty else { return nil }
-        let resolvedID = PlaybackIntentMapper.targetEpisodeID(for: intent, in: episodes)
-            ?? firstPlayable(in: episodes)?.id
+        let target = PlaybackIntentMapper.targetEpisodeID(for: intent, in: episodes)
+        let resolvedID = target ?? firstPlayable(in: episodes)?.id
         let items = episodes.map { PlaybackIntentMapper.makeFeedItem(series: series, episode: $0) }
-        let entry = PlaybackIntentMapper.makeEntry(for: intent, resolvedEpisodeID: resolvedID)
+        // Hedef çözülemedi (kaldırılmış/>maxPages → firstPlayable'a düşüldü): taşınan resume pozisyonu BAŞKA
+        // bölüme ait → 0'la (yanlış bölümde ortadan başlama). Hedef çözüldüyse intent pozisyonu korunur.
+        let entry = PlaybackIntentMapper.makeEntry(
+            for: intent, resolvedEpisodeID: resolvedID, startPositionSec: target == nil ? 0 : nil
+        )
         return PlaybackFeedSeed(entry: entry, items: items)
     }
 

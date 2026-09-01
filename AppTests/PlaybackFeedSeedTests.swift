@@ -16,13 +16,20 @@ final class PlaybackFeedSeedTests: XCTestCase {
         let intent = HomeCoordinator.PlaybackIntent(
             seriesID: SeriesID("s1"),
             episodeNumber: 2,
-            episodeID: EpisodeID("e-explicit")
+            episodeID: EpisodeID("e4") // listede MEVCUT (üyelik doğrulaması geçerli ID ister)
         )
         // Önceden çözülmüş episodeID, episodeNumber'a göre önceliklidir (devam-et kayıtları taşır).
         XCTAssertEqual(
             PlaybackIntentMapper.targetEpisodeID(for: intent, in: episodes(count: 5)),
-            EpisodeID("e-explicit")
+            EpisodeID("e4")
         )
+    }
+
+    func testTargetEpisodeIDNilWhenEpisodeIDAbsent() {
+        // App-integration hunt (LOW): kaldırılmış/>maxPages episodeID yüklü listede yoksa nil dönmeli
+        // (episodeNumber yoluyla simetrik) → çağıran firstPlayable'a düşer, var-olmayan bölüme işaret etmez.
+        let intent = HomeCoordinator.PlaybackIntent(seriesID: SeriesID("s1"), episodeID: EpisodeID("e-gone"))
+        XCTAssertNil(PlaybackIntentMapper.targetEpisodeID(for: intent, in: episodes(count: 5)))
     }
 
     func testTargetEpisodeIDResolvesNumberByOneBasedIndex() {
@@ -130,6 +137,27 @@ final class PlaybackFeedSeedTests: XCTestCase {
         XCTAssertTrue(seed?.items.contains { $0.episode?.id == EpisodeID("e5") } ?? false)
         let pages = await catalog.episodeListCallCount
         XCTAssertEqual(pages, 3) // hedef bulunana kadar üç sayfa
+    }
+
+    // MARK: - Çözümleyici: kaldırılmış episodeID → firstPlayable + pozisyon sıfırlanır
+
+    func testResolveRemovedEpisodeIDFallsBackToFirstPlayableAtZeroPosition() async {
+        // App-integration hunt (LOW): yerel devam kaydı server'da KALDIRILMIŞ (veya >maxPages) bir bölümü
+        // taşırsa seed var-olmayan bölüme işaret etmemeli → firstPlayable'a düş + taşınan resume pozisyonu
+        // 0'lan (yanlış bölümde ortadan başlama). Aksi halde episode 1, kaldırılan bölümün pozisyonundan başlardı.
+        let catalog = StubCatalog(
+            series: [SeriesID("s1"): makeSeries(id: "s1")],
+            episodesBySeries: [SeriesID("s1"): episodes(count: 3)] // e1,e2,e3 (e_removed YOK)
+        )
+        let resolver = PlaybackFeedResolver(catalog: catalog)
+        let intent = PlaybackIntentMapper.continueIntent(
+            seriesID: SeriesID("s1"), episodeID: EpisodeID("e_removed"), positionSec: 45
+        )
+
+        let seed = await resolver.resolve(intent)
+        XCTAssertEqual(seed?.entry.episodeID, EpisodeID("e1")) // firstPlayable (e1 free)
+        XCTAssertEqual(seed?.entry.startPositionSeconds, 0) // bayat pozisyon TAŞINMADI
+        XCTAssertTrue(seed?.items.contains { $0.episode?.id == EpisodeID("e1") } ?? false)
     }
 
     // MARK: - Çözümleyici: çıplak .play → ilk oynatılabilir bölüm, tek sayfa
