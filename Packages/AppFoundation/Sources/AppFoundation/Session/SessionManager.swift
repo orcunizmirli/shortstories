@@ -112,10 +112,9 @@ public final class SessionManager: SessionManaging {
         // Uçuştaki misafir bootstrap yanıtını fence et: bu link, o yanıttan SONRA gelirse yanıt bu
         // linked token'ları ezmemeli (audit MEDIUM). MainActor senkron → yakalama+kontrol atomik.
         sessionGeneration &+= 1
-        // Keychain yazımı best-effort: başarısızlığı bellek-içi yükseltmeyi ENGELLEMEZ (canlı durum yayını
-        // asıl amaç). 3 anahtar (refresh/access/snapshot) ATOMİK yazılır (`setAtomically`): herhangi biri
-        // koparsa TÜMÜ yedeklere geri alınır → torn-write YOK (audit MEDIUM: snapshot-torn "guest snapshot +
-        // linked token" ayrışması engellenir; eskiden refresh-önce sıralaması yalnız token-torn'u kapatıyordu).
+        // 3 anahtar (refresh/access/snapshot) ATOMİK yazılır (`setAtomically`): herhangi biri koparsa TÜMÜ
+        // yedeklere geri alınır → torn-write YOK (audit MEDIUM: snapshot-torn "guest snapshot + linked token"
+        // ayrışması engellenir; eskiden refresh-önce sıralaması yalnız token-torn'u kapatıyordu).
         do {
             let snapshot = StoredSessionSnapshot(userID: userID, provider: provider)
             try secureStore.setAtomically([
@@ -124,8 +123,12 @@ public final class SessionManager: SessionManaging {
                 (.sessionSnapshot, JSONEncoder().encode(snapshot))
             ])
         } catch {
-            // Atomik yazım koptu → keychain yedeklere geri alındı (tutarlı eski hal; torn YOK). Bellek-içi
-            // yükseltme yine yapılır (canlı oturum doğru; relaunch'ta re-auth ile kalıcılaşır).
+            // Kalıcılaştırma koptu → keychain yedeklere geri alındı (tutarlı eski kimlik; token'lar A'da).
+            // Bellek-içi durumu B'ye YÜKSELTMEYİZ (auth hunt MEDIUM): AuthInterceptor access token'ı HER
+            // istekte Keychain'den TAZE okur → linkSession token'ı bellekte tutmaz; state .linked(B) yapılırsa
+            // UI B ama sunucu A ile kimlik doğrular (çapraz-hesap). Disk (token kaynağı) ile tutarlı kal;
+            // switch sessizce başarısız olur (kullanıcı eski hesapta kalır, yeniden dener). Relaunch da A okur.
+            return
         }
         // Tekrar-idempotent: durum zaten hedefse gereksiz yayın YAPILMAZ (abonelere kopya .linked
         // gönderilmez).

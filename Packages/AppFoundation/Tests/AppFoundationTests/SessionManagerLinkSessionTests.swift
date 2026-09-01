@@ -49,7 +49,7 @@ struct SessionManagerLinkSessionTests {
         #expect(snapshot == StoredSessionSnapshot(userID: "usr_ab12cd", provider: .apple))
     }
 
-    @Test func linkSessionSnapshotTornWriteTokenlariAtomikGeriAlir() throws {
+    @Test func linkSessionSnapshotTornWriteTokenlariAtomikGeriAlir() async throws {
         // audit MEDIUM: snapshot yazımı koparsa refresh/access GERİ ALINIR → "guest snapshot + linked token"
         // ayrışması olmaz (setAtomically). Seed guest oturumu; arm ile snapshot yazımı koparılır.
         let store = WriteFailingSecureStore(failWriteFor: .sessionSnapshot)
@@ -64,6 +64,7 @@ struct SessionManagerLinkSessionTests {
             secureStore: store,
             clientInfo: SessionClientInfo(platform: "ios", appVersion: "1.0.0", locale: "en-US")
         )
+        _ = try await tornManager.bootstrapGuestSessionIfNeeded() // Keychain'den .guest(guest-1)
         store.arm() // bundan sonra snapshot yazımı kopar
 
         tornManager.linkSession(userID: "u2", provider: .apple, accessToken: "at_linked", refreshToken: "rt_linked")
@@ -73,8 +74,9 @@ struct SessionManagerLinkSessionTests {
         #expect(try store.string(forKey: .accessToken) == "at_guest")
         let snapData = try #require(try store.data(forKey: .sessionSnapshot))
         #expect(try JSONDecoder().decode(StoredSessionSnapshot.self, from: snapData).userID == "guest-1")
-        // Bellek-içi durum yine linked (canlı oturum doğru; relaunch re-auth ile kalıcılaşır).
-        #expect(tornManager.state == .linked(userID: "u2", provider: .apple))
+        // Kalıcılaştırma koptu → kimlik .linked'e YÜKSELTİLMEZ: state Keychain'deki (rolled-back) guest
+        // token'la tutarlı kalır (auth hunt MEDIUM: token kaynağı disk; UI ↔ sunucu-kimliği ayrışmaz).
+        #expect(tornManager.state == .guest(userID: "guest-1"))
     }
 
     @Test func linkSessionStateUpdatesYayinlar() async throws {
@@ -122,5 +124,32 @@ struct SessionManagerLinkSessionTests {
         await managing.linkSession(userID: "usr_ab12cd", provider: .email, accessToken: "at_l", refreshToken: "rt_l")
 
         #expect(await managing.state == .linked(userID: "usr_ab12cd", provider: .email))
+    }
+
+    @Test func linkSessionKeychainYazimiKoparsaKimlikYukseltilmez() async throws {
+        // Güvenlik (auth hunt MEDIUM): AuthInterceptor access token'ı HER istekte Keychain'den TAZE okur.
+        // setAtomically koparsa Keychain ESKİ hesapta kalır (rollback) → state yeni hesaba yükseltilirse UI
+        // yeni ama sunucu ESKİ kimlikle doğrular (çapraz-hesap: yeni "kullanıcı" eskinin coin/geçmişini görür/
+        // harcar). Fix: kalıcılaştıramadığımız kimliğe YÜKSELMEYİZ — disk (token kaynağı) ile tutarlı kalırız.
+        let store = WriteFailingSecureStore(failWriteFor: .accessToken)
+        try store.backing.setString("A_access", forKey: .accessToken)
+        try store.backing.setString("A_refresh", forKey: .refreshToken)
+        try store.backing.setData(
+            JSONEncoder().encode(StoredSessionSnapshot(userID: "userA", provider: .apple)),
+            forKey: .sessionSnapshot
+        )
+        let mgr = SessionManager(
+            apiClient: MockAPIClient(),
+            secureStore: store,
+            clientInfo: SessionClientInfo(platform: "ios", appVersion: "1.0.0", locale: "en-US")
+        )
+        _ = try await mgr.bootstrapGuestSessionIfNeeded() // Keychain'den .linked(userA) restore
+        #expect(mgr.state == .linked(userID: "userA", provider: .apple))
+
+        store.arm() // sonraki accessToken yazımı (setAtomically) kopsun
+        mgr.linkSession(userID: "userB", provider: .google, accessToken: "B_access", refreshToken: "B_refresh")
+
+        // Kimlik B'ye YÜKSELMEDİ: Keychain hâlâ A → istekler A token'ıyla gider, state de A ile tutarlı.
+        #expect(mgr.state == .linked(userID: "userA", provider: .apple))
     }
 }

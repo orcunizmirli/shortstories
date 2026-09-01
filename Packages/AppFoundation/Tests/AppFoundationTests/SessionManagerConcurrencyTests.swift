@@ -86,8 +86,9 @@ struct SessionManagerConcurrencyTests {
         store.arm() // sonraki refreshToken yazımı koparacak
         mgr.linkSession(userID: "g1", provider: .apple, accessToken: "at_linked", refreshToken: "rt_linked")
 
-        // Bellek-içi yükseltme yine olur (canlı oturum doğru).
-        #expect(mgr.state == .linked(userID: "g1", provider: .apple))
+        // Kalıcılaştırma koptu → kimlik yükseltilmez; state (rolled-back) guest token'la tutarlı kalır
+        // (auth hunt MEDIUM: state ile Keychain'deki token ayrışmaz → UI ↔ sunucu-kimliği tutarlı).
+        #expect(mgr.state == .guest(userID: "g1"))
         // Access ESKİ kalmalı (refresh koptuğu için yazılmadı) → saatli bomba yok.
         #expect(try store.string(forKey: .accessToken) == "at_1")
         #expect(try store.string(forKey: .refreshToken) == "rt_1")
