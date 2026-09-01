@@ -106,7 +106,18 @@ public struct APIClient: APIClientProtocol {
         // `%25`'e YENİDEN kodlar → çift-kodlama (`a%252Fb`), sunucu yanlış kaynağa 404 (audit MEDIUM).
         components.percentEncodedPath += path
         if !endpoint.query.isEmpty {
-            components.queryItems = endpoint.query
+            // `URLComponents.queryItems` `+`'ı KODLAMAZ (query'de legal sayar) → sunucu BOŞLUK decode eder; arama
+            // metni (`C++`) / standart base64 cursor (`+`) bozulur. Değerleri elle kodla: `.urlQueryAllowed`'dan `+`
+            // ve yapı-ayraçlarını (`&=?#`) çıkar → `+`%2B, ayraçlar değer içinde kaçar; yapı yalnız birleştirmede.
+            var allowed = CharacterSet.urlQueryAllowed
+            allowed.remove(charactersIn: "+&=?#")
+            components.percentEncodedQuery = endpoint.query
+                .map { item in
+                    let name = item.name.addingPercentEncoding(withAllowedCharacters: allowed) ?? item.name
+                    guard let value = item.value else { return name }
+                    return name + "=" + (value.addingPercentEncoding(withAllowedCharacters: allowed) ?? value)
+                }
+                .joined(separator: "&")
         }
         guard let url = components.url else {
             throw AppError.unexpected(underlying: "URL kurulamadı: path=\(endpoint.path)")

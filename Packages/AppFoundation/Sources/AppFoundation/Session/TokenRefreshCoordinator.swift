@@ -122,11 +122,13 @@ public actor TokenRefreshCoordinator: AuthTokenRefreshing {
                 refreshToken: refreshToken
             ))
             let response = try await apiClient.send(endpoint)
-            // Rotasyon tespiti: keychain access, yenileme boyunca DEĞİŞTİYSE (link araya girdi) yanıtı
-            // yazma DÜŞÜR ve GÜNCEL (linked) token'ı döndür → çağıran onunla tekrar eder. Yalnız pozitif
-            // tespitte düşürülür (postAccess okunamazsa normal yola devam → glitch'te false-drop yok).
+            // Rotasyon tespiti: keychain access, yenileme boyunca DEĞİŞTİYSE (link araya girdi) yanıtı yazma DÜŞÜR
+            // ve GÜNCEL (linked) token'ı döndür → çağıran onunla tekrar eder. Yalnız İKİ okuma da BAŞARILIYKEN
+            // pozitif tespitte düşürülür: pre VEYA post glitch'lerse (`keychainUnavailable`) rotasyon SANILMAZ,
+            // refresh normal uygulanır. `pre` de guard'lı (audit MEDIUM): `pre` glitch→nil + gerçek `post` `nil != T`
+            // ile SAHTE rotasyon üretip refresh'i düşürüyordu → bayat token → spurious logout. Pre/post artık simetrik.
             let postRefreshAccess = try? secureStore.string(forKey: .accessToken)
-            if let postRefreshAccess, postRefreshAccess != preRefreshAccess {
+            if let preRefreshAccess, let postRefreshAccess, postRefreshAccess != preRefreshAccess {
                 return postRefreshAccess
             }
             // İki Keychain yazımı atomik değil (transaction yok). Refresh token (uzun-ömürlü kimlik)

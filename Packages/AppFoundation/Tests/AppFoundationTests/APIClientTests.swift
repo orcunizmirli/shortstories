@@ -24,6 +24,22 @@ private struct GetTestEndpoint: Endpoint {
     }
 }
 
+private struct QueryTestEndpoint: Endpoint {
+    typealias Response = TestPayload
+    let queryItems: [URLQueryItem]
+    var path: String {
+        "/test"
+    }
+
+    var method: HTTPMethod {
+        .get
+    }
+
+    var query: [URLQueryItem] {
+        queryItems
+    }
+}
+
 /// TÜM alanları opsiyonel içerik tipi (ContentKit PageWire/DiscoverWire deseni) — `{}`'dan başarıyla
 /// decode EDİLEBİLİR; 200 + BOŞ gövde gelirse (CDN truncation/bozuk-cache) sessizce all-nil değer üretip
 /// "boş son sayfa" sanılmasını test eder (fix: boş gövde bu tip için decode HATASI olmalı).
@@ -125,6 +141,19 @@ extension URLProtocolStubSerialTests {
             #expect(URLProtocolStub.receivedRequests.count == 1)
             #expect(URLProtocolStub.receivedRequests.first?.url?.absoluteString
                 == "https://api.test.local/v1/test")
+        }
+
+        @Test func queryDegerlerindekiArtiIsaretiVeEsittirKodlanir() async throws {
+            // `+` URLComponents.queryItems'ta KODLANMAZ (query'de legal sayılır) ama sunucular BOŞLUK decode eder →
+            // arama `C++` / standart base64 cursor bozulur. Değerler `+` (ve yapı-ayraçları) kodlanarak gönderilmeli.
+            URLProtocolStub.setHandler { request in
+                (URLProtocolStub.httpResponse(for: request, status: 200), Data(#"{"value":"ok"}"#.utf8))
+            }
+
+            _ = try await client.send(QueryTestEndpoint(queryItems: [URLQueryItem(name: "q", value: "C++ 1=2")]))
+
+            #expect(URLProtocolStub.receivedRequests.first?.url?.absoluteString
+                == "https://api.test.local/v1/test?q=C%2B%2B%201%3D2")
         }
 
         @Test func gecici500SonrasiRetryIleBasarir() async throws {
