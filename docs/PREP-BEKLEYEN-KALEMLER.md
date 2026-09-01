@@ -905,6 +905,26 @@ crash yok; analytics registry drift yok). NSE + App CI-DIŞI olduğu için bu g�
   edilir) RED (count 2) → GREEN (count 1); 12 OnboardingPermissions testi yeşil, full-repo lint temiz. App CI-dışı
   → yerel doğrulandı.
 
+### Yaşam-döngüsü/teardown/leak adversarial bug-hunt — TEMİZ (2026-09-01)
+Nesne-yaşam-döngüsü açısı (iptal-edilmeyen Task / kapatılmayan continuation / retain-cycle / hesap-geçişinde
+yaşayan observer) tüm `Packages/*/Sources/**` + `App/**` genelinde tarandı: 28 `for await`, 48 continuation,
+125 `Task {`, 10 `deinit` — hepsinin yaratım+yıkım noktası okundu. **Doğrulanmış HIGH/MEDIUM sızıntı YOK;
+SS-132 sınıfının (ölü model canlı yazıyor) başka örneği yok.** Tutarlı teardown desenleri: saklanan Task +
+`deinit`/`onDisappear` iptali + `isDisposed`/epoch-fence guard'ı; köprü akışlarında `onTermination { cancel }`;
+multicast'lerde `onTermination` ile otomatik abonelik-silme + `finish`; continuation bekleyicileri daima
+`defer`+resume. Koordinatör observer'ları (iptal edilmez) app-ömrü tasarımı + `[weak self]` → çürütüldü.
+- **AVPlayerBackend deinit item-observer temizliği eksik (LOW, ERTELENDİ — pratikte erişilemez):**
+  `installNotificationObservers` (`:213-235`) NotificationCenter blok-observer token'larını `notificationTokens`'a
+  ekler; temizlik `removeItemObservers()` (`:248-263`) `@MainActor` + yalnız `load()`/`clearItem()` yolunda. `deinit`
+  (`:41-44`) `nonisolated` → `@MainActor removeItemObservers()`'ı çağıramaz; token'lar canlı-item'la dealloc'ta
+  NotificationCenter'da kalır. **Neden ertelendi:** (1) havuz player'ları tasarımca ASLA dealloc olmaz
+  (`PlayerPool.swift:6-7`; teardown = `drain(keepPlayers: true)`) → backend normal işleyişte hiç dealloc olmaz;
+  (2) blok'lar `[weak self]` + ölü `AVPlayerItem`'a object-filtreli → asla anlamlı ateşlenmez, KVO dealloc'ta
+  otomatik invalidate; (3) `notificationTokens` `[NSObjectProtocol]` (Sendable DEĞİL) → nonisolated deinit'ten
+  okumak Swift 6 strict-concurrency'de sorunlu; düzgün fix `isolated deinit` (SE-0371) gerektirir; (4) bu sınıf
+  birim-testi KOŞMAZ (`:10-11`; cihaz/sim perf-koşusu doğrular) → TDD RED yazılamaz. Doğrulanmış-sağlam çekirdeğe
+  riskli/test-siz değişiklik yerine belgelendi. Gelecekte `isolated deinit`e geçilirse eksiksizlik için eklenebilir.
+
 - SS-050 kilit-sınırı reactivation (varsa gap), LibraryCatalog offline cache, WP-F1-G
   review'unda ertelenen küçük optimizasyonlar (CatalogCache `lastAccessAt`/tahliye-bütçe,
   ListemModel batch-delete). Bunlar prep GEREKTİRMEZ; sürekli döngüde ele alınır.
