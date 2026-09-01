@@ -87,6 +87,35 @@ struct PlaybackAuthorizationProviderTests {
         #expect(service.authorizeCallCount == 2)
     }
 
+    @Test func invalidateAllTumCacheiTemizler() async throws {
+        // cache/authorize hunt MEDIUM: drain/hesap-değişiminde tüm yetkiler düşer → sonraki authorize TAZE (önceki
+        // hesabın imzalı URL'i app-oturumu boyunca kalmaz).
+        let clock = ClockBox()
+        let service = PlaybackServicingSpy(expiresAt: clock.now.addingTimeInterval(600))
+        let provider = PlaybackAuthorizationProvider(service: service, now: clock.nowProvider)
+        _ = try await provider.authorization(for: episodeID)
+        _ = try await provider.authorization(for: EpisodeID("ep_other"))
+        #expect(service.authorizeCallCount == 2)
+
+        await provider.invalidateAll()
+        _ = try await provider.authorization(for: episodeID) // cache boş → yeniden authorize
+        _ = try await provider.authorization(for: EpisodeID("ep_other"))
+
+        #expect(service.authorizeCallCount == 4) // ikisi de yeniden fetch edildi
+    }
+
+    @Test func episodeIdUyusmazsaCachelenmezFirlar() async {
+        // Sözleşme-drift savunması (LOW): server YANLIŞ bölümün yetkisini dönerse cache'lenmez + fırlatılır.
+        let clock = ClockBox()
+        let service = PlaybackServicingSpy(expiresAt: clock.now.addingTimeInterval(600))
+        service.setEpisodeIdOverride(EpisodeID("ep_yanlis")) // istenenden FARKLI bölüm döner
+        let provider = PlaybackAuthorizationProvider(service: service, now: clock.nowProvider)
+
+        await #expect(throws: AppError.self) {
+            _ = try await provider.authorization(for: self.episodeID)
+        }
+    }
+
     @Test func authorizeHatasiYuzdurulur() async {
         let clock = ClockBox()
         let service = PlaybackServicingSpy()

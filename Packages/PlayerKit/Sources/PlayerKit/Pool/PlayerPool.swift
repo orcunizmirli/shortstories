@@ -177,9 +177,8 @@ public actor PlayerPool {
         await slots[newActive].engine.applyBufferPolicy(.active)
     }
 
-    /// Feed'den çıkışta / bellek uyarısında: item'lar bırakılır, player'lar KORUNUR
-    /// (04 §3.3). `keepPlayers` sözleşme gereği taşınır; player'ları düşürme kararı
-    /// bu dilimde YOKTUR (bellek uyarısında havuzu 3'e küçültme SS-044 dilimindedir).
+    /// Feed'den çıkışta / bellek uyarısında: item'lar bırakılır, player'lar KORUNUR (04 §3.3). `keepPlayers` sözleşme
+    /// gereği taşınır; player-düşürme kararı bu dilimde YOK (bellek uyarısında havuzu 3'e küçültme SS-044'te).
     func drain(keepPlayers _: Bool = true) async {
         // Epoch korkuluğu: uçuştaki acquire/activate dönüşte iptalle temiz çıkar.
         drainEpoch &+= 1
@@ -188,6 +187,7 @@ public actor PlayerPool {
         }
         activeSlot = nil
         activeFeedIndex = nil
+        await authorization.invalidateAll() // imzalı-URL cache: teardown/hesap-switch'te önceki hesabın URL'i kalmasın
     }
 
     // MARK: - Test/debug görünürlüğü

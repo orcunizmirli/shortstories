@@ -245,6 +245,25 @@ account-fence'ler SAĞLAM doğrulandı):
 - **#3 AD-unlock account-epoch fence yok + WalletFlow sheet switch'te reset olmaz (LOW, ACCEPTED):** tam-ekran modal
   reklam mid-ad hesap-switch'i engeller; post-ad pencere alt-saniye + feed-reset + server-reload mitige → near-unreachable.
 
+### Catalog-cache + playback-authorize hunt (2026-09-01)
+En az taranan money-bitişik altyapı. **AREA A (catalog cache): TEMİZ** — HTTP `.cacheFirst`/`.staleWhileRevalidate`
+Phase-stub (SS-020, sözleşme-only, canlı DEĞİL) → her katalog fetch taze; canlı CatalogCache (Listem JOIN) yalnız
+display-data (title/cover/episode-number, lock-state YOK) → bayat-lock-state trust bug'ı imkansız; TTL/eviction/decode/
+cross-account doğru. **AREA B (playback authorize): 1 MEDIUM + 2 LOW (✅ hepsi DÜZELTİLDİ):**
+- **MEDIUM — `PlaybackAuthorizationProvider` imzalı-URL cache'i drain/hesap-switch'te tam invalidate edilmiyordu:**
+  provider yalnız per-episode `invalidate()` sunuyordu, `invalidateAll` yoktu; `PlayerPool.drain` ona dokunmuyordu;
+  provider app-oturumu ömrü (HomeCoordinator) + switch'te yeniden yaratılmaz → cache ÖNCEKİ HESABIN imzalı HLS
+  URL'lerini tutuyordu. Birincil gate (isPlayable→hasAccess reset walletStore'u okur) yaygın durumu kapatır AMA
+  feedState-B-çizdi/walletStore.reset()-henüz-inmedi penceresinde A'nın URL'iyle authorize'sız yayına izin verebilirdi
+  (server URL'i A-session'a bağlarsa CDN 403→re-authorize→locked; bağlamazsa ücretsiz izleme). Kod tabanının "switch'te
+  TÜM hesap-state reset" disiplininin tek deliği. **Fix:** `invalidateAll()` + `PlayerPool.drain`'de çağrılır (feed
+  teardown→drain hesap-switch remount'unda fire eder; sınırsız cache büyümesini de keser — LOW #3). TDD: invalidateAll
+  tüm cache'i temizler (RED no-op → GREEN + revert).
+- **LOW — authorize sonucu episodeId doğrulanmadan cache'leniyordu:** server yanlış bölümün yetkisini dönerse istenen
+  bölüm altında BAŞKA URL tutulurdu. **Fix:** `guard auth.episodeId == episodeID` (throw). TDD (RED→GREEN + revert).
+- Phase-2 stub'lar (bug DEĞİL): FairPlay/DRM (`PlaybackAuthorization.drm` opsiyonel, clear-HLS F1); HTTP cache SS-020.
+  290 PlayerKit yeşil, lint temiz.
+
 ### Money-flow error/offline + analytics-funnel hunt (2026-09-01)
 Money/entitlement/reward flow'larının error/offline/retry tutarlılığı + funnel-event bütünlüğü taze hunt'ı.
 Money-state + funnel DERİNLEMESİNE SOUND (HIGH yok): iap_credited/unlock_coin/checkin_claim/mission_claim/

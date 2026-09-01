@@ -175,9 +175,15 @@ final class PlaybackServicingSpy: PlaybackServicing, @unchecked Sendable {
     private var expiry: Date
     private var delayNanoseconds: UInt64 = 0
     private var failure: AppError?
+    /// Set edilirse dönen yetki bu episodeId'yi taşır (sözleşme-drift/mismatch testi için).
+    private var episodeIdOverride: EpisodeID?
 
     init(expiresAt: Date = Date().addingTimeInterval(600)) {
         expiry = expiresAt
+    }
+
+    func setEpisodeIdOverride(_ id: EpisodeID?) {
+        lock.withLock { episodeIdOverride = id }
     }
 
     var authorizeCallCount: Int {
@@ -211,7 +217,7 @@ final class PlaybackServicingSpy: PlaybackServicing, @unchecked Sendable {
                 throw failure
             }
             return PlaybackAuthorization(
-                episodeId: episodeId,
+                episodeId: episodeIdOverride ?? episodeId,
                 playbackURL: URL(string: "https://cdn.test/\(episodeId.rawValue)/v\(callCount)/master.m3u8")!,
                 expiresAt: expiry,
                 drm: nil

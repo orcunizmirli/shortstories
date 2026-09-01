@@ -46,6 +46,14 @@ actor PlaybackAuthorizationProvider {
         cache[episodeID] = nil
     }
 
+    /// TÜM cache'lenmiş yetkileri düşürür — feed drain'inde (teardown/hesap-değişimi remount'u) çağrılır (cache/authorize
+    /// hunt MEDIUM): aksi halde ÖNCEKİ HESABIN imzalı HLS URL'leri app-oturumu boyunca kalıp, hesap-değişimi reset
+    /// penceresinde (feedState B'yi çizdi ama walletStore.reset() henüz inmedi) A'nın URL'iyle authorize'sız yayına
+    /// izin verebilirdi (defense-in-depth; isPlayable/hasAccess birincil gate). Sınırsız cache büyümesini de keser (LOW).
+    func invalidateAll() {
+        cache.removeAll()
+    }
+
     /// Cache'teki yetki hâlâ kullanılabilir mi — ağ çağrısı YAPMAZ. Warm-hit
     /// tazeliği kontrolünün girdisidir (04 §6.4 kural 4): slot'taki item bayat
     /// yetkiyle hazırlanmışsa çağıran `freshAuthorization` yoluna düşer.
@@ -65,6 +73,11 @@ actor PlaybackAuthorizationProvider {
         defer { inFlight[episodeID] = nil }
         // Hatalı uçuş cache'lenmez; sonraki istek yeniden dener.
         let auth = try await task.value
+        // Sözleşme-drift savunması (LOW): server YANLIŞ bölümün yetkisini dönerse cache'leme/oynatma → istenen bölüm
+        // altında BAŞKA bölümün imzalı URL'i tutulmasın (05 §4.4 episodeId eşleşmeli).
+        guard auth.episodeId == episodeID else {
+            throw AppError.unexpected(underlying: "authorize episodeId mismatch: \(auth.episodeId.rawValue)")
+        }
         cache[episodeID] = auth
         return auth
     }
