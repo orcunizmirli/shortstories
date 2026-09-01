@@ -113,10 +113,9 @@ actor FeedPlaybackDirector {
         await serialized { await self.performInitialSettle(startType: startType, now: now) }
     }
 
-    /// İlk kare görünür oldu (AVPlayerLayer.isReadyForDisplay — 04 §13). Bayat
-    /// ilk-kare korkuluğu (04 §14 T5, denetim (c)): YALNIZ güncel aktif bölümün ilk
-    /// karesi ölçüme katılır — ekran dışına çıkıp geç ateşlenen eski hücrenin
-    /// callback'i (eski episodeID) sahte video_start/ttff/swipe_next üretemez.
+    /// İlk kare görünür oldu (AVPlayerLayer.isReadyForDisplay — 04 §13). Bayat ilk-kare korkuluğu (04 §14 T5,
+    /// denetim (c)): YALNIZ güncel aktif bölümün ilk karesi ölçüme katılır — ekran-dışı geç ateşlenen eski
+    /// hücrenin callback'i (eski episodeID) sahte video_start/ttff/swipe_next üretemez.
     func firstFrameBecameVisible(episodeID: EpisodeID, at now: Date) async {
         guard let index = activeIndex, items.indices.contains(index),
               let episode = items[index].episode, episode.id == episodeID
@@ -295,6 +294,9 @@ private extension FeedPlaybackDirector {
               let fromEpisode = items[fromIndex].episode,
               let toEpisode = items[toIndex].episode
         else { return }
+        // Kullanıcı BAŞKA karta (bitişik-olmayan/geri) flick attı → deceleration'da aktif bölüm biterse auto-advance'i
+        // BASTIR (yoksa `.advance(active+1)` scroll'u kullanıcının kaydırmasını ezip yanlış bölüme fırlatır; settle sıfırlar).
+        suppressNextAutoAdvance = true
         let direction: ScrollDirection = toIndex > fromIndex ? .forward : .backward
         let watchPercentage = direction == .forward ? await watchPercentageOfActive(episode: fromEpisode) : nil
         await metrics.recordSwipeSettled(

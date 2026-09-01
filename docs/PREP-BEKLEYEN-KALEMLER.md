@@ -245,6 +245,28 @@ account-fence'ler SAĞLAM doğrulandı):
 - **#3 AD-unlock account-epoch fence yok + WalletFlow sheet switch'te reset olmaz (LOW, ACCEPTED):** tam-ekran modal
   reklam mid-ad hesap-switch'i engeller; post-ad pencere alt-saniye + feed-reset + server-reload mitige → near-unreachable.
 
+### Yakınsama hunt turu — PlayerKit-feed + ProfileKit (2026-09-01)
+Loop-until-dry yakınsama kontrolü: iki taze bağımsız-context hunt. Paywall bypass İKİSİNDE DE doğrulandı-yok.
+- **MEDIUM — auto-advance uçuştaki manuel swipe'ı ezip yanlış bölüme fırlatıyor (✅ DÜZELTİLDİ):** kullanıcı
+  bölüm sonuna yakınken BAŞKA karta (bitişik-olmayan/geri) flick attığında, deceleration sırasında aktif bölüm
+  sonuna ulaşırsa `handlePlaybackEnded` bayat `activeIndex`'ten `.advance(active+1)` üretiyor, VC `execute` bunu
+  guard'sız `scrollToItem(animated:)` ile uygulayıp kullanıcının kaydırmasını EZİYORDU → kullanıcı hedef yerine
+  active+1'e düşüyor (bölüm-sonu-swipe short-drama'da çok yaygın). **Fix:** `performRecordSwipeIntent`'te gerçek
+  swipe (guard `fromIndex != toIndex`) `suppressNextAutoAdvance = true` set eder (seek-suppress mekanizmasını
+  yeniden kullanır); settle yeni bölümde sıfırlar; aynı-yere bounce guard'a takılır → auto-advance korunur. TDD:
+  swipe→advance-yayınlanmaz (box boş) + bounce→normal-advance (RED box=[.advance(1)] → GREEN + revert); 286 PlayerKit yeşil.
+- **LOW ERTELENDİ — `updateItems` handle-nil'de (kilitli/promo/failed) activeIndex re-derive etmiyor:** aktif kart
+  handle taşımıyorsa (`activeHandle==nil`) feed reorder'ında hem `activeIndex` hem konumsal `notifiedLockedIndex`
+  bayat kalır → nadir mid-feed reorder'da yanlış idempotent-skip/prefetch-yön/from_episode_id. NADİR (server
+  append-only sayfalama) + self-healing (sonraki settle re-derive eder). Tam fix, handle'dan bağımsız active-episode-id
+  saklamayı + `notifiedLockedIndex`'i id-tabanlı yapmayı gerektirir (paywall-bitişik idempotency guard'ına dokunur)
+  → LOW+self-healing+nadir için o riske değmez; ertelendi (F2 feed-reorder gelirse revize).
+- **LOW KABUL (ProfileKit, ulaşılamaz) — markRead telafisi eşzamanlı-başarılı markAllRead'i ezebilir:** yalnız
+  TEORİK interleaving — `handleTap` markRead'i başlatıp HEMEN `model.open` ile navigate eder → notification center
+  kapanır, "tümünü okundu say" barı erişilemez olur → gerçek UI'dan tetiklenemez. Ayrıca display-only + self-healing
+  (sonraki load düzeltir) + tam-doğru fix orantısız (çift-fail ters drift). Kabul; gerçek risk yok. ProfileKit aksi
+  halde reachable-bug'sız (wallet-display, hesap-akışları, notification fence'leri, ayarlar hepsi sağlam doğrulandı).
+
 ### App-integration adversarial bug-hunt (2026-09-01)
 App/ katman glue'su (coordinators/DI/composition/playback-seed/account-switch) hunt: çekirdek çok iyi
 korunmuş (VIP re-lock, account-switch fence'leri, deep-link doğrulama, seed generation-guard). 1 MEDIUM
