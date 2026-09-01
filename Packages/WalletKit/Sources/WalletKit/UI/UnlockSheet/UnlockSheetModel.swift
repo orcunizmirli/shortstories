@@ -267,6 +267,8 @@ public final class UnlockSheetModel {
         guard let rewardedAdUnlock, !isWatchingAd, !resolved, adAvailability.isActionable else { return }
         isWatchingAd = true
         adWatchError = nil
+        // Ad-watch cross-actor await'ini AŞAR: reklam ÖNCESİ epoch yakala; onay araya giren reset'ten sonra düşer (§575).
+        let epoch = await wallet.currentEpoch()
         let result = await rewardedAdUnlock.watchAdToUnlock(episodeID: episodeID)
         isWatchingAd = false
         // await sırasında entitlement gözlemi kilidi çözmüş olabilir → sonucu yok say (coin akışıyla simetrik).
@@ -274,9 +276,9 @@ public final class UnlockSheetModel {
         switch result {
         case let .unlocked(remainingToday):
             trackUnlockAd(remainingToday: remainingToday) // kanonik funnel (08 §3.4 unlock_ad); WalletKit sahipli
-            // Coin `unlock`→`confirmUnlocked` ile SİMETRİK: reklam-unlock'u cüzdan entitlement'ine yansıt (açık işaretle
-            // + broadcast) → `hasAccess` açılır, DiziDetay/BolumListesi kilitli sanmaz. Bakiye değişmez (reklam ücretsiz).
-            await wallet.confirmAdUnlock(episodeID: episodeID)
+            // Coin `unlock`→`confirmUnlocked` ile SİMETRİK: reklam-unlock'u entitlement'e yansıt → `hasAccess` açılır
+            // (bakiye değişmez, ücretsiz). Onay epoch-fence'e takılırsa (hesap-değişimi) bölüm bu hesaba AİT DEĞİL → dön.
+            guard await wallet.confirmAdUnlock(episodeID: episodeID, ifCurrentEpoch: epoch) else { return }
             completeUnlock()
         case .dismissedEarly:
             break // ödül YOK, hak düşmez, satır olduğu gibi (sessiz — kullanıcı seçimi).
@@ -350,10 +352,8 @@ public final class UnlockSheetModel {
         errorReason = nil
         let result = await wallet.unlock(episodeID: episodeID, expectedPrice: price)
         isUnlocking = false
-        // await sırasında entitlement gözlemi kilidi zaten çözmüş olabilir (başka cihazdan VIP /
-        // bölüm başka yerden açıldı → completeUnlock, delegate.unlockSheetDidUnlock). Çözülmüşse
-        // sonucu YOK SAY: kapanan/kilidi açılmış sheet üzerine CoinMağazası push'u veya fiyat/hata
-        // mutasyonu (çift/tutarsız yönlendirme) yapılmaz.
+        // await sırasında entitlement gözlemi kilidi çözmüş olabilir (başka cihaz VIP / başka yerden unlock →
+        // completeUnlock). Çözülmüşse sonucu YOK SAY: kapalı/açık sheet'e mağaza-push veya fiyat/hata mutasyonu olmaz.
         guard !resolved else { return }
 
         switch result {

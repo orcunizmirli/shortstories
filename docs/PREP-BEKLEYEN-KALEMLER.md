@@ -245,6 +245,19 @@ account-fence'ler SAĞLAM doğrulandı):
 - **#3 AD-unlock account-epoch fence yok + WalletFlow sheet switch'te reset olmaz (LOW, ACCEPTED):** tam-ekran modal
   reklam mid-ad hesap-switch'i engeller; post-ad pencere alt-saniye + feed-reset + server-reload mitige → near-unreachable.
 
+### WalletKit ad-unlock §575 epoch-fence (self-review, 2026-09-01)
+Kendi eklediğim para-çekirdeği kodunun (reklam-unlock entegrasyonu, 1177899/11f8314) adversarial öz-incelemesi
+— meta-ders: money-core eklemeleri epoch-fence'i atlayabilir. Bulunan + düzeltilen:
+- **MEDIUM — ad-unlock confirm epoch-fence'siz (cross-account leak, ✅ DÜZELTİLDİ):** `WalletStore.confirmAdUnlock`
+  senkron + epoch-guard YOK. Reklam-watch (≈30 sn + SSV) uçuştayken hesap değişirse (session-death → `reset()`,
+  epoch++, `unlockedEpisodes` temizlenir), reklam biter bitmez onay ÖNCEKİ hesabın bölümünü yeni epoch'a yazar +
+  entitlement yayınlar. Coin `unlock()` yolu bu fence'e sahipti (satır 192/201), ad-unlock yolu değildi — §575
+  sınıfının tek deliği. PurchaseCoordinator precedent'i (`currentEpoch()` await-öncesi + `applyIfCurrentEpoch`)
+  ile simetrik **Fix:** `confirmAdUnlock(episodeID:ifCurrentEpoch:) -> Bool` (epoch uyuşmazsa DÜŞ + false),
+  `WalletGateway.currentEpoch()` eklendi, `UnlockSheetModel.watchAd` reklam ÖNCESİ epoch yakalar + onay düşerse
+  `completeUnlock` ETMEZ (coin-path simetrisi). TDD: WalletStore-seviye (2 test, revert-verify RED) + UI-seviye
+  (watchGate ile hesap-switch simülasyonu, revert-verify RED); 308 WalletKit yeşil.
+
 ### PlayerKit engine/pool adversarial bug-hunt (2026-09-01)
 Playback engine + PlayerPool internals hunt: çoğu clean (activeIndex id-re-derive, KVO removal, generation-guard,
 dedup/claim-before-await SAĞLAM). 2 slot-koruma bulgusu düzeltildi + 2 LOW accepted:

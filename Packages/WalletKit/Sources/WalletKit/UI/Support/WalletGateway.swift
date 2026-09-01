@@ -21,10 +21,17 @@ public protocol WalletGateway: Sendable {
     /// Coin ile kilit açma (SS-095): optimistic entitlement + server-otoritatif mutabakat.
     func unlock(episodeID: EpisodeID, expectedPrice: Int) async -> UnlockResult
 
+    /// Hesap-jenerasyon token'ı (§575): reklam-watch gibi cross-actor bir server await'ini BAŞLATMADAN önce
+    /// okunur; onay/kredi await SONRASI `ifCurrentEpoch:` ile fence edilir (araya hesap-değişimi girdiyse düşer).
+    func currentEpoch() async -> Int
+
     /// Reklam-ile-açma ONAYI (server SSV başarısı): bölümü açık işaretle + entitlement yay (bakiye DEĞİŞMEZ —
     /// reklam ücretsiz). Ad-unlock'un `hasAccess`'e + entitlement akışına yansıması için — aksi halde yalnız feed'e
     /// ulaşır, DiziDetay/BolumListesi gibi `hasAccess`-tabanlı tüketiciler bölümü kilitli sanıp paywall'u tekrar açar.
-    func confirmAdUnlock(episodeID: EpisodeID) async
+    /// `epoch` reklam BAŞLARKEN yakalanan jenerasyondur; araya hesap-değişimi (reset) girdiyse onay DÜŞER (§575).
+    /// Dönüş: onay uygulandı mı (false → epoch bayat, `unlockedEpisodes` DEĞİŞMEDİ; çağıran `completeUnlock` ETMEZ).
+    @discardableResult
+    func confirmAdUnlock(episodeID: EpisodeID, ifCurrentEpoch epoch: Int) async -> Bool
 
     /// Bakiye değişim yayını (current-value replay; sheet açıkken canlı güncelleme).
     func balanceUpdates() -> AsyncStream<CoinBalance>

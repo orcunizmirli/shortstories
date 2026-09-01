@@ -98,4 +98,24 @@ struct WalletStoreAccountEpochTests {
         await store.applyIfCurrentEpoch(subscription: .vip(), epoch: staleEpoch)
         #expect(await store.subscriptionStatus().grantsFullAccess == false)
     }
+
+    /// Reklam-unlock cross-actor server await'ini (UnlockSheetModel ad-watch, ≈30 sn + SSV) AŞAR:
+    /// reklam izlerken hesap değişirse (session-death → reset) geç gelen ad-unlock ONAYI ÖNCEKİ
+    /// hesabın bölümünü yeni hesabın `unlockedEpisodes`'ine sızdırmamalı (§575; unlock() ile simetrik).
+    @Test func adUnlockConfirmDroppedAfterAccountSwitch() async {
+        let store = makeStore()
+        let staleEpoch = await store.currentEpoch()
+        await store.reset() // hesap değişimi: epoch bump + unlockedEpisodes temizlenir
+        let applied = await store.confirmAdUnlock(episodeID: EpisodeID("ep_A"), ifCurrentEpoch: staleEpoch)
+        #expect(applied == false) // bayat epoch → onay düşürüldü
+        #expect(await store.isEpisodeUnlocked(EpisodeID("ep_A")) == false) // Y'ye sızmadı
+    }
+
+    @Test func adUnlockConfirmAppliesWhenEpochMatches() async {
+        let store = makeStore()
+        let epoch = await store.currentEpoch()
+        let applied = await store.confirmAdUnlock(episodeID: EpisodeID("ep_A"), ifCurrentEpoch: epoch)
+        #expect(applied == true) // güncel epoch → uygulandı
+        #expect(await store.isEpisodeUnlocked(EpisodeID("ep_A")) == true)
+    }
 }

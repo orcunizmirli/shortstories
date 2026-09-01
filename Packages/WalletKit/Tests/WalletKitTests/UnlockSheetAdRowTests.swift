@@ -174,6 +174,28 @@ struct UnlockSheetAdRowTests {
         model.onDisappear()
     }
 
+    @Test func reklamWatchSirasindaHesapDegisirseOnayDuserCompleteUnlockYok() async {
+        // §575 ad-unlock fence: reklam-watch (≈30 sn + SSV) uçuştayken hesap değişirse (session-death → reset,
+        // epoch bump) geç gelen onay ÖNCEKİ hesabın bölümünü sızdırmamalı → confirmAdUnlock DÜŞER, completeUnlock YOK.
+        let gateway = FakeWalletGateway(balance: CoinBalance(purchasedCoins: 0, earnedCoins: 0))
+        let ad = FakeRewardedAdUnlocking(
+            availability: .available(remaining: 3, dailyCap: 5),
+            watchResult: .unlocked(remainingToday: 2)
+        )
+        // Reklam-watch await'i sırasında hesap-değişimini simüle et: epoch, watchAd'in yakaladığı değerden ilerler.
+        ad.watchGate = { gateway.advanceEpoch() }
+        let delegate = SpyUnlockSheetDelegate()
+        let model = makeModel(gateway: gateway, delegate: delegate, rewardedAdUnlock: ad)
+        await model.begin()
+
+        await model.watchAd()
+
+        #expect(gateway.confirmAdUnlockCalls.isEmpty) // bayat epoch → onay UYGULANMADI
+        #expect(await gateway.isEpisodeUnlocked(EpisodeID("ep_12")) == false) // yeni hesaba SIZMADI
+        #expect(delegate.unlocked.isEmpty) // completeUnlock ÇAĞRILMADI (sahte unlock yok)
+        model.onDisappear()
+    }
+
     // MARK: - Cap-reached / erken-kapatma / fill-yok / red
 
     @Test func watchCapReachedSatiriDevreDisiYaparUnlockYok() async {

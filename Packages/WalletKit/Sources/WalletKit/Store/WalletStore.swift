@@ -62,9 +62,8 @@ public actor WalletStore: EntitlementChecking {
 
     // MARK: - Hesap-değişimi (§575)
 
-    /// Hesap-değişiminde (SS-132/§575) yerel cüzdan state'ini SIFIRLAR — önceki hesabın bakiye/abonelik/
-    /// açılmış-bölüm state'i yeni hesaba SIZMAZ. Version + subscription guard'ları da sıfırlanır (ilk
-    /// `refresh()` düşük-version snapshot'ı TAZE uygular). `accountEpoch` artışı uçuştaki yanıtları fence eder.
+    /// Hesap-değişiminde (SS-132/§575) yerel cüzdan state'ini SIFIRLAR — önceki hesabın bakiye/abonelik/açık-bölüm
+    /// state'i SIZMAZ. Version+subscription guard sıfırlanır (ilk refresh TAZE uygular); `accountEpoch`++ yanıtları fence'ler.
     public func reset() {
         accountEpoch &+= 1 // uçuştaki önceki-hesap yanıtlarını fence et (audit HIGH)
         snapshot = Self.initialSnapshot(now: now)
@@ -144,11 +143,6 @@ public actor WalletStore: EntitlementChecking {
 
     /// StoreKit `currentEntitlements`'tan iyimser VIP tohumlar (06 §4.5): yalnız sunucu aboneliği henüz
     /// gelmemişken. Sunucu snapshot'ı geldiğinde ezilir; uyuşmazlık loglanır.
-    /// Reklam-ile-açma ONAYI (server SSV): `confirmUnlocked` ile aynı entitlement etkisi AMA bakiyeye DOKUNMAZ (ücretsiz).
-    public func confirmAdUnlock(episodeID: EpisodeID) {
-        confirmUnlocked(episodeID)
-    }
-
     public func seedEntitlementFromStoreKit(hasActiveSubscription: Bool) {
         guard !hasServerSubscription, hasActiveSubscription else { return }
         storeKitOptimisticVIP = true
@@ -256,9 +250,8 @@ public actor WalletStore: EntitlementChecking {
     // MARK: - İç uygulayıcılar
 
     private func applyWallet(_ incoming: WalletSnapshot) {
-        // version-guard (05 §2.5): eşit veya daha yeni snapshot uygulanır; eski atılır.
-        // Server snapshot'ları mutlak bakiyeyi SET eder → aynı transaction iki kez gelse bile
-        // (idempotent kredi) çift kredi YAZILMAZ.
+        // version-guard (05 §2.5): eşit/daha yeni snapshot uygulanır, eski atılır. Server mutlak bakiyeyi SET eder →
+        // aynı transaction iki kez gelse bile (idempotent kredi) çift kredi YAZILMAZ.
         guard !hasServerSnapshot || incoming.version >= snapshot.version else {
             log.debug("stale wallet snapshot dropped (v\(incoming.version) < v\(snapshot.version))")
             return
@@ -269,11 +262,8 @@ public actor WalletStore: EntitlementChecking {
         broadcastBalance(from: incoming)
     }
 
-    /// Kazanç-hızı gözlemi (SS-100): iki SERVER snapshot arası earned-kese ARTIŞI bir kazanç
-    /// olayıdır (check-in/görev/rewarded-ad/vip-bonus kredisi). Danışma monitörüne raporlanır.
-    /// - İLK server snapshot'ında baseline YOK → kaydedilmez (hasServerSnapshot henüz false).
-    /// - Earned DÜŞÜŞÜ (unlock harcaması / iade) ve purchased-kese değişimi kazanç DEĞİLDİR.
-    /// Yalnız gözlem: bakiyeyi/versiyonu/kontrol akışını ETKİLEMEZ; recorder yoksa no-op.
+    /// Kazanç-hızı gözlemi (SS-100): iki SERVER snapshot arası earned-kese ARTIŞI kazançtır (check-in/görev/ad/vip).
+    /// İLK snapshot'ta baseline YOK; earned DÜŞÜŞÜ + purchased değişimi kazanç DEĞİL. Yalnız gözlem (yoksa no-op).
     private func recordEarnVelocity(from previous: WalletSnapshot, to incoming: WalletSnapshot) {
         guard hasServerSnapshot, let earnVelocityRecorder else { return }
         let earnedDelta = incoming.balance.earnedCoins - previous.balance.earnedCoins
@@ -300,9 +290,8 @@ public actor WalletStore: EntitlementChecking {
         broadcastEntitlement()
     }
 
-    /// `unlock_coin` (08 §3.4 satır 201 zorunlu şeması): `earned_spent`/`purchased_spent` sunucunun kese-bazlı
-    /// ledger satırlarından (05 §2.6) türetilir, `balance_after` server snapshot'ından, `unlock_price` kaydın
-    /// harcanan coin'i. İdempotent re-unlock'ta ledger satırı gelmezse harcamalar 0 raporlanır.
+    /// `unlock_coin` (08 §3.4): `earned_spent`/`purchased_spent` kese-bazlı ledger'dan (05 §2.6), `balance_after` server
+    /// snapshot'ından, `unlock_price` kaydın harcadığı coin. İdempotent re-unlock'ta ledger satırı yoksa harcamalar 0.
     private func trackUnlockCoin(record: UnlockRecord, wallet: WalletSnapshot, transactions: [CoinTransaction]) {
         analytics.track(
             "unlock_coin",
@@ -356,9 +345,8 @@ public actor WalletStore: EntitlementChecking {
 // MARK: - Snapshot uygulama + hesap-epoch guard'ı (§575 audit HIGH)
 
 /// `apply(...)` GÜNCEL epoch'ta uygular (test seed'i + await-geçmeyen çağrılar). Cross-actor krediciler
-/// (PurchaseCoordinator) server await'ini AŞTIĞINDA `currentEpoch()`'u await ÖNCESİ okur ve
-/// `applyIfCurrentEpoch(...:epoch:)`e geçer; hesap araya değiştiyse kredi ÖNCEKİ hesaba aittir → düşürülür
-/// (TOCTOU yok; kontrol+apply tek actor-hop). unlock()/refresh() epoch'u kendi içinde yakalar.
+/// (PurchaseCoordinator/ad-watch) server await'ini AŞTIĞINDA `currentEpoch()`'u await ÖNCESİ okur + `applyIfCurrentEpoch`/
+/// `confirmAdUnlock(...:ifCurrentEpoch:)`e geçer; hesap değiştiyse kredi ÖNCEKİ hesaba aittir → düşürülür (TOCTOU yok).
 public extension WalletStore {
     func apply(walletSnapshot incoming: WalletSnapshot) {
         applyWallet(incoming)
@@ -386,6 +374,18 @@ public extension WalletStore {
             return
         }
         applySubscription(incoming)
+    }
+
+    /// Reklam ONAYI (server SSV) — cross-actor ad-watch await'ini aşar: reklam BAŞLARKEN yakalanan `epoch` confirm'de
+    /// uyuşmazsa (hesap-değişimi reset) onay ÖNCEKİ hesaba aittir → DÜŞ (§575). Bakiye değişmez. Dönüş: uygulandı mı.
+    @discardableResult
+    func confirmAdUnlock(episodeID: EpisodeID, ifCurrentEpoch epoch: Int) -> Bool {
+        guard epoch == accountEpoch else {
+            log.debug("ad-unlock confirm dropped: account epoch changed mid-flight")
+            return false
+        }
+        confirmUnlocked(episodeID)
+        return true
     }
 
     /// Subscription monotonluk guard'ı (applyWallet ile simetri): HEM mevcut HEM gelen `updatedAt` varsa daha

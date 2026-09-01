@@ -36,6 +36,7 @@ final class FakeWalletGateway: WalletGateway, @unchecked Sendable {
     var unlockGate: (@Sendable () async -> Void)?
 
     private var _version = 0
+    private var _epoch = 0
     private let balanceCast = AsyncMulticast<CoinBalance>()
     private let versionedBalanceCast = AsyncMulticast<VersionedCoinBalance>()
     private let entitlementCast = AsyncMulticast<EntitlementSnapshot>()
@@ -80,6 +81,15 @@ final class FakeWalletGateway: WalletGateway, @unchecked Sendable {
         lock.withLock { _unlocked.contains(episodeID) }
     }
 
+    func currentEpoch() async -> Int {
+        lock.withLock { _epoch }
+    }
+
+    /// Test kancası: hesap-jenerasyonunu ilerlet (ad-watch await'i sırasında hesap-değişimini simüle eder).
+    func advanceEpoch() {
+        lock.withLock { _epoch += 1 }
+    }
+
     func unlock(episodeID: EpisodeID, expectedPrice: Int) async -> UnlockResult {
         lock.withLock { unlockCalls.append((episodeID, expectedPrice)) }
         if let gate = unlockGate {
@@ -94,18 +104,23 @@ final class FakeWalletGateway: WalletGateway, @unchecked Sendable {
 
     private(set) var confirmAdUnlockCalls: [EpisodeID] = []
 
-    func confirmAdUnlock(episodeID: EpisodeID) async {
-        let subscription = lock.withLock { () -> SubscriptionStatus in
+    @discardableResult
+    func confirmAdUnlock(episodeID: EpisodeID, ifCurrentEpoch epoch: Int) async -> Bool {
+        // Epoch bayatsa (ad-watch sırasında hesap değişti) onay düşer: unlockedEpisodes DEĞİŞMEZ, yayın YOK.
+        let subscription = lock.withLock { () -> SubscriptionStatus? in
+            guard epoch == _epoch else { return nil }
             confirmAdUnlockCalls.append(episodeID)
             _unlocked.insert(episodeID)
             return _subscription
         }
+        guard let subscription else { return false }
         entitlementCast.send(EntitlementSnapshot(
             isVIP: subscription.grantsFullAccess,
             vipExpiresAt: subscription.expiresAt,
             isInGracePeriod: subscription.isInGracePeriod,
             lastUnlockedEpisode: episodeID
         ))
+        return true
     }
 
     func balanceUpdates() -> AsyncStream<CoinBalance> {

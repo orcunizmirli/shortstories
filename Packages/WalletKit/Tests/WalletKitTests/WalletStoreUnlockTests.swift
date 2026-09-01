@@ -69,7 +69,8 @@ struct WalletStoreUnlockTests {
         let accessBefore = await store.hasAccess(to: EpisodeID("ep_9"))
         #expect(!accessBefore)
 
-        await store.confirmAdUnlock(episodeID: EpisodeID("ep_9"))
+        let epoch = await store.currentEpoch()
+        await store.confirmAdUnlock(episodeID: EpisodeID("ep_9"), ifCurrentEpoch: epoch)
 
         #expect(await store.hasAccess(to: EpisodeID("ep_9"))) // hasAccess açıldı
         #expect(await store.isEpisodeUnlocked(EpisodeID("ep_9")))
