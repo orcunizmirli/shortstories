@@ -166,6 +166,23 @@ public final class CoinShopModel {
         await load()
     }
 
+    /// Satın alma SONRASI SESSİZ katalog tazeleme (hunt MEDIUM): `firstTopUpEligible` server-otoriter + katalog-global
+    /// (canlı bakiye yayını taşımaz) → satın alma tükettiyse 2x banner/kart + `is_first_purchase_offer` bayat kalırdı
+    /// (Profil'den açılıp ekranda kalınca ikinci satın almada yanıltıcı 2x). `loadPhase` DEĞİŞMEZ (flicker yok); hata/boş
+    /// → mevcut liste KORUNUR (başarılı satın alma sonrası ekranı `.failed`'e kırma). Sheet kapandıysa (isDisposed) no-op.
+    private func refreshCatalogAfterPurchase() async {
+        guard !isDisposed,
+              let catalog = try? await loader.fetchPackages(),
+              let products = try? await loader.loadProducts(ids: ShortSeriesProduct.coinTiers),
+              !isDisposed
+        else { return }
+        let merged = StorefrontMerge.coinShop(catalog: catalog, products: products)
+        guard !merged.isEmpty else { return }
+        priceByProductID = Dictionary(products.map { ($0.id, $0.price) }, uniquingKeysWith: { first, _ in first })
+        items = merged
+        firstTopUpEligible = catalog.firstTopUpEligible
+    }
+
     // MARK: - Satın alma (06 §4.1 / §7.4)
 
     public func purchase(_ item: CoinShopItem) async {
@@ -187,6 +204,7 @@ public final class CoinShopModel {
             balance = credited
             trackPurchaseSuccess(item, balanceAfter: credited.totalCoins, transactionID: transactionID)
             delegate?.coinShopDidCompletePurchase()
+            await refreshCatalogAfterPurchase() // firstTopUp tükendiyse 2x banner/kart + is_first_purchase_offer güncelle
         case .cancelled:
             analytics.track("coin_purchase_cancel", parameters: ["product_id": .string(item.productId)])
         case let .failed(error):

@@ -113,6 +113,34 @@ struct CoinShopModelTests {
         model.onDisappear()
     }
 
+    @Test func satinAlmaSonrasiFirstTopUpTazelenir() async throws {
+        // hunt MEDIUM: firstTopUp server'da tükendiğinde (satın alma sonrası) 2x banner/kart + is_first_purchase_offer
+        // güncellenmeli — aksi halde aynı oturumda (Profil'den açılıp ekran kalınca) ikinci satın almada yanıltıcı 2x + yanlış
+        // funnel.
+        let loader = FakeStorefrontLoader(packages: .success(catalog(firstTopUp: true)), products: .success(products))
+        let purchasing = FakeWalletPurchasing()
+        purchasing.purchaseResults = [.completed(transactionID: "txn_1")]
+        let model = makeModel(
+            loader: loader,
+            gateway: FakeWalletGateway(snapshot: .fixture(purchased: 100)),
+            purchasing: purchasing,
+            delegate: SpyCoinShopDelegate(),
+            source: .profil // satın alma sonrası ekranda kalınır (dismiss yok)
+        )
+        await model.begin()
+        #expect(model.firstTopUpEligible)
+        #expect(model.items.first?.firstTopUpEligible == true)
+
+        // Satın alma server eligibility'yi TÜKETTİ → sonraki fetch consumed katalog döner.
+        loader.packagesResult = .success(catalog(firstTopUp: false))
+        let item = try #require(model.items.first)
+        await model.purchase(item)
+
+        #expect(model.firstTopUpEligible == false) // 2x banner tazelendi (bayat gitti)
+        #expect(model.items.first?.firstTopUpEligible == false) // kart 2x + is_first_purchase_offer artık doğru
+        model.onDisappear()
+    }
+
     @Test func basariliSatinAlmaAnalitikVeDelegate() async throws {
         let loader = FakeStorefrontLoader(packages: .success(catalog()), products: .success(products))
         let gateway = FakeWalletGateway(

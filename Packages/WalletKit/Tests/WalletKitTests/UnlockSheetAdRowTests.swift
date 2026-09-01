@@ -184,8 +184,9 @@ struct UnlockSheetAdRowTests {
         )
         // Reklam-watch await'i sırasında hesap-değişimini simüle et: epoch, watchAd'in yakaladığı değerden ilerler.
         ad.watchGate = { gateway.advanceEpoch() }
+        let analytics = MockAnalytics()
         let delegate = SpyUnlockSheetDelegate()
-        let model = makeModel(gateway: gateway, delegate: delegate, rewardedAdUnlock: ad)
+        let model = makeModel(gateway: gateway, analytics: analytics, delegate: delegate, rewardedAdUnlock: ad)
         await model.begin()
 
         await model.watchAd()
@@ -193,6 +194,7 @@ struct UnlockSheetAdRowTests {
         #expect(gateway.confirmAdUnlockCalls.isEmpty) // bayat epoch → onay UYGULANMADI
         #expect(await gateway.isEpisodeUnlocked(EpisodeID("ep_12")) == false) // yeni hesaba SIZMADI
         #expect(delegate.unlocked.isEmpty) // completeUnlock ÇAĞRILMADI (sahte unlock yok)
+        #expect(!analytics.events.contains { $0.name == "unlock_ad" }) // funnel de fence-SONRASI: unlock_ad atılMADI
         model.onDisappear()
     }
 

@@ -116,8 +116,7 @@ public final class UnlockSheetModel {
     private var shownAt: Date?
     private var resolved = false
     private var started = false
-    /// Sheet kapandı — `begin()` await'te askıdayken `onDisappear` gelirse gözlem görevlerinin await
-    /// SONRASI kurulup asla iptal edilmemesini (kalıcı sızıntı) engeller.
+    /// Sheet kapandı (`onDisappear`) — `begin()` await'te askıdayken gözlem görevleri kurulmasın (kalıcı sızıntı önlemi).
     private var isDisposed = false
 
     public init(
@@ -274,10 +273,11 @@ public final class UnlockSheetModel {
         guard !resolved else { return }
         switch result {
         case let .unlocked(remainingToday):
-            trackUnlockAd(remainingToday: remainingToday) // kanonik funnel (08 §3.4 unlock_ad); WalletKit sahipli
             // Coin `unlock`→`confirmUnlocked` ile SİMETRİK: reklam-unlock'u entitlement'e yansıt → `hasAccess` açılır
             // (bakiye değişmez, ücretsiz). Onay epoch-fence'e takılırsa (hesap-değişimi) bölüm bu hesaba AİT DEĞİL → dön.
             guard await wallet.confirmAdUnlock(episodeID: episodeID, ifCurrentEpoch: epoch) else { return }
+            // Funnel (08 §3.4 unlock_ad) YALNIZ fence-SONRASI (unlock_coin simetriği): switch'te onay düşerse atılmaz.
+            trackUnlockAd(remainingToday: remainingToday)
             completeUnlock()
         case .dismissedEarly:
             break // ödül YOK, hak düşmez, satır olduğu gibi (sessiz — kullanıcı seçimi).

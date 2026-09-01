@@ -245,6 +245,26 @@ account-fence'ler SAĞLAM doğrulandı):
 - **#3 AD-unlock account-epoch fence yok + WalletFlow sheet switch'te reset olmaz (LOW, ACCEPTED):** tam-ekran modal
   reklam mid-ad hesap-switch'i engeller; post-ad pencere alt-saniye + feed-reset + server-reload mitige → near-unreachable.
 
+### Money-flow error/offline + analytics-funnel hunt (2026-09-01)
+Money/entitlement/reward flow'larının error/offline/retry tutarlılığı + funnel-event bütünlüğü taze hunt'ı.
+Money-state + funnel DERİNLEMESİNE SOUND (HIGH yok): iap_credited/unlock_coin/checkin_claim/mission_claim/
+referral_redeemed hepsi tek-atım + server-confirm noktasında; optimistik-rollback + stuck-phase + generation/epoch
+fence'leri doğru. 2 analytics/display bulgusu (money server-safe) düzeltildi:
+- **MEDIUM — CoinShop firstTopUp satın-alma sonrası bayat (✅ DÜZELTİLDİ):** `firstTopUpEligible` server-otoriter +
+  katalog-global (canlı bakiye yayını taşımaz), yalnız `load()`'ta set ediliyordu; `purchase().completed` yalnız
+  balance tazeliyordu → Profil'den açılıp ekran açık kalınca ikinci satın almada yanıltıcı 2x banner/kart +
+  `is_first_purchase_offer:true` (tükenmişken). **Fix:** `.completed` sonrası SESSİZ katalog tazeleme
+  (`refreshCatalogAfterPurchase`): items + firstTopUpEligible yeniden kurulur; loadPhase DEĞİŞMEZ (flicker yok);
+  hata/boş → mevcut korunur (başarılı satın alma ekranı .failed'e kırılmaz); sheet kapandıysa no-op. TDD: firstTopUp
+  tüketilince banner+kart tazelenir (RED→GREEN); 313 WalletKit yeşil. (İlk WalletKit-UI hunt'ında LOW görülmüştü,
+  ikinci hunt MEDIUM'a yükseltti → iki-hunt doğrulaması.)
+- **LOW — `unlock_ad` funnel epoch-fence ÖNCESİ ateşleniyordu (✅ DÜZELTİLDİ):** reklam-watch uçuştayken hesap
+  değişirse `confirmAdUnlock` false döner (unlock düşer) AMA `unlock_ad` zaten atılmıştı → funnel şişer (unlock_coin
+  ise fence'ten ÖNCE `.transactionConflict` dönüp `unlock_coin`'i bastırıyor — asimetri). **Fix:** `trackUnlockAd`
+  fence-SONRASINA taşındı. TDD: hesap-switch senaryosunda unlock_ad atılMAZ (RED fence-öncesi → GREEN + revert).
+- Elenen (SOUND): coin_purchase_success vs iap_credited (tasarımca ayrı, tek-atım), 409'da claim/redeem event yok,
+  VIP-activation idempotent, pending double-charge guard (önceki fix), restore try? best-effort, stuck-phase yok.
+
 ### Cross-package integration seam hunt (2026-09-01)
 Per-package hunt'ların kör-noktası olan uçtan-uca money/unlock yolculukları (paket sınırları). 5 journey tarandı;
 paywall bypass hiçbirinde hard-yok (server authorize gate). 1 MEDIUM düzeltildi + 1 LOW ertelendi:
