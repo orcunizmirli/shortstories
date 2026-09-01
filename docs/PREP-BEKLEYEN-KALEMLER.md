@@ -1074,6 +1074,31 @@ yalnız server set; lokal expiry hesabı yok), (6) phase-guard `.purchasing`+`.p
   `refresh()` dönene dek kısa süre non-VIP görünür (yalnız UX flash; playback erişimi `/playback/authorize` ile
   server-authoritative → correctness güvenli). Fix: `coldStartPreload`'da `refresh()` ile birlikte çağır veya sil.
 
+### Watch-progress senkron/merge/offline-queue hunt'ı — PIPELINE SAĞLAM, 2 F2 seam (2026-09-01)
+Progress/history/favorites SENKRON pipeline'ı 7 açıdan hepsi DOĞRULANMIŞ SAĞLAM (wired-path defekti YOK):
+(1) upload-hatası kayıp yok (durable `pendingUpload` SwiftData; `markSynced` yalnız server ack sonrası, symmetric
+LWW re-guard), (2) merge LWW (`mergeServerProgress` yalnız `server.watchedAt >= local` ezer → bayat server geri-
+resume yapmaz), (3) normal senkron PUSH-then-PULL (upload+markSynced sonra fetch+merge), (4) compensating-delete
+durable + queue-drain SONRASI flush + favoriler pull'suz → dirilen-delete YAPISAL imkansız, (5) completed→sonraki-
+bölüm-pos-0 (final saniye replay yok), (6) `episodeId` `@Attribute(.unique)` upsert dedup, (7) history `watchedAt`
+desc yerel re-query + cursor anti-loop guard (truncation'da yerel silmez). Tek LOW: özdeş-`watchedAt` tie-order
+tanımsız (cosmetic, producer gelene dek moot).
+- **#1 Watch-progress PRODUCER wire'lı DEĞİL (F2 — EN YÜKSEK ÖNCELİKLİ SONRAKI FEATURE):** `recordProgress`'in
+  App/PlayerKit'te ÇAĞIRANI yok (yalnız testler); `HomeCoordinator.playerFeedDidCompleteEpisode` sadece review-
+  prompt basar, progress YAZMAZ. Sonuç: gerçek oynatma HİÇBİR ŞEY kaydetmez → **Continue-Watching + DiziDetay resume
+  HER ZAMAN boş/"Başla"** (binge uygulamasının çekirdek özelliği işlevsiz — tüm sağlam sync makinesinin veri kaynağı
+  yok). Neden hemen otonom yapılmadı: `PlayerFeedDelegate`'te progress/pozisyon taşıyan sinyal YOK
+  (`didChangeActiveIndex(episode)` yeni kartı verir, giden pozisyonu değil) → YENİ delegate sinyali + PlayerFeed
+  ViewController'ın giden-kart engine pozisyonunu settle/complete/background anında yakalayıp emit etmesi gerekir =
+  henüz-tasarlanmamış, verified player-core'a dokunan substantial feature + ürün-kararı (NE zaman kaydet: swipe-away
+  giden-pozisyon / complete / periyodik). **Plan taslağı:** (a) yeni `PlayerFeedDelegate.playerFeed(_, didRecord
+  Progress episode:positionSec:durationSec:completed:)`; (b) `PlayerFeedViewController` bunu aktif-kart değişiminde
+  (giden engine pozisyonuyla) + `playedToEnd`'de (completed=true) emit etsin; (c) `HomeCoordinator` → `WatchProgress
+  Record` kur → `continueWatchingService.recordProgress`. Ayrı, tasarım-önceli (brainstorming) dedike efor hak eder.
+- **#2 Favoriler server→local DOWN-sync yok (F2 seam):** `FavoritesRemoting` push-only (PUT/DELETE); `GET /me/
+  favorites` yok. Hesap-değişimi sonrası yeni hesabın server favorileri lokale hidrate olmaz (re-add'e dek boş).
+  Favoriler down-sync sözleşmesi indiğinde wire edilir.
+
 - SS-050 kilit-sınırı reactivation (varsa gap), LibraryCatalog offline cache, WP-F1-G
   review'unda ertelenen küçük optimizasyonlar (CatalogCache `lastAccessAt`/tahliye-bütçe,
   ListemModel batch-delete). Bunlar prep GEREKTİRMEZ; sürekli döngüde ele alınır.
