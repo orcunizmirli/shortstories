@@ -139,14 +139,14 @@ final class HomeCoordinator {
         pendingPlayback = nil
         activeEpisodeID = nil
         feedMountToken &+= 1
-        // Self-review2: A'ya ait TÜM hesap-özel nav/sheet/devam-et yüzeyleri de temizlenmeli (DiziDetay push /
-        // açık sheet / "devam et" banner'ı B'ye taşınmasın).
+        // Self-review2: A'ya ait tüm hesap-özel nav/sheet/devam-et yüzeyleri temizlenir (B'ye taşınmasın).
         path = []
         bolumListesiModel = nil
         speedMenuCurrentRate = nil
         subtitleChoices = nil
+        // Reload BURADA YAPILMAZ (ListemModel simetriği): reset deleteAll'dan ÖNCE gelir → eager load A'yı B'ye
+        // sızdırırdı. B'nin devam-kaydı refetch sonrası doğal view .task'ıyla (RootTabView) yüklenir.
         continueEntry.reset()
-        Task { [weak self] in await self?.continueEntry.load() } // B'nin devam-kaydını taze yükle
     }
 
     /// SwiftUI köprüsü — Ana Sayfa tab view'ı bunu gömer (delegate = self). `entry`: çözülmüş

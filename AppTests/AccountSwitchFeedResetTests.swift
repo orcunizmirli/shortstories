@@ -98,6 +98,63 @@ final class AccountSwitchFeedResetTests: XCTestCase {
         XCTAssertEqual(home.feedMountToken, tokenStart) // aynı hesap re-auth → reset YOK (sıfır-kayıp korunur)
     }
 
+    /// App-integration hunt (MEDIUM, cross-account leak): resetForAccountSwitch, A'nın devam-kaydını EAGER
+    /// `continueEntry.load()` ile yeniden yüklüyordu. Reset, switch'in linkSession yayınında (deleteAll'dan
+    /// ÖNCE) tetiklendiğinden, yerel-first load A'nın HENÜZ SİLİNMEMİŞ kaydını okuyup B'nin Ana Sayfa banner'ına
+    /// A'nın dizisini basıyordu (ListemModel/KesfetModel'in "reset'te reload YAPMA" kuralının tam ihlali).
+    func testAccountSwitchDoesNotLeakPreviousAccountContinueWatching() async throws {
+        let session = MockSession(state: .linked(userID: "u1", provider: .apple))
+        let composition = try AppComposition(dependencies: PreviewDependencies(session: session))
+        let repo = composition.persistence.makeWatchHistoryRepository()
+        try? await repo.deleteAll() // disk-backed store: determinizm için temiz başla
+
+        let tab = TabCoordinator(composition: composition)
+        let home = tab.home
+
+        // A hesabının yarım-kalan izleme kaydını yerel store'a yaz (continueWatching bunu okur).
+        try await composition.continueWatchingService.recordProgress(
+            WatchProgressRecord(
+                episodeID: EpisodeID("a_e3"), seriesID: SeriesID("a_s1"),
+                positionSec: 30, durationSec: 120, completed: false,
+                watchedAt: Date(timeIntervalSince1970: 1_700_000_000)
+            )
+        )
+        await home.continueEntry.load()
+        XCTAssertNotNil(home.continueEntry.item) // setup: A altında banner yüklendi
+
+        session.send(.linked(userID: "u1", provider: .apple)) // baseline lastUserID=u1
+        for _ in 0 ..< 50 {
+            await Task.yield()
+        }
+
+        // FARKLI hesaba geçiş → reset tetiklenir (feedMountToken bump). Gerçek switch'te deleteAll reset'ten
+        // SONRA gelir → reset anında A'nın kaydı hâlâ store'da; eager load bug'ı onu B'ye geri okurdu.
+        let tokenBeforeSwitch = home.feedMountToken
+        session.send(.linked(userID: "u2", provider: .apple))
+        var didReset = false
+        for _ in 0 ..< 500 where !didReset {
+            if home.feedMountToken != tokenBeforeSwitch {
+                didReset = true
+            } else {
+                await Task.yield()
+            }
+        }
+        XCTAssertTrue(didReset) // hesap değişimi feed'i sıfırladı (item de nil'lendi)
+
+        // reset item'ı nil yaptı; eager load'un onu A'nın verisiyle GERİ DOLDURMADIĞINI doğrula.
+        var leaked = false
+        for _ in 0 ..< 500 where !leaked {
+            if home.continueEntry.item != nil {
+                leaked = true
+            } else {
+                await Task.yield()
+            }
+        }
+        XCTAssertFalse(leaked) // A'nın devam-kaydı B'ye SIZMADI (reset'te eager reload yok)
+
+        try? await repo.deleteAll() // temizle (disk-backed izolasyon)
+    }
+
     /// Self-review2 (LOW): resetForAccountSwitch A'nın Ana Sayfa navigasyon stack'ini (`path`) da temizlemeli
     /// → B'nin Ana Sayfa'sında A'nın DiziDetay push'u kalmasın.
     func testAccountSwitchClearsHomeNavigationStack() async throws {

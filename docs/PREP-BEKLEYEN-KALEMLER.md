@@ -245,6 +245,24 @@ account-fence'ler SAĞLAM doğrulandı):
 - **#3 AD-unlock account-epoch fence yok + WalletFlow sheet switch'te reset olmaz (LOW, ACCEPTED):** tam-ekran modal
   reklam mid-ad hesap-switch'i engeller; post-ad pencere alt-saniye + feed-reset + server-reload mitige → near-unreachable.
 
+### App-integration adversarial bug-hunt (2026-09-01)
+App/ katman glue'su (coordinators/DI/composition/playback-seed/account-switch) hunt: çekirdek çok iyi
+korunmuş (VIP re-lock, account-switch fence'leri, deep-link doğrulama, seed generation-guard). 1 MEDIUM
+düzeltildi + 1 LOW beklemede:
+- **MEDIUM — cross-account continue-watching leak (eager reload, ✅ DÜZELTİLDİ):** `HomeCoordinator.resetForAccountSwitch`
+  `continueEntry.reset()` sonrası EAGER `Task { continueEntry.load() }` yapıyordu. Reset, switch'in `linkSession`
+  yayınında (deleteAll+refetch'ten ÖNCE) tetiklendiğinden, yerel-first load A'nın HENÜZ SİLİNMEMİŞ kaydını okuyup
+  B'nin Ana Sayfa banner'ına A'nın dizisini basıyordu (tıklayınca A'nın bölümüne gider). ListemModel/KesfetModel'in
+  "reset'te reload YAPMA — A'nın verisini diriltir" kuralının tam ihlali. **Fix:** eager load kaldırıldı; B'nin
+  devam-kaydı refetch sonrası doğal view `.task`'ıyla yüklenir. TDD (App): A kaydını seed → switch → banner A'yı
+  GERİ OKUMAZ (RED→GREEN + revert doğrulandı — leak reprodüksiyonu). 5 AccountSwitchFeedResetTests yeşil, App derleme OK.
+- **LOW BEKLİYOR — resolver `intent.episodeID`'yi üyelik doğrulamadan güveniyor:** `PlaybackIntentMapper.targetEpisodeID`
+  (`App/Coordinators/Playback/PlaybackFeedSeed.swift`) `intent.episodeID`'yi yüklü `episodes`'ta olup olmadığını
+  KONTROL ETMEDEN döner. Bölüm server'da kaldırılmış / `maxEpisodePages`(8) ötesindeyse `makeEntry` var-olmayan
+  bölüme işaret eden `FeedEntry` üretir → PlayerKit episode 1'e düşer AMA kaldırılan bölümün resume pozisyonuyla.
+  `episodeNumber` yolu zaten `firstPlayable`'a düşüyor (asimetri). Paywall etkisi YOK (server authorize gate). Ayrı
+  commit'te düzeltilecek.
+
 ### RewardsKit adversarial bug-hunt (2026-09-01)
 OdulMerkezi/Referral/ad-reward hunt: çekirdek olağanüstü sertleştirilmiş (in-flight claim guard, accountEpoch fence,
 checkInGeneration fence, version-monotonic bakiye guard, task eventual-consistency reconcile). 1 MEDIUM düzeltildi:
