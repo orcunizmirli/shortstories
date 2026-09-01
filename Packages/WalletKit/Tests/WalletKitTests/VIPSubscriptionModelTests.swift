@@ -289,3 +289,32 @@ struct VIPSubscriptionModelTests {
         model.onDisappear()
     }
 }
+
+// MARK: - Pending çift-ücret koruması (hunt MEDIUM; type_body_length için extension)
+
+@MainActor
+extension VIPSubscriptionModelTests {
+    @Test func acknowledgePendingBannerGuardiAcmaz() async {
+        // hunt MEDIUM (çift-ücret, CoinShop ile simetrik): pending banner tap-dismiss (acknowledgeTransientPhase)
+        // satın-alma guard'ını AÇMAMALI — aksi halde Ask-to-Buy pending'de ikinci abonelik denemesi başlatılabilir.
+        let purchasing = FakeWalletPurchasing()
+        purchasing.purchaseResults = [.pending, .completed(transactionID: "sub_txn_2")]
+        let model = makeModel(
+            loader: FakeStorefrontLoader(products: .success(plans())),
+            gateway: FakeWalletGateway(),
+            purchasing: purchasing,
+            delegate: SpyVIPSubscriptionDelegate()
+        )
+        await model.begin()
+
+        await model.subscribe() // → .pending
+        #expect(model.purchasePhase == .pending(productID: SubscriptionPlan.yearly.productID))
+
+        model.acknowledgeTransientPhase() // kullanıcı pending banner'ına dokunur
+        #expect(model.purchasePhase == .pending(productID: SubscriptionPlan.yearly.productID)) // guard KORUNUR
+
+        await model.subscribe() // ikinci deneme
+        #expect(purchasing.purchaseCallCount == 1) // BLOKLANDI (ikinci StoreKit purchase YOK)
+        model.onDisappear()
+    }
+}

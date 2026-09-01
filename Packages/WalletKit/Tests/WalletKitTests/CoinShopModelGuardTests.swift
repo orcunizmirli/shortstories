@@ -59,6 +59,26 @@ struct CoinShopModelGuardTests {
         model.onDisappear()
     }
 
+    @Test func acknowledgePendingBannerGuardiAcmaz() async throws {
+        // hunt MEDIUM (çift-ücret): pending banner tap-dismiss (acknowledgeTransientPhase) satın-alma guard'ını
+        // AÇMAMALI — aksi halde Ask-to-Buy pending penceresinde ikinci satın alma başlatılıp iki onay çift ücret yaratır.
+        let purchasing = FakeWalletPurchasing()
+        purchasing.purchaseResults = [.pending, .completed(transactionID: "txn_2")]
+        let model = makeModel(gateway: FakeWalletGateway(), purchasing: purchasing)
+        await model.begin()
+        let item = try #require(model.items.first)
+
+        await model.purchase(item) // → .pending
+        #expect(model.purchasePhase == .pending(productID: item.productId))
+
+        model.acknowledgeTransientPhase() // kullanıcı pending banner'ına dokunur
+        #expect(model.purchasePhase == .pending(productID: item.productId)) // guard KORUNUR (idle'a DÜŞMEZ)
+
+        await model.purchase(item) // ikinci satın alma denemesi
+        #expect(purchasing.purchaseCallCount == 1) // BLOKLANDI → ikinci StoreKit purchase YOK (çift ücret yok)
+        model.onDisappear()
+    }
+
     @Test func beginSirasindaKapanirsaGozlemKurulmazSizintiYok() async {
         // Sızıntı: begin() ilk await'te (currentSnapshot) askıdayken onDisappear gelirse gözlem
         // görevi KURULMAZ; sonraki bakiye yayını modeli güncellemez (kalıcı hayalet abone yok).

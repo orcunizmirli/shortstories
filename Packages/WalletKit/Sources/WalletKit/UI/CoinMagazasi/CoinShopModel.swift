@@ -198,12 +198,15 @@ public final class CoinShopModel {
         }
     }
 
-    /// Toast/alert kapatılınca geçici fazı sıfırla (idle'a dön).
+    /// Toast/alert kapatılınca geçici fazı sıfırla (idle'a dön). `.pending` KULLANICI-TEMİZLENEMEZ (hunt MEDIUM,
+    /// çift-ücret): banner tap-dismiss guard'ı açarsa Ask-to-Buy pending'de ikinci satın alma başlatılıp iki
+    /// onay çift ücret/kredi yaratır. Pending guard'ı işlem arka planda çözülene / sheet yeniden açılana (taze
+    /// model) dek tutulur (`.pending` banner'ı `autoDismisses:false` — zaten kalıcı gösterilir).
     public func acknowledgeTransientPhase() {
         switch purchasePhase {
-        case .success, .failed, .invalidReceipt, .pending, .verificationPending:
+        case .success, .failed, .invalidReceipt, .verificationPending:
             purchasePhase = .idle
-        case .idle, .purchasing:
+        case .idle, .purchasing, .pending:
             break
         }
     }

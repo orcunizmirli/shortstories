@@ -124,8 +124,7 @@ public final class VIPSubscriptionModel {
         winBackRenewalDisclosure?.offerPrice
     }
 
-    /// View kararı (F2): autoRenewOff win-back banner'ı bitiş cümlesini gösterirken managementSection'ın
-    /// ayrı yenileme-tarihi satırı BASTIRILIR (tek kaynak; çift + format-tutarsız tarih gösterimi önlenir).
+    /// View (F2): win-back bitiş cümlesi gösterilince managementSection yenileme satırı BASTIRILIR (çift tarih önlenir).
     public var showsManagementRenewalText: Bool {
         !(winBackSurface.isVisible && winBackSurface.reason == .autoRenewOff)
     }
@@ -340,11 +339,12 @@ public final class VIPSubscriptionModel {
         try? await purchasing.restore()
     }
 
+    /// `.pending` KULLANICI-TEMİZLENEMEZ (CoinShop simetriği çift-ücret koruması): banner tap-dismiss guard'ı açmasın.
     public func acknowledgeTransientPhase() {
         switch purchasePhase {
-        case .success, .failed, .invalidReceipt, .pending, .verificationPending:
+        case .success, .failed, .invalidReceipt, .verificationPending:
             purchasePhase = .idle
-        case .idle, .purchasing:
+        case .idle, .purchasing, .pending:
             break
         }
     }

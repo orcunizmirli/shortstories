@@ -245,6 +245,27 @@ account-fence'ler SAĞLAM doğrulandı):
 - **#3 AD-unlock account-epoch fence yok + WalletFlow sheet switch'te reset olmaz (LOW, ACCEPTED):** tam-ekran modal
   reklam mid-ad hesap-switch'i engeller; post-ad pencere alt-saniye + feed-reset + server-reload mitige → near-unreachable.
 
+### Yakınsama hunt turu — WalletKit-UI + AppFoundation-primitifleri (2026-09-01)
+Money-UX + eşzamanlılık-backbone taze hunt'ları. AppFoundation backbone SOUND (AsyncMulticast/SessionBroadcaster
+seed-under-lock doğru; consumer'lar doğru). En yüksek para-riski bulundu+düzeltildi:
+- **MEDIUM — CoinShop/VIP pending banner tap-dismiss çift-ücret guard'ını açıyor (✅ DÜZELTİLDİ):** `.pending`
+  (Ask-to-Buy) `preventsNewPurchase=true` ile ikinci satın almayı bloklar AMA `acknowledgeTransientPhase` `.pending`'i
+  `.idle`'a sıfırlıyordu, ve pending banner tap-dismiss'li (`onTapGesture → acknowledgeTransientPhase`) → kullanıcı
+  banner'a dokununca guard açılıyor → pending'de ikinci satın alma → parent iki pending'i onaylayınca ÇİFT ÜCRET+KREDİ.
+  StorePurchasePhase.swift'in kendi invariantını (pending penceresi bloklamalı) ihlal ediyordu. **Fix:** `.pending`
+  `acknowledgeTransientPhase` reset-setinden çıkarıldı (CoinShop+VIP) → banner-tap guard'ı AÇMAZ; pending, işlem arka
+  planda çözülene / sheet yeniden açılana (taze model — CoinShop/VIP sheet'tir → kalıcı-blok YOK) dek tutulur. TDD:
+  pending→acknowledge→guard korunur, ikinci purchase BLOKLANIR (RED çift-purchase → GREEN + revert); 310 WalletKit yeşil.
+- **LOW ERTELENDİ — `PlayerKit/StateBroadcast.stream()` seed'i lock-DIŞI yield ediyor:** iki para-kardeşi
+  (AsyncMulticast/SessionBroadcaster) seed'i register ile aynı kilit altında yield eder (stale-seed-last yarışı önlemi);
+  StateBroadcast etmiyor. ŞU AN ulaşılamaz (sahibi PlaybackEngine actor; subscribe+send serileşir). Savunmacı hardening
+  (subscribe ileride `nonisolated` yapılırsa canlı stale-state bug olur) → ayrı küçük commit'te kardeşlerle hizalanacak.
+- **LOW ERTELENDİ (WalletKit-UI diğer):** (a) CoinShop `firstTopUpEligible` satın-alma sonrası re-fetch etmiyor →
+  Profil kaynağında 2x banner bayat kalır (para kaybı yok, UI over-promise; küçük fix: purchase sonrası catalog
+  refresh). (b) win-back indirimli fiyat purchase-offer'dan decoupled — bugün TODO'yla maskeli, "iki TODO'yu birlikte
+  wire et" uyarısı (bkz StoreKitProductService). (c) tek-yön `isDisposed` retained-instance'ta recovery engeller —
+  mevcut sheet-per-sunum kullanımında güvenli, latent. Optimistik-kredi/double-tap/StoreKit-interruption hepsi SOUND.
+
 ### Yakınsama hunt turu — PlayerKit-feed + ProfileKit (2026-09-01)
 Loop-until-dry yakınsama kontrolü: iki taze bağımsız-context hunt. Paywall bypass İKİSİNDE DE doğrulandı-yok.
 - **MEDIUM — auto-advance uçuştaki manuel swipe'ı ezip yanlış bölüme fırlatıyor (✅ DÜZELTİLDİ):** kullanıcı
