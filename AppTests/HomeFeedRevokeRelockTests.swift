@@ -42,6 +42,42 @@ final class HomeFeedRevokeRelockTests: XCTestCase {
         XCTAssertEqual(home.feedViewModel.feedState.items.first?.episode?.access.kind, .unlocked) // KALICI: re-lock yok
     }
 
+    func testVIPDrivenUnlockSheetCompletionIsRevocableAndRelocks() async throws {
+        // integration-hunt MEDIUM: VIP-broadcast'iyle kapanan UnlockSheet (delegate viaVIP=true) App'te VIP yoluna
+        // (onVIPActivated → applyVIPUnlock, REVOCABLE) gitmeli, bireysel KALICI yoluna DEĞİL → VIP-expiry'de re-lock
+        // yakalanır. Eskiden hepsi applyUnlock (KALICI) sanılıyordu → VIP-türevli açılış re-lock'tan kaçıyordu.
+        let session = MockSession(state: .linked(userID: "u1", provider: .apple))
+        let composition = try AppComposition(dependencies: PreviewDependencies(session: session))
+        let tab = TabCoordinator(composition: composition)
+        let home = tab.home
+        home.feedViewModel.feedState = FeedState(items: [makeItem(episode: "e1", kind: .locked, unlockPrice: 50)])
+
+        // VIP-türevli sheet tamamlanması (başka-cihaz / transaction-observer VIP) → delegate viaVIP=true.
+        tab.walletFlow.unlockSheetDidUnlock(episodeID: EpisodeID("e1"), viaVIP: true)
+        XCTAssertEqual(home.feedViewModel.feedState.items.first?.episode?.access.kind, .unlocked) // VIP açtı
+        XCTAssertTrue(home.vipGrantedEpisodes.contains(EpisodeID("e1"))) // REVOCABLE olarak izlenir
+
+        // VIP-expiry → re-lock (bireysel/KALICI olsaydı re-lock OLMAZDI — bu fix'in özü).
+        await home.revertRevokedOptimisticUnlocks(entitlement: MockEntitlement(accessible: []))
+        XCTAssertEqual(home.feedViewModel.feedState.items.first?.episode?.access.kind, .locked) // re-locked ✓
+    }
+
+    func testIndividualUnlockSheetCompletionIsPermanent() async throws {
+        // Kontrast: bireysel (coin/ad) sheet tamamlanması (viaVIP=false) KALICI kalır → VIP-expiry'de re-lock OLMAZ.
+        let session = MockSession(state: .linked(userID: "u1", provider: .apple))
+        let composition = try AppComposition(dependencies: PreviewDependencies(session: session))
+        let tab = TabCoordinator(composition: composition)
+        let home = tab.home
+        home.feedViewModel.feedState = FeedState(items: [makeItem(episode: "e1", kind: .locked, unlockPrice: 50)])
+
+        tab.walletFlow.unlockSheetDidUnlock(episodeID: EpisodeID("e1"), viaVIP: false) // bireysel coin/ad
+        XCTAssertEqual(home.feedViewModel.feedState.items.first?.episode?.access.kind, .unlocked)
+        XCTAssertFalse(home.vipGrantedEpisodes.contains(EpisodeID("e1"))) // KALICI (revocable değil)
+
+        await home.revertRevokedOptimisticUnlocks(entitlement: MockEntitlement(accessible: []))
+        XCTAssertEqual(home.feedViewModel.feedState.items.first?.episode?.access.kind, .unlocked) // re-lock YOK
+    }
+
     func testHistoricalCatalogUnlockedIsNotRelocked() async throws {
         // KRİTİK false-lock koruması: server-katalog `.unlocked` (izlenmez; oturum-yerel hasAccess'te YOK)
         // entitlement-düşüşünde DOKUNULMAMALI → geçmiş-oturum satın-alması kilitlenmez.

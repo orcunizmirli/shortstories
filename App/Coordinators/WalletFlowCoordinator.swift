@@ -101,12 +101,19 @@ final class WalletFlowCoordinator {
 // MARK: - UnlockSheetDelegate (02 §4.6)
 
 extension WalletFlowCoordinator: UnlockSheetDelegate {
-    func unlockSheetDidUnlock(episodeID: EpisodeID) {
+    func unlockSheetDidUnlock(episodeID: EpisodeID, viaVIP: Bool) {
         // Tüm paywall yığını kapanır, bölüm oynar (06 §4.3).
         coinShopModel = nil
         vipModel = nil
         unlockModel = nil
-        onEpisodeUnlocked?(episodeID)
+        // VIP-türevli açılış (başka-cihaz/transaction-observer VIP) → VIP yolu: TÜM bölümler REVOCABLE açılır (expiry
+        // re-lock yakalar). Bireysel açılışı per-episode KALICI olarak işaretlemek VIP-türevli erişimi re-lock'tan
+        // kaçırırdı (integration-hunt MEDIUM: applyUnlock hepsini kalıcı sanıyordu). Bireysel coin/ad → per-episode.
+        if viaVIP {
+            onVIPActivated?()
+        } else {
+            onEpisodeUnlocked?(episodeID)
+        }
     }
 
     func unlockSheetRequestsCoinStore() {

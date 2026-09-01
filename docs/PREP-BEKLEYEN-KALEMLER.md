@@ -245,6 +245,28 @@ account-fence'ler SAĞLAM doğrulandı):
 - **#3 AD-unlock account-epoch fence yok + WalletFlow sheet switch'te reset olmaz (LOW, ACCEPTED):** tam-ekran modal
   reklam mid-ad hesap-switch'i engeller; post-ad pencere alt-saniye + feed-reset + server-reload mitige → near-unreachable.
 
+### Cross-package integration seam hunt (2026-09-01)
+Per-package hunt'ların kör-noktası olan uçtan-uca money/unlock yolculukları (paket sınırları). 5 journey tarandı;
+paywall bypass hiçbirinde hard-yok (server authorize gate). 1 MEDIUM düzeltildi + 1 LOW ertelendi:
+- **MEDIUM — VIP-tetikli UnlockSheet tamamlanması KALICI unlock sanılıp VIP-expiry re-lock'undan kaçıyordu
+  (✅ DÜZELTİLDİ):** UnlockSheet açıkken VIP `onVIPActivated` ÇAĞIRMAYAN bir yoldan aktifleşirse (başka-cihaz
+  StoreKit sync / transaction-observer / Ask-to-Buy renewal), sheet'in entitlement-gözlemcisi (`snapshot.isVIP`)
+  `completeUnlock` → `unlockSheetDidUnlock` → `applyUnlock` → `vipGrantedEpisodes.remove` (KALICI) yapıyordu →
+  bölüm revocable-setten çıkıyor → VIP lapse'inde re-lock EDİLMİYOR (feedState `.unlocked` bayat kalıp
+  `PlayerPool.isPlayable` paywall'u atlıyor; server authorize backstop). In-app VIP-upsell yolunda RACE olarak da
+  tetiklenebiliyordu (subscribe `await subscriptionStatus()`'ta askıdayken gözlemci applyUnlock'u önce koşar).
+  **Fix:** `UnlockSheetDelegate.unlockSheetDidUnlock`'a `viaVIP: Bool` eklendi; UnlockSheetModel gözlemcisi VIP
+  (viaVIP:true) vs lastUnlocked/coin/ad (false) ayırır; App `WalletFlowCoordinator` viaVIP:true → `onVIPActivated`
+  (applyVIPUnlock, TÜM bölümler REVOCABLE) yönlendirir. Ek fayda: VIP-türevli açılış artık tek-E5 yerine TÜM
+  bölümleri açar (VIP tüm erişim). TDD: WalletKit (viaVIP=true/false ayrımı) + App (viaVIP:true → revocable →
+  expiry re-lock; RED routing'siz e1 kalıcı kalıp re-lock olmaz → GREEN + revert); 312 WalletKit + 6 App yeşil.
+  (Ayrıca `applyUnlock` STALE yorumu düzeltildi: ad-unlock artık `confirmAdUnlock`'la unlockedEpisodes'a giriyor.)
+- **LOW ERTELENDİ — VIP hiç sheet AÇIK DEĞİLKEN aktifleşirse feed'in mevcut kilitli kartı reaktive olmuyor:**
+  kullanıcı kilitli E5'te sheet'i kapatıp kilit-karesinde kalır, sonra VIP transaction-observer'dan aktifleşir →
+  `onVIPActivated` çağrılmaz (yalnız `vipSubscriptionDidActivate`'ten gelir), feed gözlemcisi yalnız RE-LOCK eder.
+  Kart, kullanıcı tekrar dokunana dek kilitli kalır (sheet re-present → gözlemci isVIP replay → reactivate → SELF-HEAL).
+  Küçük, geçici, para etkisi yok. Fix yönü: feed'in entitlement gözlemcisi VIP-YÜKSELİŞinde de reaktive etsin.
+
 ### Yakınsama hunt turu — WalletKit-UI + AppFoundation-primitifleri (2026-09-01)
 Money-UX + eşzamanlılık-backbone taze hunt'ları. AppFoundation backbone SOUND (AsyncMulticast/SessionBroadcaster
 seed-under-lock doğru; consumer'lar doğru). En yüksek para-riski bulundu+düzeltildi:

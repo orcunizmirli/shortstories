@@ -55,8 +55,8 @@ public enum UnlockErrorReason: Equatable, Sendable {
 /// MainActor (SwiftUI sunum katmanı).
 @MainActor
 public protocol UnlockSheetDelegate: AnyObject {
-    /// Kilit açıldı (coin ya da başka cihazdan VIP) → player devam eder (06 §4.3 kabul kriteri).
-    func unlockSheetDidUnlock(episodeID: EpisodeID)
+    /// Kilit açıldı → player devam (06 §4.3). `viaVIP`: VIP-türevli (REVOCABLE) mı, bireysel coin/ad (KALICI) mı.
+    func unlockSheetDidUnlock(episodeID: EpisodeID, viaVIP: Bool)
     /// Coin yetersiz / eksi bakiye → CoinMagazasi sheet içi push (06 §6.3).
     func unlockSheetRequestsCoinStore()
     /// VIP upsell'e dokunuldu → VIPAbonelik push (06 §6.2 üçüncül seçenek).
@@ -173,8 +173,7 @@ public final class UnlockSheetModel {
         entitlementTask = nil
     }
 
-    /// Seed bakiye + `episode_unlock_prompt` analitiği + canlı gözlemi başlatır. `onAppear`
-    /// tarafından çağrılır; testler doğrudan `await` eder (deterministik seed sırası).
+    /// Seed bakiye + `episode_unlock_prompt` analitiği + canlı gözlem. `onAppear` çağırır; testler doğrudan `await` eder.
     func begin() async {
         guard !started else { return }
         started = true
@@ -207,8 +206,7 @@ public final class UnlockSheetModel {
         )
     }
 
-    /// İki canlı akış (bakiye + entitlement) AYRI görevlerde gözlenir; akış görev DIŞINDA yakalanır, görev `self`'i
-    /// ZAYIF tutup her turda güçlüye terfi eder → retain-cycle yok (onDisappear atlansa bile sonraki emisyonda kırılır).
+    /// İki canlı akış (bakiye+entitlement) AYRI görevde; görev `self`'i ZAYIF tutar → retain-cycle yok.
     private func startObserving() {
         guard !isDisposed else { return }
         if balanceTask == nil {
@@ -225,10 +223,12 @@ public final class UnlockSheetModel {
             entitlementTask = Task { [weak self] in
                 for await snapshot in entitlements {
                     guard let self else { break }
-                    // 06 §6.6: başka cihazdan VIP aktifleşir / bölüm başka yerden açılırsa sheet
-                    // kapanır, bölüm oynar. VIP tüm bölümleri açar; ya da bu bölüm açılmış olabilir.
-                    if snapshot.isVIP || snapshot.lastUnlockedEpisode == episodeID {
-                        completeUnlock()
+                    // 06 §6.6: başka cihaz VIP / bölüm başka yerden açılırsa sheet kapanır. VIP=viaVIP true (REVOCABLE),
+                    // lastUnlocked=bireysel coin/ad (KALICI) → ayrım App'e (VIP açılış re-lock'tan kaçmasın).
+                    if snapshot.isVIP {
+                        completeUnlock(viaVIP: true)
+                    } else if snapshot.lastUnlockedEpisode == episodeID {
+                        completeUnlock(viaVIP: false)
                     }
                 }
             }
@@ -261,8 +261,7 @@ public final class UnlockSheetModel {
         delegate?.unlockSheetRequestsVIP()
     }
 
-    /// Reklam-ile-aç satırı (06 §6.2 #4 / §9.3). 30 sn tamamlanınca server SSV kilidi açar → `completeUnlock` (coin
-    /// unlock ile AYNI akış → reklam sonrası KESİNTİSİZ oynatma). Erken kapatma/fill-yok/hata/red → ödül YOK.
+    /// Reklam-ile-aç satırı (06 §6.2 #4 / §9.3). 30 sn tamamlanınca server SSV → `completeUnlock` (coin ile AYNI akış).
     public func watchAd() async {
         guard let rewardedAdUnlock, !isWatchingAd, !resolved, adAvailability.isActionable else { return }
         isWatchingAd = true
@@ -373,10 +372,11 @@ public final class UnlockSheetModel {
         }
     }
 
-    private func completeUnlock() {
+    /// `viaVIP` (varsayılan false = bireysel coin/ad, KALICI): yalnız entitlement-gözlemci VIP-broadcast'inde true.
+    private func completeUnlock(viaVIP: Bool = false) {
         guard !resolved else { return }
         resolved = true
-        delegate?.unlockSheetDidUnlock(episodeID: episodeID)
+        delegate?.unlockSheetDidUnlock(episodeID: episodeID, viaVIP: viaVIP)
     }
 
     private func trackPromptShown() {

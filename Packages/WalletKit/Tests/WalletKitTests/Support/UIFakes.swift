@@ -273,13 +273,17 @@ final class FakeStorefrontLoader: StorefrontLoading, @unchecked Sendable {
 @MainActor
 final class SpyUnlockSheetDelegate: UnlockSheetDelegate {
     private(set) var unlocked: [EpisodeID] = []
+    private(set) var unlockedViaVIP: [EpisodeID] = []
     private(set) var coinStoreRequests = 0
     private(set) var vipRequests = 0
     private(set) var dismissals = 0
     private(set) var autoUnlockWrites: [(enabled: Bool, seriesID: SeriesID)] = []
 
-    func unlockSheetDidUnlock(episodeID: EpisodeID) {
+    func unlockSheetDidUnlock(episodeID: EpisodeID, viaVIP: Bool) {
         unlocked.append(episodeID)
+        if viaVIP {
+            unlockedViaVIP.append(episodeID)
+        }
     }
 
     func unlockSheetRequestsCoinStore() {

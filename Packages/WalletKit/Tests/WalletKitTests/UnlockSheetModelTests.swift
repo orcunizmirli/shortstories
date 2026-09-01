@@ -297,3 +297,42 @@ struct UnlockSheetModelTests {
         model.onDisappear()
     }
 }
+
+// MARK: - viaVIP ayrımı (integration-hunt MEDIUM; type_body_length için extension)
+
+@MainActor
+extension UnlockSheetModelTests {
+    @Test func vipBroadcastSheetiViaVIPTamamlar() async {
+        // integration-hunt MEDIUM: VIP-broadcast'iyle kapanan sheet App'e viaVIP=true iletmeli → App bunu
+        // REVOCABLE (VIP-türevli, expiry re-lock yakalar) işaretlesin; bireysel KALICI unlock ile karışmasın.
+        let gateway = FakeWalletGateway()
+        let delegate = SpyUnlockSheetDelegate()
+        let model = makeModel(gateway: gateway, delegate: delegate)
+        await model.begin()
+
+        gateway.pushEntitlement(EntitlementSnapshot(
+            isVIP: true, vipExpiresAt: nil, isInGracePeriod: false, lastUnlockedEpisode: nil
+        ))
+        await waitUntil { !delegate.unlocked.isEmpty }
+
+        #expect(delegate.unlockedViaVIP == [EpisodeID("ep_12")]) // VIP-türevli olarak iletildi
+        model.onDisappear()
+    }
+
+    @Test func lastUnlockedBroadcastSheetiBireyselTamamlar() async {
+        // Bireysel (başka yerden coin/ad) açılış → lastUnlocked ile kapanır → viaVIP=false (KALICI, tek bölüm).
+        let gateway = FakeWalletGateway()
+        let delegate = SpyUnlockSheetDelegate()
+        let model = makeModel(gateway: gateway, delegate: delegate)
+        await model.begin()
+
+        gateway.pushEntitlement(EntitlementSnapshot(
+            isVIP: false, vipExpiresAt: nil, isInGracePeriod: false, lastUnlockedEpisode: EpisodeID("ep_12")
+        ))
+        await waitUntil { !delegate.unlocked.isEmpty }
+
+        #expect(delegate.unlocked == [EpisodeID("ep_12")])
+        #expect(delegate.unlockedViaVIP.isEmpty) // bireysel → viaVIP=false
+        model.onDisappear()
+    }
+}

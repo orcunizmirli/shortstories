@@ -15,9 +15,10 @@ extension HomeCoordinator {
             to: feedViewModel.feedState.items
         ) else { return }
         feedViewModel.feedState = FeedState(items: updatedItems)
-        // Bireysel unlock (coin/reklam) KALICI (server-kayıtlı, tek-seferlik) → VIP-REVOCABLE setinden ÇIKAR:
-        // reklam-unlock WalletStore.unlockedEpisodes'a girmediğinden hasAccess'te görünmez; izlenirse re-verify
-        // onu YANLIŞ re-lock ederdi (regresyon e2564bc). Yalnız VIP-grant (applyVIPUnlock) revocable.
+        // Bu yol YALNIZ bireysel (coin/reklam) unlock'a gelir — VIP-türevli sheet tamamlanması artık App'te VIP
+        // yoluna (applyVIPUnlock, REVOCABLE) yönlenir (integration-hunt fix, unlockSheetDidUnlock viaVIP). Bireysel
+        // unlock KALICI (coin+reklam ikisi de WalletStore.unlockedEpisodes'ta → hasAccess true) → VIP-REVOCABLE
+        // setinden ÇIKAR: izlenirse re-verify hasAccess=true bulup dokunmaz ama izlemeye gerek yok (kalıcı, tek-seferlik).
         vipGrantedEpisodes.remove(episodeID)
     }
 
