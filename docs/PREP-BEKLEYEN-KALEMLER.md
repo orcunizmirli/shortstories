@@ -256,10 +256,12 @@ seed-under-lock doğru; consumer'lar doğru). En yüksek para-riski bulundu+düz
   `acknowledgeTransientPhase` reset-setinden çıkarıldı (CoinShop+VIP) → banner-tap guard'ı AÇMAZ; pending, işlem arka
   planda çözülene / sheet yeniden açılana (taze model — CoinShop/VIP sheet'tir → kalıcı-blok YOK) dek tutulur. TDD:
   pending→acknowledge→guard korunur, ikinci purchase BLOKLANIR (RED çift-purchase → GREEN + revert); 310 WalletKit yeşil.
-- **LOW ERTELENDİ — `PlayerKit/StateBroadcast.stream()` seed'i lock-DIŞI yield ediyor:** iki para-kardeşi
+- **LOW — `PlayerKit/StateBroadcast.stream()` seed'i lock-DIŞI yield ediyordu (✅ DÜZELTİLDİ):** iki para-kardeşi
   (AsyncMulticast/SessionBroadcaster) seed'i register ile aynı kilit altında yield eder (stale-seed-last yarışı önlemi);
-  StateBroadcast etmiyor. ŞU AN ulaşılamaz (sahibi PlaybackEngine actor; subscribe+send serileşir). Savunmacı hardening
-  (subscribe ileride `nonisolated` yapılırsa canlı stale-state bug olur) → ayrı küçük commit'te kardeşlerle hizalanacak.
+  StateBroadcast etmiyordu. ŞU AN ulaşılamazdı (sahibi PlaybackEngine actor; subscribe+send serileşir) ama savunmacı
+  hardening (subscribe ileride `nonisolated` yapılırsa canlı stale-state bug). **Fix:** seed `withLock` içine alındı +
+  `onRegisteredForTesting` kancası (sibling simetriği). TDD: concurrentSendNeverLeavesStaleSeedLast (RED last==0 bayat →
+  GREEN + revert); 288 PlayerKit yeşil. Artık üç primitif de aynı seed-under-lock invariantına + regresyon testine sahip.
 - **LOW ERTELENDİ (WalletKit-UI diğer):** (a) CoinShop `firstTopUpEligible` satın-alma sonrası re-fetch etmiyor →
   Profil kaynağında 2x banner bayat kalır (para kaybı yok, UI over-promise; küçük fix: purchase sonrası catalog
   refresh). (b) win-back indirimli fiyat purchase-offer'dan decoupled — bugün TODO'yla maskeli, "iki TODO'yu birlikte

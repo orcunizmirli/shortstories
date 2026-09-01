@@ -7,6 +7,10 @@ final class StateBroadcast<Element: Sendable>: @unchecked Sendable {
     private var continuations: [UUID: AsyncStream<Element>.Continuation] = [:]
     private var latest: Element
 
+    /// Test kancası (AsyncMulticast simetriği): kayıt tamamlanır tamamlanmaz çağrılır → seed penceresine
+    /// araya send sokup stale-seed-last yarışını deterministik kurmaya yarar. Üretimde nil.
+    var onRegisteredForTesting: (@Sendable () -> Void)?
+
     init(initial: Element) {
         latest = initial
     }
@@ -15,15 +19,17 @@ final class StateBroadcast<Element: Sendable>: @unchecked Sendable {
         lock.withLock { latest }
     }
 
-    /// Yeni abone akışı: ilk değer olarak son bilinen durum replay edilir.
+    /// Yeni abone akışı: ilk değer olarak son bilinen durum replay edilir. Seed'i KİLİT ALTINDA yield eder
+    /// (AsyncMulticast/SessionBroadcaster simetriği): kayıt ile seed-yield arasında send() araya girip aboneyi
+    /// [yeni, bayat-seed] sırasıyla besleyemesin → abonenin SON gördüğü değer daima en-yeni kalır (stale-seed-last önlemi).
     func stream() -> AsyncStream<Element> {
         AsyncStream { continuation in
             let id = UUID()
-            let replay: Element = lock.withLock {
+            lock.withLock {
                 continuations[id] = continuation
-                return latest
+                continuation.yield(latest)
             }
-            continuation.yield(replay)
+            onRegisteredForTesting?()
             continuation.onTermination = { [weak self] _ in
                 guard let self else { return }
                 _ = lock.withLock { continuations.removeValue(forKey: id) }
