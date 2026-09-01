@@ -3,7 +3,7 @@
 Tahminler tek geliştirici / gün cinsindendir. Task ID'leri commit mesajlarında kullanılır
 (`feat(SS-012): …`).
 
-## M0 — İskelet (2 gün)  ✅ bu turda hedeflenen
+## M0 — İskelet (2 gün) ✅
 
 | ID | Task | Tahmin |
 |---|---|---|
@@ -12,7 +12,7 @@ Tahminler tek geliştirici / gün cinsindendir. Task ID'leri commit mesajlarınd
 | SS-003 | `ShotCore`: domain modelleri + tüm port protokolleri | 1 |
 | SS-004 | `Scripts/dependency-lint.swift` (R1–R7) + CI workflow | 0.5 |
 
-## M1 — Anlama zinciri (4 gün)
+## M1 — Anlama zinciri (4 gün) ✅
 
 | ID | Task | Tahmin |
 |---|---|---|
@@ -21,7 +21,7 @@ Tahminler tek geliştirici / gün cinsindendir. Task ID'leri commit mesajlarınd
 | SS-012 | `IntelligenceKit`: `@Generable` şemaları + `FoundationModelAnalyzer` | 1 |
 | SS-013 | `IntelligenceKit`: `HeuristicAnalyzer` (regex+`NLTagger`+`NSDataDetector`) | 1 |
 | SS-014 | `ExtractionValidator` (grounding, IBAN mod-97, ISO-4217) | 0.5 |
-| SS-015 | Altın küme (60 örnek) + doğruluk testi, CI eşiği %70 | 0.5 |
+| SS-015 | Altın küme + doğruluk testi, CI eşiği %70 (şu an 18 örnek; 60 hedef) | 0.5 |
 
 ## M2 — Alım ve kalıcılık (4 gün)
 

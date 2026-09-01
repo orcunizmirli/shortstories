@@ -17,6 +17,8 @@ settings:
 packages:
   AppFoundation:   { path: Packages/AppFoundation }
   ShotCore:        { path: Packages/ShotCore }
+  OCRKit:          { path: Packages/OCRKit }
+  IntelligenceKit: { path: Packages/IntelligenceKit }
 
 targets:
   ShotSenseApp:
@@ -28,6 +30,8 @@ targets:
       # App **kompozisyon köküdür**: adaptörleri portlara bağlayan tek yer (03 §1).
       - { package: AppFoundation }
       - { package: ShotCore }
+      - { package: OCRKit }
+      - { package: IntelligenceKit }
     info:
       path: App/Info.plist
       properties:
