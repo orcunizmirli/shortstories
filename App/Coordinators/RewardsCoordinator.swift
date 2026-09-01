@@ -2,6 +2,7 @@ import AppFoundation
 import Foundation
 import Observation
 import RewardsKit
+import WalletKit
 
 /// Ödüller koordinatörü (03 §3.1): `OdulMerkezi` kökü. F1 (SS-110/111) kapsamında tek cross-feature
 /// niyet coin bakiyesi kısayoludur → `CoinMagazasi` (WalletFlow). Görev detayları/rewarded ad
@@ -77,6 +78,13 @@ extension RewardsCoordinator: RewardsDelegate {
     /// Davet giriş kartı → DavetMerkezi'yi rewards stack'inde iter (RWD-07). Kart yalnız flag açıkken görünür.
     func rewardsOpensReferral() {
         isPresentingReferral = true
+    }
+
+    /// Check-in/görev claim'i SERVER-otoriter bakiyeyi kredilendirdi (#2 coin-ekonomisi hunt) → otoritatif
+    /// `WalletStore`'u tazele ki Profil/CoinShop gibi cüzdan-tabanlı ekranlar OdulMerkezi başlığıyla YAKINSASIN
+    /// (claim doğrudan API'ye gider, WalletStore'a yansımaz). `refresh` async → Task; hesap-fence WalletStore içinde.
+    func rewardsDidCreditBalance() {
+        Task { [composition] in await composition.walletStore.refresh() }
     }
 }
 

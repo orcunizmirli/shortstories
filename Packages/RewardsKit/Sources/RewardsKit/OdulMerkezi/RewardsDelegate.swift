@@ -16,9 +16,16 @@ public protocol RewardsDelegate: AnyObject {
     /// Davet giriş kartından "Arkadaşını Davet Et" → App `DavetMerkeziView`'ı sunar (RWD-07). Kart
     /// `RewardsFlags.referralCard` ile gizlenir. Varsayılan boş → mevcut conformer'lar/testler kırılmaz.
     func rewardsOpensReferral()
+
+    /// Check-in/görev claim'i SERVER-otoriter bakiyeyi kredilendirdi. Claim doğrudan API'ye gider,
+    /// otoritatif `WalletStore`'a yansımaz → App koordinatörü bunu alıp `WalletStore.refresh()` tetiklemeli
+    /// ki Profil/CoinShop gibi cüzdan-tabanlı ekranlar OdulMerkezi başlığıyla YAKINSASIN (oturum-içi ıraksama
+    /// bulgusu #2). Varsayılan boş → mevcut conformer'lar/testler kırılmaz.
+    func rewardsDidCreditBalance()
 }
 
 public extension RewardsDelegate {
     func rewardsDidClaimCheckIn(streakDay _: Int) {}
     func rewardsOpensReferral() {}
+    func rewardsDidCreditBalance() {}
 }

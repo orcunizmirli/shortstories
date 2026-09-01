@@ -83,7 +83,7 @@ public final class OdulMerkeziModel {
     private let cycle: CheckInCycle
     /// Son-görülen streak kalıcılığı (08 §3.5 cold-launch break; App UserDefaults'a bağlar).
     private let lastSeenStreakStore: any LastSeenStreakStoring
-    private weak var delegate: (any RewardsDelegate)?
+    weak var delegate: (any RewardsDelegate)? // internal: `+Tasks` extension'ı claim-credit bildirimi için erişir
 
     /// Devam eden yükleme/tazeleme görevi (boşta nil) — yalnız eşzamanlı çift-yüklemeyi engeller.
     private var loadTask: Task<Void, Never>?
@@ -96,10 +96,9 @@ public final class OdulMerkeziModel {
     /// status() await'i öncesi yakalar/apply öncesi karşılaştırır: araya giren claim bayat pre-claim
     /// status'ü düşürür (sahte streak_break + buton regresyonu; tek actor-hop → TOCTOU'suz).
     private var checkInGeneration = 0
-    /// Hesap-değişimi epoch'u — YALNIZ resetForAccountSwitch'te artar. TÜM apply-after-await yolları
-    /// (claim/load/refreshTasks/runRefresh) await ÖNCESİ yakalar, apply ÖNCESİ `guard epoch == accountEpoch`
-    /// ile karşılaştırır: switch uçuştaki isteğin ortasına girerse önceki hesabın yanıtı yeni hesaba
-    /// YAZILMAZ (WalletStore accountEpoch deseni; SS-132 cross-account). `internal`: `+Tasks` de fence eder.
+    /// Hesap-değişimi epoch'u — YALNIZ resetForAccountSwitch'te artar. TÜM apply-after-await yolları (claim/load/
+    /// refreshTasks/runRefresh) await ÖNCESİ yakalar, apply ÖNCESİ `guard epoch == accountEpoch` ile karşılaştırır:
+    /// switch araya girerse önceki hesabın yanıtı yeni hesaba YAZILMAZ (SS-132; `internal`: `+Tasks` de fence eder).
     var accountEpoch = 0
 
     public init(
@@ -297,6 +296,7 @@ public final class OdulMerkeziModel {
             guard epoch == accountEpoch else { return } // hesap-değişimi fence'i (uçuştaki claim → yeni hesaba yazma)
             // SERVER-OTORİTER kredi (optimistik DEĞİL); bayat akış bu krediyi ezemez (Fix 1).
             applyAuthoritativeBalance(result.coinBalance)
+            delegate?.rewardsDidCreditBalance() // #2: App WalletStore.refresh → Profil/CoinShop başlıkla yakınsar
             applyClaimedCheckInState(result.checkin) // generation bump + son-görülen streak persist
             claimCelebration += 1 // haptic + coin uçuş animasyonu (View tetikler)
             analytics.trackCheckinClaim(

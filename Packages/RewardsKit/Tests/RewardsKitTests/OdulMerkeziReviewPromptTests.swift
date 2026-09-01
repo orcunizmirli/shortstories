@@ -42,6 +42,25 @@ struct OdulMerkeziReviewPromptTests {
         #expect(delegate.checkInClaims == [4]) // pozitif an bildirildi (cycleDay taşınır)
     }
 
+    @Test func successfulCheckInClaimCreditsBalanceForWalletRefresh() async {
+        // #2 (coin-ekonomisi hunt): claim SERVER-otoriter bakiyeyi kredilendirir ama otoritatif WalletStore'a
+        // YANSIMAZ → App'in `WalletStore.refresh()` tetiklemesi için delegate bildirimi gerekir; aksi halde
+        // Profil/CoinShop (cüzdan-tabanlı) OdulMerkezi başlığından oturum-içi IRAKSAR.
+        let claimed = CheckInState.mock(cycleDay: 4, todayClaimed: true, streakDays: 4)
+        let service = FakeCheckInService(
+            status: .success(.mock(cycleDay: 4, todayClaimed: false, streakDays: 4)),
+            claim: .success(.mock(coins: 15, coinBalance: 315, checkin: claimed))
+        )
+        let delegate = RewardsDelegateSpy()
+        let model = makeModel(service: service, delegate: delegate, wallet: FakeRewardsWallet(300))
+        model.onAppear()
+        await model.pendingWork()
+
+        await model.claimToday()
+
+        #expect(delegate.creditBalanceCalls == 1) // App bunu alıp WalletStore.refresh tetikler
+    }
+
     @Test func blockedClaimDoesNotNotifyPositiveMoment() async {
         // Zaten claim edilmişse (UI guard) gerçek claim OLMAZ → pozitif an bildirilmez.
         let service = FakeCheckInService(status: .success(.mock(todayClaimed: true)))

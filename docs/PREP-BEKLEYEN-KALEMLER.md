@@ -236,10 +236,12 @@ account-fence'ler SAĞLAM doğrulandı):
   confirmAdUnlock(episodeID:)` (WalletStore: `confirmUnlocked` — bölüm açık işaretle + `lastUnlocked` broadcast, bakiye
   DEĞİŞMEZ); `UnlockSheetModel.watchAd` `.unlocked`'ta çağrılır → coin `unlock` ile simetrik, tüm `hasAccess`-tüketiciler
   tutarlı. TDD: reklamUnlockCuzdanEntitlementineYansir + confirmAdUnlockBolumuAcarBakiyeyeDokunmaz (RED→GREEN); 305 WalletKit yeşil.
-- **#2 Check-in/görev claim'i WalletStore'a ulaşmaz → OdulMerkezi vs Profil/CoinShop ıraksak bakiye (MEDIUM, PENDING):**
-  claim doğrudan API'ye gider, WalletStore'a yansımaz; refresh yalnız cold-start/switch/purchase'ta → oturum-içi
-  ıraksama (finansal kayıp yok — server otoriter; app-restart'ta düzelir). **Fix:** başarılı claim sonrası `walletStore.
-  refresh()` (App-wiring: RewardsCoordinator/claim-delegate → composition.walletStore.refresh).
+- **#2 Check-in/görev claim'i WalletStore'a ulaşmaz → OdulMerkezi vs Profil/CoinShop ıraksak bakiye (MEDIUM — ✅
+  DÜZELTİLDİ):** claim doğrudan API'ye gider, WalletStore'a yansımazdı; refresh yalnız cold-start/switch/purchase'ta
+  → oturum-içi ıraksama (finansal kayıp yok — server otoriter; app-restart'ta düzelirdi). **Fix:** `RewardsDelegate.
+  rewardsDidCreditBalance()` (default empty) → claimToday + claimTask BAŞARISINDA fire → `RewardsCoordinator` bunu
+  alıp `composition.walletStore.refresh()` tetikler → tüm cüzdan-tüketiciler yakınsar. TDD: successfulCheckInClaim/
+  successfulTaskClaim CreditsBalanceForWalletRefresh (RED→GREEN); 158 RewardsKit yeşil, App build + lint temiz.
 - **#3 AD-unlock account-epoch fence yok + WalletFlow sheet switch'te reset olmaz (LOW, ACCEPTED):** tam-ekran modal
   reklam mid-ad hesap-switch'i engeller; post-ad pencere alt-saniye + feed-reset + server-reload mitige → near-unreachable.
 

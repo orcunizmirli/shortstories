@@ -323,6 +323,27 @@ struct OdulMerkeziTaskTests {
     }
 }
 
+// MARK: - #2 claim → bakiye kredilendirme bildirimi (same-file extension: type_body_length'e sayılmaz)
+
+extension OdulMerkeziTaskTests {
+    @Test func successfulTaskClaimCreditsBalanceForWalletRefresh() async {
+        // #2 (coin-ekonomisi hunt): görev claim'i de SERVER-otoriter bakiyeyi kredilendirir ama otoritatif
+        // WalletStore'a YANSIMAZ → App'in `WalletStore.refresh()` tetiklemesi için delegate bildirimi (check-in
+        // ile simetrik); aksi halde Profil/CoinShop OdulMerkezi başlığından oturum-içi ıraksar.
+        let claimed = RewardTask.mock(id: "a", progress: 10, state: .claimed)
+        let catalog = FakeTaskCatalog(.success([.mock(id: "a", rewardCoins: 20, target: 10, progress: 10, state: .claimable)]))
+        let claiming = FakeRewardClaiming(.success(.mock(coins: 20, coinBalance: 320, task: claimed)))
+        let delegate = RewardsDelegateSpy()
+        let model = makeModel(wallet: FakeRewardsWallet(300), taskCatalog: catalog, rewardClaiming: claiming, delegate: delegate)
+        model.onAppear()
+        await model.pendingWork()
+
+        await model.claimTask("a")
+
+        #expect(delegate.creditBalanceCalls == 1) // App WalletStore.refresh tetikler (Profil/CoinShop yakınsar)
+    }
+}
+
 // MARK: - Test kurucusu (type_body_length: same-file extension gövdeye sayılmaz)
 
 private extension OdulMerkeziTaskTests {
@@ -333,7 +354,8 @@ private extension OdulMerkeziTaskTests {
         taskProgress: FakeTaskProgress = FakeTaskProgress(),
         rewardClaiming: FakeRewardClaiming = FakeRewardClaiming(),
         analytics: MockAnalytics = MockAnalytics(),
-        flags: MockFeatureFlags = MockFeatureFlags()
+        flags: MockFeatureFlags = MockFeatureFlags(),
+        delegate: RewardsDelegateSpy = RewardsDelegateSpy()
     ) -> OdulMerkeziModel {
         OdulMerkeziModel(
             checkInService: service,
@@ -343,7 +365,7 @@ private extension OdulMerkeziTaskTests {
             rewardClaiming: rewardClaiming,
             analytics: analytics,
             featureFlags: flags,
-            delegate: RewardsDelegateSpy()
+            delegate: delegate
         )
     }
 }

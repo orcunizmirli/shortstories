@@ -193,6 +193,8 @@ final class RewardsDelegateSpy: RewardsDelegate {
     var referral = 0
     /// Başarılı check-in claim'inde gelen streak-günleri (RTG-01 pozitif an).
     private(set) var checkInClaims: [Int] = []
+    /// Bakiye kredilendirme bildirimi sayısı (#2: App WalletStore.refresh tetikler).
+    private(set) var creditBalanceCalls = 0
 
     func rewardsOpensCoinStore() {
         coinStore += 1
@@ -204,6 +206,10 @@ final class RewardsDelegateSpy: RewardsDelegate {
 
     func rewardsOpensReferral() {
         referral += 1
+    }
+
+    func rewardsDidCreditBalance() {
+        creditBalanceCalls += 1
     }
 }
 

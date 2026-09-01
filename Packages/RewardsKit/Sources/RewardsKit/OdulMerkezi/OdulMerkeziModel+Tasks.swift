@@ -60,6 +60,7 @@ public extension OdulMerkeziModel {
             guard epoch == accountEpoch else { return }
             // SERVER-OTORİTER kredi: bakiye ve görev YALNIZ server yanıtından (optimistik DEĞİL).
             applyAuthoritativeBalance(result.coinBalance) // Fix 1: bayat akış bu krediyi ezemez
+            delegate?.rewardsDidCreditBalance() // #2: App WalletStore.refresh → Profil/CoinShop başlıkla yakınsar
             markTaskClaimed(result.task) // Fix 4: yerel .claimed kaydı (bayat .claimable geri döndürmez)
             taskClaimCelebration += 1 // haptic + coin uçuş animasyonu (View tetikler)
             analytics.trackMissionClaim(
