@@ -55,6 +55,45 @@ struct OdulMerkeziCheckInRaceTests {
         #expect(!analytics.events.contains { $0.name == "checkin_streak_break" }) // SAHTE kırılma yok
     }
 
+    @Test func postClaimStaleRefreshDoesNotReopenClaim() async {
+        // MEDIUM (RewardsKit hunt): generation-guard YALNIZ claim-anında UÇUŞTA olan status()'ü düşürür. Claim'den
+        // SONRA başlayan warm refreshCheckIn post-claim generation'ı yakalar → fence GEÇER; server read-replica bayat
+        // pre-claim status dönerse buton geri açılır + sahte streak_break + lastSeenStreak bozulur. Task-tarafı
+        // reconcileClaimed (Fix 4) pinine simetrik: claim-pin bayat downgrade'i engeller.
+        let store = InMemoryLastSeenStreakStore(nil)
+        let service = GatedCheckInService(
+            status: .mock(cycleDay: 3, todayClaimed: false, streakDays: 3), // server BAYAT pre-claim döner
+            claim: .mock(coins: 20, coinBalance: 120, checkin: .mock(cycleDay: 4, todayClaimed: true, streakDays: 4))
+        )
+        let analytics = MockAnalytics()
+        let model = OdulMerkeziModel(
+            checkInService: service,
+            wallet: FakeRewardsWallet(100),
+            taskCatalog: FakeTaskCatalog(),
+            taskProgress: FakeTaskProgress(),
+            rewardClaiming: FakeRewardClaiming(),
+            analytics: analytics,
+            featureFlags: MockFeatureFlags(),
+            delegate: RewardsDelegateSpy(),
+            lastSeenStreakStore: store
+        )
+        model.onAppear()
+        await model.pendingWork() // ilk yükleme: streak 3, todayClaimed false
+        await model.claimToday()
+        #expect(model.streakDays == 4)
+        #expect(model.checkInState?.todayClaimed == true)
+
+        // Claim SONRASI warm refresh (in-flight DEĞİL → generation eşleşir); server hâlâ bayat pre-claim döner.
+        model.onAppear()
+        await model.pendingWork()
+
+        #expect(model.streakDays == 4) // bayat streak 3 uygulanMADI (claim-pin korudu)
+        #expect(model.checkInState?.todayClaimed == true)
+        #expect(model.canClaimToday == false) // buton geri AÇILMADI
+        #expect(store.lastSeenStreak() == 4) // lastSeenStreak 3'e BOZULMADI
+        #expect(!analytics.events.contains { $0.name == "checkin_streak_break" }) // SAHTE kırılma yok
+    }
+
     @Test func claimInFlightDuringAccountSwitchDoesNotWriteOldAccountData() async {
         // Self-review HIGH: claim UÇUŞTAYKEN resetForAccountSwitch olursa (hesap switch), A hesabının claim
         // yanıtı (bakiye/checkin/lastSeenStreak) B state'ine YAZILMAMALI (accountEpoch fence). refreshCheckIn

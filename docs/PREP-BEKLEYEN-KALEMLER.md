@@ -245,6 +245,42 @@ account-fence'ler SAĞLAM doğrulandı):
 - **#3 AD-unlock account-epoch fence yok + WalletFlow sheet switch'te reset olmaz (LOW, ACCEPTED):** tam-ekran modal
   reklam mid-ad hesap-switch'i engeller; post-ad pencere alt-saniye + feed-reset + server-reload mitige → near-unreachable.
 
+### RewardsKit adversarial bug-hunt (2026-09-01)
+OdulMerkezi/Referral/ad-reward hunt: çekirdek olağanüstü sertleştirilmiş (in-flight claim guard, accountEpoch fence,
+checkInGeneration fence, version-monotonic bakiye guard, task eventual-consistency reconcile). 1 MEDIUM düzeltildi:
+- **MEDIUM — check-in claim post-claim pin eksik (✅ DÜZELTİLDİ):** generation-guard YALNIZ claim-anında UÇUŞTA
+  olan status()'ü düşürür. Claim-SONRASI başlayan warm `refreshCheckIn` post-claim generation'ı yakalar → fence
+  GEÇER; server read-replica bayat pre-claim status (todayClaimed=false, düşük streak) dönerse buton geri açılır +
+  sahte `checkin_streak_break` + `lastSeenStreak` bozulur. Task-tarafı `reconcileClaimed` (Fix 4) pini vardı,
+  check-in'de yoktu. **Fix:** `checkInClaimedPin` — claim'de set, `applyLoadedState`'te bayat pre-claim downgrade'i
+  düşür, server `todayClaimed=true` onaylayınca düş (monoton; günlük-reset korunur), account-switch'te temizle.
+  TDD: claim → warm refresh bayat pre-claim → streak/buton/lastSeenStreak/streak_break korunur (RED→GREEN + revert).
+- **LOW REDDEDİLDİ (naif fix regresyon) — resetForAccountSwitch isClaiming/claimingTaskID temizlemiyor:** hunt
+  "reset'te temizle" önerdi AMA `claimTask`/`claimToday` defer'leri GUARD'SIZ (`defer { claimingTaskID = nil }`).
+  Naif temizleme → A'nın uçuştaki claim'i, switch sonrası B'nin YENİ claim marker'ını mid-flight ezip çift-claim
+  guard'ını bypass ettirir (regresyon). Mevcut davranış FAIL-CLOSED + self-healing (leaked marker B'yi geçici
+  bloklar, defer saniyeler içinde temizler — hunt de LOW/kozmetik dedi). Doğru fix epoch-guard'lı defer gerektirir
+  (para-claim koduna orantısız risk) → bilinçli no-op, mevcut fail-closed davranış kabul.
+- **LOW BEKLİYOR — Referral redeem WalletStore refresh sinyali yok:** `ReferralModel.redeem` `.credited` kolu
+  cüzdanı server'da kreditler ama OdulMerkezi kalıbındaki (`delegate.rewardsDidCreditBalance()`) sinyali GÖNDERMEZ →
+  redeem sonrası Profil/CoinShop başlığı bayat (DÜŞÜK) bakiye gösterir. Yön GÜVENLİ (optimistik kredi DEĞİL). Ayrı
+  commit'te düzeltilecek (ReferralDelegate + App wiring). Elenen: çift-claim/optimistik-kredi/ad-reward/account-leak
+  hepsi kodda doğrulanıp güvenli bulundu.
+
+### LibraryKit/App favori-dokunuş resume (LATENT — progress-sync canlıya alınınca düzelt)
+LibraryKit adversarial hunt bulgusu (MEDIUM ama F1'de ulaşılamaz → düzeltme progress-write/sync bağlanınca):
+- **App/Coordinators/LibraryCoordinator.swift `listemPlaySeries` (satır 85-98):** favori-dokunuş, `latestProgress
+  (forSeries:)`'in HAM kaydını kullanıp `record.completed`'ı YOK SAYIYOR → son izlenen bölüm tamamlanmışsa o bölümü
+  bitiş konumundan seed ediyor. Kanonik davranış (DiziDetay `ContinueWatchingTarget.resolve`) completed → SONRAKİ
+  bölüm (konum 0; yayınlanmış son bölümse aynı bölümde kalır). Favori-dokunuş yolu bu dalı uygulamıyor.
+- **Neden latent:** yerel `recordProgress` yazma yolunun üretimde HİÇ çağrısı yok (player progress yazmıyor) +
+  sunucu-merge (`mergeServerProgress`) prep-bekleyen backend'e bağlı → completed kayıt şu an `latestProgress`'e
+  ulaşamaz. Bug ancak progress-write/sync canlıya alınınca tetiklenir.
+- **Doğru fix (o zaman):** koordinatör `WatchProgressRecord` episode-index TAŞIMADIĞINDAN "sonraki bölüm"ü tek
+  başına türetemez → dizi bölüm listesini çekip kanonik `ContinueWatchingTarget.resolve`'u kullanmalı (veya en az
+  completed iken bitmiş bölümü seed etmemeli). DiziDetay `ensureProgressEpisodeLoaded` "episodeId-resume" prep
+  notuyla (satır 188) aynı dilimde ele alınmalı.
+
 ### DiscoverKit adversarial bug-hunt (2026-09-01)
 DiziDetay/Arama/Kesfet hunt: çekirdek olağanüstü sertleştirilmiş (unlock server-otoriter — DiscoverKit optimistik
 bakiye/erişim YAZMAZ; arama/revalidate/recomputeAccess generation-fence'li; sayfalama dedup/empty-cursor guard'lı).

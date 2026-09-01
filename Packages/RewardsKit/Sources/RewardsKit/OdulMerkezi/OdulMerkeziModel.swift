@@ -67,6 +67,9 @@ public final class OdulMerkeziModel {
     /// Bu oturumda claim edilen (veya 409'da senkron) görev id'leri — eventual-consistency guard: server
     /// bayat `.claimable` dönse bile `.claimed` tutulur, `mission_complete` tekrar atılmaz (Fix 4).
     var claimedTaskIDs: Set<String> = []
+    /// Check-in claim eventual-consistency pini (task `claimedTaskIDs` simetriği): claim-sonrası warm refresh'te
+    /// server bayat pre-claim (todayClaimed=false) dönerse downgrade'i düşürür; server onaylayınca (todayClaimed) düşer.
+    private var checkInClaimedPin = false
     /// Başarılı görev claim sayacı — View haptic + coin animasyonu (yalnız SERVER onayından sonra).
     public internal(set) var taskClaimCelebration = 0
     /// Son görev claim denemesinin başarısızlığı; başarıda/yeni denemede sıfırlanır.
@@ -89,16 +92,14 @@ public final class OdulMerkeziModel {
     private var loadTask: Task<Void, Never>?
     /// İlk (tam) yükleme tamamlandı mı — sonraki tazeleme yalnız check-in + görev çeker (07 §4.4).
     private var hasLoaded = false
-    /// Uygulanmış en yüksek cüzdan-akış version'ı (audit MEDIUM donma fix): applyBalance yalnız STRICTLY-NEWER
-    /// version uygular; claim version bump ETMEZ (sonraki akış onaylar). Snapshot yokken `Int.min`.
+    /// Uygulanmış en yüksek cüzdan-akış version'ı (audit MEDIUM donma fix): applyBalance yalnız STRICTLY-NEWER uygular;
+    /// claim version bump ETMEZ (sonraki akış onaylar). Snapshot yokken `Int.min`.
     private var lastAppliedBalanceVersion = Int.min
-    /// Check-in state generation'ı — her OTORİTER yazımda (claim başarı/409) artar. refreshCheckIn'i
-    /// status() await'i öncesi yakalar/apply öncesi karşılaştırır: araya giren claim bayat pre-claim
-    /// status'ü düşürür (sahte streak_break + buton regresyonu; tek actor-hop → TOCTOU'suz).
+    /// Check-in state generation'ı — her OTORİTER yazımda (claim başarı/409) artar. refreshCheckIn status() await'i
+    /// öncesi yakalar/apply öncesi karşılaştırır: araya giren claim bayat pre-claim status'ü düşürür (tek actor-hop).
     private var checkInGeneration = 0
-    /// Hesap-değişimi epoch'u — YALNIZ resetForAccountSwitch'te artar. TÜM apply-after-await yolları (claim/load/
-    /// refreshTasks/runRefresh) await ÖNCESİ yakalar, apply ÖNCESİ `guard epoch == accountEpoch` ile karşılaştırır:
-    /// switch araya girerse önceki hesabın yanıtı yeni hesaba YAZILMAZ (SS-132; `internal`: `+Tasks` de fence eder).
+    /// Hesap-değişimi epoch'u — YALNIZ resetForAccountSwitch'te artar. TÜM apply-after-await yolları await ÖNCESİ
+    /// yakalar, apply ÖNCESİ `guard epoch == accountEpoch`: switch araya girerse önceki hesabın yanıtı YAZILMAZ (SS-132).
     var accountEpoch = 0
 
     public init(
@@ -217,28 +218,24 @@ public final class OdulMerkeziModel {
         let generation = checkInGeneration
         do {
             let state = try await checkInService.status()
-            // Uçuştaki status() await sırasında araya giren claim generation'ı bump'larsa bayat pre-claim
-            // status'ü düşür (sahte checkin_streak_break + buton regresyonu; claim zaten .loaded + state yazdı).
+            // Uçuştaki status() await'inde araya giren claim generation'ı bump'larsa bayat pre-claim status'ü düşür.
             guard generation == checkInGeneration else { return }
             applyLoadedState(state)
             loadState = .loaded
             // Görev listesi (missionSection) yalnız .loaded'da görünür → mission_view (08 §3.5).
             analytics.trackMissionView(missionIDs: catalog.visibleTasks.map(\.id))
         } catch {
-            // Fix (self-review2): CATCH da generation-fence'li (başarı yolu gibi). Aksi halde araya giren
-            // claim/reset SONRASI status() THROW ederse loadState .failed'e düşüp para-ekranını tam-ekran
-            // hataya kırardı (başarılı claim'e rağmen buton regresyonu, throw yolu / B'de sahte hata).
+            // CATCH da generation-fence'li (başarı yolu gibi): araya giren claim/reset SONRASI status() throw ederse
+            // loadState .failed'e düşüp para-ekranını (başarılı claim'e rağmen) tam-ekran hataya kırmasın (self-review2).
             guard generation == checkInGeneration else { return }
             loadState = Self.loadFailure(for: error)
         }
     }
 
-    /// Canlı bakiye + görev ilerleme akışlarını dinler. View `.task` ile sürer → ekran kaybolunca
-    /// OTOMATİK iptal (task-group çocukları da iptal olur). İlk yükleme snapshot'ından sonra abone olur.
-    /// Akışlar (Sendable) önce alınır; her değer @MainActor apply metoduyla uygulanır (bölge-izolasyon).
+    /// Canlı bakiye + görev ilerleme akışlarını dinler. View `.task` ile sürer → ekran kaybolunca OTOMATİK iptal.
+    /// İlk yükleme sonrası abone olur; akışlar (Sendable) önce alınır, her değer @MainActor apply ile (bölge-izolasyon).
     public func observeUpdates() async {
-        // İlk yükleme henüz olmadıysa başlat (yalnız .task kullanan View); olduysa mevcut/biten görevi
-        // bekle — tazeleme onAppear'ın işi, burada gereksiz ikinci fetch tetiklenmez.
+        // İlk yükleme yoksa başlat (yalnız .task kullanan View); varsa mevcut/biten görevi bekle (tazeleme onAppear'ın).
         if !hasLoaded {
             startRefreshIfIdle()
         }
@@ -260,8 +257,8 @@ public final class OdulMerkeziModel {
     }
 
     private func applyBalance(_ update: RewardsBalanceUpdate) {
-        // Cross-account poison guard (self-review): canlı stream yalnız otoriter baseline (load) SONRASI uygulanır
-        // → switch penceresinde bayat eski-hesap emisyonu (hesaplar-arası version monoton değil) poison'lamaz.
+        // Cross-account poison guard: canlı stream yalnız otoriter baseline (load) SONRASI uygulanır → switch
+        // penceresinde bayat eski-hesap emisyonu (version hesaplar-arası monoton değil) poison'lamaz (self-review).
         guard hasLoaded else { return }
         // audit MEDIUM (donma fix): yalnız STRICTLY-NEWER version uygulanır (bayat replay düşer, MEŞRU spend uygulanır).
         guard update.version > lastAppliedBalanceVersion else { return }
@@ -280,9 +277,8 @@ public final class OdulMerkeziModel {
 
     // MARK: - Claim (server-otoriter, idempotent)
 
-    /// Günlük ödülü talep eder. Guard: yüklenmiş, bugün alınmamış, halihazırda claim edilmiyor
-    /// (çift-claim UI'dan tetiklenemez). Başarı → server bakiyesi/durumu + haptic/animasyon +
-    /// `checkin_claim`. 409 → sessiz senkron (toast yok). Offline/hata → kredi YOK, buton retry.
+    /// Günlük ödülü talep eder. Guard: yüklenmiş, bugün alınmamış, claim edilmiyor (çift-claim UI'dan tetiklenemez).
+    /// Başarı → server bakiyesi/durumu + haptic + `checkin_claim`. 409 → sessiz senkron. Offline/hata → kredi YOK.
     public func claimToday() async {
         guard let current = checkInState, !current.todayClaimed, !isClaiming, loadState == .loaded else {
             return
@@ -338,21 +334,25 @@ public final class OdulMerkeziModel {
         analytics.track("screen_view", parameters: ["screen_name": .string("odul_merkezi")])
     }
 
-    /// Claim (başarı/409) OTORİTER check-in state'ini uygular: checkInState + generation bump (uçuştaki
-    /// refreshCheckIn bayat status'ü düşürsün) + son-görülen streak persist (Fix 7: claim-sonrası app-kill →
-    /// cold-launch yanlış previousStreakLength'i önler). Kırılma tespiti YAPMAZ (claim "ilk gözlem" değil).
+    /// Claim (başarı/409) OTORİTER check-in state'ini uygular: checkInState + generation bump + claim-pin + son-görülen
+    /// streak persist (Fix 7: claim-sonrası app-kill → cold-launch yanlış previousStreakLength). Kırılma tespiti YAPMAZ.
     private func applyClaimedCheckInState(_ state: CheckInState) {
         checkInState = state
         checkInGeneration += 1
+        checkInClaimedPin = true // claim-sonrası bayat pre-claim status downgrade'ini engelle (server onaylayınca düşer)
         lastSeenStreakStore.setLastSeenStreak(state.streakDays)
     }
 
-    /// Check-in takvimi görünür olduğunda (08 §3.5). Streak kırılması önceki duruma göre tespit
-    /// edilirse `checkin_streak_break` de atılır. `checkInState` GÜNCELLENMEDEN önce çağrılır.
+    /// Check-in takvimi görünür olduğunda (08 §3.5); streak kırılması tespit edilirse `checkin_streak_break` atılır.
     private func applyLoadedState(_ state: CheckInState) {
-        // Kırılma tespiti: oturum içindeyse (previous var) bellek-içi karşılaştırma; SOĞUK AÇILIŞTA
-        // (previous nil) KALICI son-görülen streak ile karşılaştır (Fix 6). Kırılmalar çoğu kez
-        // oturumlar-arasıdır; cold-launch'ta emit edilmezse win-back KPI kör kalır (08 §3.5).
+        // Claim-pin reconcile (task reconcileClaimed Fix 4 simetriği): claim-sonrası warm refresh'te server bayat
+        // pre-claim dönerse DÜŞÜR (buton regresyonu/sahte streak_break önle); todayClaimed onaylanınca pin düşer.
+        if checkInClaimedPin {
+            guard state.todayClaimed else { return }
+            checkInClaimedPin = false
+        }
+        // Kırılma tespiti: oturum-içi (previous var) bellek karşılaştırması; SOĞUK AÇILIŞTA (previous nil) KALICI
+        // son-görülen streak ile (Fix 6 — kırılmalar çoğu kez oturumlar-arası; cold-launch'ta emitlenmezse KPI kör).
         let brk: StreakBreak? = if let previous = checkInState {
             cycle.detectStreakBreak(previous: previous, current: state)
         } else {
@@ -365,8 +365,8 @@ public final class OdulMerkeziModel {
             )
         }
         checkInState = state
-        // Güncel server streak'ini kalıcı kıl → bir sonraki (soğuk) açılışın karşılaştırma tabanı; ayrıca
-        // "istemci ilk gördüğünde 1 kez": sonraki tazeleme (warm) aynı kırılmayı TEKRAR atmaz.
+        // Güncel server streak'ini kalıcı kıl → sonraki (soğuk) açılışın karşılaştırma tabanı + warm refresh aynı
+        // kırılmayı TEKRAR atmaz ("istemci ilk gördüğünde 1 kez").
         lastSeenStreakStore.setLastSeenStreak(state.streakDays)
         analytics.trackCheckinView(currentStreakDay: state.cycleDay, canClaimToday: !state.todayClaimed)
     }
@@ -375,9 +375,8 @@ public final class OdulMerkeziModel {
 // MARK: - Hesap değişimi sıfırlama (05 §3.3 / SS-132)
 
 public extension OdulMerkeziModel {
-    /// Hesap değişiminde hesap-ÖZEL bellek-içi durumu sıfırlar (model TabCoordinator ömrü boyu yaşar →
-    /// sıfırlanmazsa cross-account: sahte streak_break, yanlış .claimed pin, bayat coinBalance, A hata banner'ı).
-    /// accountEpoch/checkInGeneration bump uçuştakini fence eder; hasLoaded=false tam-yükletir.
+    /// Hesap değişiminde hesap-ÖZEL bellek-içi durumu sıfırlar (model TabCoordinator ömrü boyu yaşar → cross-account:
+    /// sahte streak_break, yanlış pin, bayat coinBalance, A banner'ı). accountEpoch/checkInGeneration bump fence'ler.
     func resetForAccountSwitch() {
         accountEpoch += 1 // uçuştaki claim/load/refreshTasks yanıtlarını fence et (önceki hesap → yeni'ye yazmasın)
         checkInGeneration += 1
@@ -388,6 +387,7 @@ public extension OdulMerkeziModel {
         catalogLoadedOnce = false
         liveProgress = [:]
         claimedTaskIDs.removeAll()
+        checkInClaimedPin = false // A'nın claim-pini B'nin meşru pre-claim status'ünü düşürmesin
         hasLoaded = false
         loadState = .loading
         lastSeenStreakStore.reset()
