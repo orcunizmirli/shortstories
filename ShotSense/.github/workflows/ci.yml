@@ -1,0 +1,95 @@
+name: CI
+
+on:
+  pull_request:
+  push: { branches: [main] }
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  XCODE_PATH: /Applications/Xcode_26.app
+
+jobs:
+  architecture:
+    name: Mimari kuralları (R1–R7)
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo xcode-select -s "$XCODE_PATH"
+      # Bu adım KANON §1'i (ağ yok) ve 03-mimari.md §4 bağımlılık kurallarını zorlar.
+      # Derleyici bu kuralları göremediği için ayrı bir kapı gerekir.
+      - name: dependency-lint
+        run: swift Scripts/dependency-lint.swift
+
+  lint:
+    name: SwiftLint + SwiftFormat
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - name: Araçları kur
+        env:
+          # Kural davranışı SwiftFormat sürümüyle değişir; sürüm pinlenir ki CI ile yerel
+          # geliştirme aynı sonucu versin.
+          SWIFTFORMAT_VERSION: "0.62.1"
+        run: |
+          brew install swiftlint
+          curl -fsSL -o /tmp/sf.zip \
+            "https://github.com/nicklockwood/SwiftFormat/releases/download/${SWIFTFORMAT_VERSION}/swiftformat.artifactbundle.zip"
+          unzip -q -o /tmp/sf.zip -d /tmp/sf
+          echo "SWIFTFORMAT_BIN=/tmp/sf/swiftformat.artifactbundle/swiftformat-${SWIFTFORMAT_VERSION}-macos/bin/swiftformat" >> "$GITHUB_ENV"
+      - run: swiftlint lint --strict
+      - run: chmod +x "$SWIFTFORMAT_BIN" && "$SWIFTFORMAT_BIN" --lint .
+
+  discover:
+    name: Paketleri keşfet
+    runs-on: ubuntu-latest
+    outputs:
+      packages: ${{ steps.list.outputs.packages }}
+    steps:
+      - uses: actions/checkout@v4
+      # Matris elle güncellenmez: yeni paket eklendiğinde CI kendiliğinden kapsar.
+      - id: list
+        run: |
+          packages=$(ls Packages | jq -R -s -c 'split("\n") | map(select(length > 0))')
+          echo "packages=$packages" >> "$GITHUB_OUTPUT"
+          echo "Bulunan paketler: $packages"
+
+  test:
+    name: Test ${{ matrix.package }}
+    needs: discover
+    runs-on: macos-26
+    strategy:
+      fail-fast: false
+      matrix:
+        package: ${{ fromJSON(needs.discover.outputs.packages) }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo xcode-select -s "$XCODE_PATH"
+      # Paketler macOS 26'yı da hedefler (Vision/FoundationModels/SwiftData orada da var),
+      # bu yüzden simülatör başlatmadan `swift test` ile koşarlar — CI süresi ~4x kısalır.
+      # UIKit'e bağlı kod yoktur (KANON: SwiftUI-only), dolayısıyla bu güvenlidir.
+      - name: swift test
+        working-directory: Packages/${{ matrix.package }}
+        run: swift test --parallel
+
+  build-app:
+    name: Uygulamayı derle
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo xcode-select -s "$XCODE_PATH"
+      - run: brew install xcodegen
+      - name: Projeyi üret
+        run: xcodegen generate
+      - name: Simülatör için derle
+        run: |
+          # En yeni iOS runtime'ındaki iPhone seçilir; eski runtime cihazları güncel
+          # Xcode'da geçerli destination olarak kabul edilmeyebiliyor.
+          DEVICE=$(xcrun simctl list devices available | grep -o 'iPhone [^(]*' | tail -1 | sed 's/ *$//')
+          xcodebuild build \
+            -project ShotSense.xcodeproj \
+            -scheme ShotSenseApp \
+            -destination "platform=iOS Simulator,name=$DEVICE" \
+            -quiet

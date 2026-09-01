@@ -1,0 +1,25 @@
+# Xcode
+build/
+DerivedData/
+*.xcodeproj
+*.xcworkspace/xcuserdata/
+xcuserdata/
+*.xcuserstate
+*.hmap
+*.ipa
+*.dSYM.zip
+
+# XcodeGen üretilen proje commit'lenmez (project.yml kaynaktır)
+ShotSense.xcodeproj/
+
+# SwiftPM
+.build/
+.swiftpm/xcode/package.xcworkspace/
+.swiftpm/xcode/xcuserdata/
+Package.resolved
+
+# macOS
+.DS_Store
+
+# Yerel
+*.local.xcconfig

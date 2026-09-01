@@ -1,0 +1,67 @@
+included:
+  - App
+  - Packages
+  - AppTests
+excluded:
+  - .build
+  - DerivedData
+  - "**/.build"
+
+disabled_rules:
+  - todo                    # TODO(SS-xxx) izlenebilir biçimde kullanılıyor
+  - trailing_comma
+
+opt_in_rules:
+  - array_init
+  - closure_spacing
+  - collection_alignment
+  - contains_over_first_not_nil
+  - empty_count
+  - empty_string
+  - explicit_init
+  - first_where
+  - force_unwrapping
+  - implicitly_unwrapped_optional
+  - last_where
+  - literal_expression_end_indentation
+  - modifier_order
+  - multiline_parameters
+  - operator_usage_whitespace
+  - overridden_super_call
+  - prefer_self_type_over_type_of_self
+  - redundant_nil_coalescing
+  - sorted_first_last
+  - toggle_bool
+  - unneeded_parentheses_in_closure_argument
+  - yoda_condition
+
+line_length:
+  warning: 110
+  error: 140
+  ignores_comments: false
+  ignores_urls: true
+
+type_body_length: { warning: 300, error: 450 }
+file_length: { warning: 450, error: 700 }
+function_body_length: { warning: 60, error: 100 }
+cyclomatic_complexity: { warning: 12, error: 20 }
+
+identifier_name:
+  min_length: { warning: 2 }
+  excluded: [id, x, y, k, b, n, tf, df, q]
+
+nesting:
+  type_level: 3
+
+custom_rules:
+  no_print:
+    name: "print yerine Log kullan"
+    regex: '(?<!\w)print\('
+    match_kinds: [identifier]
+    message: "AppFoundation.Log kullan; print() üretim kodunda yasak (KANON §7)."
+    severity: error
+  no_network:
+    name: "Ağ API'si yasak"
+    regex: '\b(URLSession|NWConnection|CFSocket|NSURLConnection)\b'
+    message: "KANON §1: ShotSense ağ isteği yapmaz."
+    severity: error
