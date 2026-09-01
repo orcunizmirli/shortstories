@@ -260,7 +260,20 @@ cross-account doğru. **AREA B (playback authorize): 1 MEDIUM + 2 LOW (✅ hepsi
   teardown→drain hesap-switch remount'unda fire eder; sınırsız cache büyümesini de keser — LOW #3). TDD: invalidateAll
   tüm cache'i temizler (RED no-op → GREEN + revert).
 - **LOW — authorize sonucu episodeId doğrulanmadan cache'leniyordu:** server yanlış bölümün yetkisini dönerse istenen
-  bölüm altında BAŞKA URL tutulurdu. **Fix:** `guard auth.episodeId == episodeID` (throw). TDD (RED→GREEN + revert).
+  bölüm altında BAŞKA URL tutulurdu. **Fix:** `guard auth.episodeId == episodeID` (throw); guard **Task İÇİNDE** →
+  owner + coalesced-joiner ikisi de doğrulanır (regresyon-verify hunt'ı joiner'ın atlandığını gördü → tamamlandı).
+  TDD: owner-mismatch fırlatır + coalesced-joiner da fırlatır (ikisi de RED→GREEN + revert).
+
+### Money-core regresyon-verify (self-review, 2026-09-01)
+Bu oturumun sonraki money-core commit'lerinin (4412def double-charge, 8d890c2 viaVIP, eec821d firstTopUp/unlock_ad,
+5b432c6 authorize) bağımsız-context adversarial regresyon-doğrulaması: **REGRESYON YOK** (ilk regresyon-hunt check-in
+pin'de MEDIUM bulmuştu → bu tur temiz, güçlü yakınsama). viaVIP mis-tag'leri hasAccess semantiğiyle korunur
+(coin/ad unlockedEpisodes'ta → re-lock'tan bağışık), applyVIPUnlock idempotent (çift onVIPActivated güvenli),
+firstTopUp refresh clobber-etmez, unlock_ad tek-atım. **1 LOW ERTELENDİ (kabul, PREP):** `.pending` sheet-içi
+kurtarılabilirlik — Profil-source açık sheet'te pending arka planda çözülünce (parent onayı → bakiye kreditlenir)
+banner "Onay bekleniyor" kalıp buton yeniden-etkinleşmez → close+reopen ile kurtarılır (para kaybı yok, pending-sırası
+bloklama DOĞRU). Tam fix `Transaction.updates`→phase-transition gözlemi gerektirir (mimari; herhangi-bakiye-kredisinde
+temizlemek pending'i-BAŞKA-krediyle-açar double-charge penceresini geri açar → SPESİFİK işlem eşleşmesi şart).
 - Phase-2 stub'lar (bug DEĞİL): FairPlay/DRM (`PlaybackAuthorization.drm` opsiyonel, clear-HLS F1); HTTP cache SS-020.
   290 PlayerKit yeşil, lint temiz.
 

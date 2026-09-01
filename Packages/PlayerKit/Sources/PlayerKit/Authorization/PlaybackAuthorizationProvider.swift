@@ -67,17 +67,18 @@ actor PlaybackAuthorizationProvider {
             return try await existing.value
         }
         let task = Task { [service] in
-            try await service.authorize(episodeId: episodeID)
+            let auth = try await service.authorize(episodeId: episodeID)
+            // Sözleşme-drift savunması (LOW): server YANLIŞ bölümün yetkisini dönerse istenen bölüm altında BAŞKA bölümün
+            // imzalı URL'i tutulmasın (05 §4.4 episodeId eşleşmeli). Guard Task İÇİNDE → coalesced joiner'lar da doğrulanır.
+            guard auth.episodeId == episodeID else {
+                throw AppError.unexpected(underlying: "authorize episodeId mismatch: \(auth.episodeId.rawValue)")
+            }
+            return auth
         }
         inFlight[episodeID] = task
         defer { inFlight[episodeID] = nil }
         // Hatalı uçuş cache'lenmez; sonraki istek yeniden dener.
         let auth = try await task.value
-        // Sözleşme-drift savunması (LOW): server YANLIŞ bölümün yetkisini dönerse cache'leme/oynatma → istenen bölüm
-        // altında BAŞKA bölümün imzalı URL'i tutulmasın (05 §4.4 episodeId eşleşmeli).
-        guard auth.episodeId == episodeID else {
-            throw AppError.unexpected(underlying: "authorize episodeId mismatch: \(auth.episodeId.rawValue)")
-        }
         cache[episodeID] = auth
         return auth
     }

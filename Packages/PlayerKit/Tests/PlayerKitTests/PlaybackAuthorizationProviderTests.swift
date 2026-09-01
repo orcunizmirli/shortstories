@@ -116,6 +116,25 @@ struct PlaybackAuthorizationProviderTests {
         }
     }
 
+    @Test func episodeIdUyusmazsaCoalescedJoinerDaFirlar() async {
+        // Regresyon-verify: guard Task İÇİNDE → aynı bölüm için eşzamanlı 2. istek (coalesced joiner) de doğrulanmış
+        // sonucu alır (fırlatır); owner-path'e özel guard joiner'ı atlıyordu.
+        let clock = ClockBox()
+        let service = PlaybackServicingSpy(expiresAt: clock.now.addingTimeInterval(600))
+        service.setEpisodeIdOverride(EpisodeID("ep_yanlis"))
+        service.setDelay(nanoseconds: 30_000_000) // owner uçuşta kalsın, joiner katılsın
+        let provider = PlaybackAuthorizationProvider(service: service, now: clock.nowProvider)
+
+        async let a: PlaybackAuthorization = provider.authorization(for: episodeID)
+        async let b: PlaybackAuthorization = provider.authorization(for: episodeID)
+        var aThrew = false
+        var bThrew = false
+        do { _ = try await a } catch { aThrew = true }
+        do { _ = try await b } catch { bThrew = true }
+
+        #expect(aThrew && bThrew) // owner VE joiner ikisi de fırlattı
+    }
+
     @Test func authorizeHatasiYuzdurulur() async {
         let clock = ClockBox()
         let service = PlaybackServicingSpy()
