@@ -308,8 +308,10 @@ public final class UnlockSheetModel {
         case .success:
             completeUnlock()
         case .insufficientCoins:
-            // Bakiye server snapshot'ıyla güncellendi; CTA otomatik "insufficient" olur → mağaza. Key,
-            // satın-alma dönüşünde (`returnedFromCoinStore`) düşürülür → sonraki deneme yeni intent, yeni key.
+            // Yeni-intent: key'i düşür (`.priceChanged` ile simetrik). Sonraki deneme satın-alma dönüşüyle DEĞİL,
+            // satın-alma-DIŞI bakiye artışıyla (canlı observer) gelebilir → `returnedFromCoinStore` atlanır; bayat
+            // 402-key yeniden kullanılırsa sunucu cache'li 402'yle unlock'ı bloklardı (regresyon-verify MEDIUM).
+            currentIdempotencyKey = nil
             delegate?.unlockSheetRequestsCoinStore()
         case let .priceChanged(currentPrice):
             // 409: yeni gövde (farklı expectedPrice) → aynı key 422 payload-mismatch olurdu; key'i düşür.

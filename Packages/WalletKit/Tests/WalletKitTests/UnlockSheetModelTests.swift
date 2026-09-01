@@ -4,24 +4,6 @@ import Foundation
 import Testing
 @testable import WalletKit
 
-/// Deterministik sıralı Idempotency-Key fabrikası (key-1, key-2, …) — reuse/yeni-key davranışını doğrular.
-private final class SequentialKeys: @unchecked Sendable {
-    private let lock = NSLock()
-    private var counter = 0
-    private(set) var generated: [String] = []
-
-    var factory: @Sendable () -> String {
-        { [self] in
-            lock.withLock {
-                counter += 1
-                let key = "key-\(counter)"
-                generated.append(key)
-                return key
-            }
-        }
-    }
-}
-
 /// UnlockSheet ekran modeli (SS-093): birincil aksiyon dallanması, coin-yetersiz → mağaza,
 /// fiyat değişimi, otomatik-unlock (binge), VIP upsell, kapatma + analitik.
 @MainActor
@@ -377,6 +359,24 @@ extension UnlockSheetModelTests {
         #expect(gateway.unlockCalls.count == 2)
         #expect(gateway.unlockCalls[0].key == gateway.unlockCalls[1].key) // retry AYNI key'i kullandı
         #expect(keys.generated.count == 1) // key yalnız BİR kez üretildi (intent'e sabit)
+        model.onDisappear()
+    }
+
+    @Test func yetersizCoinSonrasiYeniDenemeYeniKeyKullanir() async {
+        // Regresyon-verify MEDIUM: `.insufficientCoins` de yeni-intent → key düşmeli (satın-alma-DIŞI bakiye
+        // artışında re-tap bayat 402-key'i kullanıp sunucu cache'li 402'siyle bloklamasın; `.priceChanged` simetrik).
+        let gateway = FakeWalletGateway(balance: CoinBalance(purchasedCoins: 100, earnedCoins: 0))
+        gateway.unlockResults = [.insufficientCoins(shortfall: 50), .success(.fixture(episode: "ep_12", coinsSpent: 70))]
+        let delegate = SpyUnlockSheetDelegate()
+        let keys = SequentialKeys()
+        let model = makeModel(gateway: gateway, delegate: delegate, makeIdempotencyKey: keys.factory)
+        await model.begin()
+
+        await model.primaryAction() // → .insufficientCoins (key1, düşürülmeli)
+        await model.primaryAction() // yeniden dene → .success (key2, YENİ)
+
+        #expect(gateway.unlockCalls.count == 2)
+        #expect(gateway.unlockCalls[0].key != gateway.unlockCalls[1].key) // yeni intent → FARKLI key
         model.onDisappear()
     }
 
