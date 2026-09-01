@@ -67,4 +67,24 @@ struct DiziDetayModelPaginationTests {
         await model.loadMoreEpisodes() // cursor nil → NO-OP (fetch yok)
         #expect(spy.episodesCursors.count == afterFirst) // ikinci loadMore fetch yapmadı (sonsuz sayfalama yok)
     }
+
+    @Test func ensureEpisodeLoadedBosSayfaNonNilCursorDaSonsuzSayfalamaYapmaz() async {
+        // MEDIUM (DiscoverKit hunt): recompute() CTA hedef bölümünü ileri sayfalarken (ensureEpisodeLoaded)
+        // sunucu Page(items:[], nextCursor:"p3") dönerse cursor nil'lenmezse döngü sınırsız fetch atar + load()
+        // kalıcı .loading'de kalır. Kardeşleri (load/ensureProgress/loadMore) boş-sayfa guard'ına sahipti, bu değildi.
+        let spy = SpyCatalog()
+        spy.setSeriesDetail(.success(Fixtures.series(
+            id: "srs_abc123", episodeCount: 60, releasedEpisodeCount: 60, freeEpisodeCount: 60
+        )))
+        spy.setEpisodesPage(.success(Page(items: freePage(1 ... 20), nextCursor: "p2", ttlSec: nil)), cursor: nil)
+        spy.setEpisodesPage(.success(Page(items: [], nextCursor: "p3", ttlSec: nil)), cursor: "p2") // boş + ilerleyen cursor
+        // Son izlenen (20) TAMAMLANMIŞ → CTA hedefi 21 (yüklü değil) → ensureEpisodeLoaded ileri sayfalar.
+        let history = FakeHistory(progress: Fixtures.progress(seriesID: "srs_abc123", episodeIndex: 20, completed: true))
+        let model = makeModel(catalog: spy, history: history)
+
+        await model.load()
+
+        #expect(model.loadState == .loaded) // kalıcı .loading'e DÜŞMEZ
+        #expect(!spy.episodesCursors.contains("p3")) // boş sayfa "liste sonu" → "p3" HİÇ istenmedi (sonsuz sayfalama yok)
+    }
 }

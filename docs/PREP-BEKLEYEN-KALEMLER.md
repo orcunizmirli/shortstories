@@ -245,6 +245,20 @@ account-fence'ler SAĞLAM doğrulandı):
 - **#3 AD-unlock account-epoch fence yok + WalletFlow sheet switch'te reset olmaz (LOW, ACCEPTED):** tam-ekran modal
   reklam mid-ad hesap-switch'i engeller; post-ad pencere alt-saniye + feed-reset + server-reload mitige → near-unreachable.
 
+### DiscoverKit adversarial bug-hunt (2026-09-01)
+DiziDetay/Arama/Kesfet hunt: çekirdek olağanüstü sertleştirilmiş (unlock server-otoriter — DiscoverKit optimistik
+bakiye/erişim YAZMAZ; arama/revalidate/recomputeAccess generation-fence'li; sayfalama dedup/empty-cursor guard'lı).
+1 MEDIUM düzeltildi:
+- **MEDIUM — `ensureEpisodeLoaded` boş-sayfa cursor guard'ı eksik (✅ DÜZELTİLDİ):** `recompute()` CTA hedef
+  bölümünü ileri sayfalarken sunucu `Page(items:[], nextCursor:"pN")` dönerse cursor nil'lenmez → döngü sınırsız
+  fetch + `load()` kalıcı `.loading`. Kardeşleri (load:136/ensureProgress:191/loadMore:339) `items.isEmpty ? nil`
+  guard'ına sahipti, `ensureEpisodeLoaded:204` değildi. **Fix:** simetrik `page.items.isEmpty ? nil : page.nextCursor`.
+  TDD: completed-progress → hedef sonraki-sayfada + boş-sayfa dönen-cursor → "p3" HİÇ istenmez (RED→GREEN + revert).
+- Elenen adaylar (gerçek bug değil): AramaModel.performSearch empty-guard asimetrisi (`.noResult` fazında
+  cursor/loadMore kullanılmaz), isLoadingResults sızıntısı (yalnız non-.results fazında, görünmez), DiziDetay/Arama
+  resetForAccountSwitch yokluğu (push-scope modeller, App teardown eder), çift-tap unlock intent (DiscoverKit'te
+  harcama yok — WalletKit/coordinator sahibi). Hepsi kodda doğrulanıp elendi.
+
 ### WalletKit ad-unlock §575 epoch-fence (self-review, 2026-09-01)
 Kendi eklediğim para-çekirdeği kodunun (reklam-unlock entegrasyonu, 1177899/11f8314) adversarial öz-incelemesi
 — meta-ders: money-core eklemeleri epoch-fence'i atlayabilir. Bulunan + düzeltilen:

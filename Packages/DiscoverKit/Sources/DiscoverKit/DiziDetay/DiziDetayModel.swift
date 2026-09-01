@@ -201,7 +201,7 @@ public final class DiziDetayModel {
             visitedCursors.insert(cursor)
             guard let page = try? await catalog.episodes(seriesId: seriesID, cursor: cursor) else { return }
             appendUniqueEpisodes(page.items)
-            episodesCursor = page.nextCursor
+            episodesCursor = page.items.isEmpty ? nil : page.nextCursor // #4 simetrik: boş+cursor sonsuz sayfalama önle
             // Sayfa index'leri artan; maks index hedefi GEÇTİYSE hedef ya bu sayfada geldi ya da index boşluğu
             // (kaldırılmış bölüm / releasedEpisodeCount aşımı) → sonrakilerde YOK, tam-taramayı bırak (audit LOW).
             if let maxIndex = page.items.map(\.index).max(), maxIndex >= number {
