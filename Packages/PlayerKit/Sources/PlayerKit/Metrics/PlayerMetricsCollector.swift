@@ -185,7 +185,10 @@ actor PlayerMetricsCollector {
     }
 
     private func milliseconds(from start: Date, to end: Date) -> Int {
-        Int((end.timeIntervalSince(start) * 1000).rounded())
+        // `max(0,…)` clamp (zaman hunt LOW): oturum ortasında cihaz saati geri alınırsa negatif
+        // ttff_ms/swipe_latency_ms basılmaz (percentile/aggregation hijyeni; kod tabanının negatif-elapsed
+        // invaryantı — onboarding/unlock/review — burada da).
+        max(0, Int((end.timeIntervalSince(start) * 1000).rounded()))
     }
 
     /// Tazelik penceresini aşan niyetler düşer: uzun oturumda terk edilen

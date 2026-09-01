@@ -28,6 +28,20 @@ struct PlayerMetricsCollectorTests {
         #expect(event?.parameters["is_locked_content"] == .bool(false))
     }
 
+    @Test func geriyeSaatKaymasindaTtffNegatifBasilmaz() async {
+        // Metrik hijyeni (zaman hunt LOW): oturum ortasında cihaz saati geri alınırsa ttff_ms negatif
+        // OLMAMALI (percentile/aggregation zehirlenir). Kod tabanının max(0,...) invaryantı burada da geçerli.
+        let analytics = MockAnalytics()
+        let collector = PlayerMetricsCollector(analytics: analytics)
+        let episode = Fixture.episode(id: "e1")
+
+        await collector.recordPlaybackIntent(for: episode, startType: .tap, at: t0)
+        await collector.recordFirstFrame(for: episode, at: t0.addingTimeInterval(-0.5)) // saat geri kaydı
+
+        let event = analytics.events.first { $0.name == "video_start" }
+        #expect(event?.parameters["ttff_ms"] == .int(0)) // negatif değil, 0'a clamp'lenir
+    }
+
     @Test func unlockluIcerikIsLockedContentTasir() async {
         let analytics = MockAnalytics()
         let collector = PlayerMetricsCollector(analytics: analytics)

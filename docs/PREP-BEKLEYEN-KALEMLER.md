@@ -963,6 +963,26 @@ backup), UserDefaults'ta token yok, plaintext secret loglanmaz; error-body decod
   ERTELENDİ):** guest→guest, düşük etki (linked hesaplar `sessionExpired` fırlatır, replay etmez; ilk deneme 401
   unauth olduğu için çift-execute yok). Fix: idempotent-olmayan isteği kimlik-değişiminde otomatik replay etme.
 
+### Zaman/timezone/DST sınır hunt'ı — HIGH/MEDIUM YOK, 1 LOW düzeltildi (2026-09-01)
+Para/streak/erişim zaman-mantığı tutarlı doğru: reward yolları (günlük check-in, streak, "bugün claim edildi mi",
+ad-unlock günlük cap, coin expiry) SERVER-authoritative + kullanıcı IANA timezone'u `X-Timezone` header'ıyla sunucuya
+gider (`TimezoneInterceptor`) → gün-sınırını sunucu sahiplenir; istemci `Date()`/`Calendar`'dan "bugün"/gün-sayısı
+TÜRETMEZ. Daha önce düzeltilen gün-kör check-in pin'i artık gün-duyarlı (`OdulMerkeziModel` `streakDays < claimedStreak`)
+→ kardeşi YOK. Token tazeliği (`PlaybackAuthorization.isUsable` `date < expiresAt - leeway`) yön+işaret doğru (REFUTED);
+gerçek takvim-günü gösterimi `startOfDay`+`dateComponents([.day])` (RelativeDay) doğru; negatif-elapsed her yerde
+`max(0,…)` guard'lı. 6 LOW bulgu HEPSİ cosmetic (DST ±1sa marketing/bildirim/display) — tek anti-pattern `*86400`
+raw-saniye takvim-günü yerine geçmesi, ama YALNIZ display/marketing/throttle kodunda, hiçbir reward-kapısında değil.
+- **#6 PlayerMetricsCollector negatif latency (LOW, analytics-hijyen → ✅ DÜZELTİLDİ):** `milliseconds(from:to:)`
+  alt-clamp'sizdi → oturum ortasında cihaz saati geri alınırsa `ttff_ms`/`swipe_latency_ms` negatif basılıyordu
+  (percentile/aggregation zehirlenir). Kod tabanının kendi `max(0,…)` invaryantının (onboarding/unlock/review/discover)
+  TEK istisnasıydı. **Fix:** `max(0,…)` clamp (paylaşılan helper → hem ttff hem swipe kapsanır). TDD: geri-saat →
+  ttff_ms=0 RED(−500)→GREEN; 16 PlayerMetrics testi yeşil.
+- **Ertelenen 5 LOW cosmetic** (Calendar-inject / marginal DST ±1sa gain, hiçbiri money/access): WinBackEligibility
+  `formerVIPGraceDays*86400` (marketing banner), EarnedCoinExpiry `daysRemaining` (display; sunucu FEFO sahibi),
+  DiziDetay `newEpisodeWeekday` (cihaz-TZ weekday — muhtemelen istenen), NotificationRelativeTime raw-saniye bucket
+  (bildirim "23 sa"/"1 g" sınırı), Review/RemoteConfig/WinBack throttle TTL'leri (`/86400`; hepsi server-override).
+  Doğrulanmış-sağlam koda cosmetic DST için Calendar-inject churn'ü değmez → belgelendi.
+
 - SS-050 kilit-sınırı reactivation (varsa gap), LibraryCatalog offline cache, WP-F1-G
   review'unda ertelenen küçük optimizasyonlar (CatalogCache `lastAccessAt`/tahliye-bütçe,
   ListemModel batch-delete). Bunlar prep GEREKTİRMEZ; sürekli döngüde ele alınır.
