@@ -88,6 +88,32 @@ struct ReferralModelTests {
         #expect(analytics.eventNames.contains("referral_redeemed"))
     }
 
+    @Test func redeemCreditedSignalsBalanceRefresh() async {
+        // LOW (RewardsKit hunt): redeem .credited server-otoriter bakiyeyi kreditler ama OdulMerkezi kalıbındaki
+        // credit-refresh sinyali (delegate) yoktu → Profil/CoinShop başlığı redeem sonrası bayat DÜŞÜK kalırdı.
+        let gateway = FakeReferralGateway(redeem: .success(
+            .credited(
+                reward: ClaimedReward(coins: 50, isStreakBonus: false, expiresAt: nil),
+                referral: .mock(canRedeem: false)
+            )
+        ))
+        let delegate = ReferralDelegateSpy()
+        let model = makeModel(gateway: gateway, delegate: delegate)
+        await model.load()
+        await model.redeem("FRIEND-3K9P")
+        #expect(delegate.creditBalanceCalls == 1) // App WalletStore.refresh tetiklenir
+    }
+
+    @Test func redeemConflictDoesNotSignalBalanceRefresh() async {
+        // Conflict (kredi YOK) credit-refresh sinyali ATMAMALI (yalnız .credited'te).
+        let gateway = FakeReferralGateway(redeem: .success(.conflict(.invalidCode)))
+        let delegate = ReferralDelegateSpy()
+        let model = makeModel(gateway: gateway, delegate: delegate)
+        await model.load()
+        await model.redeem("BADCODE")
+        #expect(delegate.creditBalanceCalls == 0)
+    }
+
     @Test func redeemTransportErrorGivesNoSuccess() async {
         let gateway = FakeReferralGateway(redeem: .failure(AppError.network(.offline)))
         let model = makeModel(gateway: gateway)

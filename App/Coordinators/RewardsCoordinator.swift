@@ -96,4 +96,10 @@ extension RewardsCoordinator: ReferralDelegate {
     func referralSharesInvite(code: String, url: URL?) {
         tabCoordinator?.sharePresenter.share(url ?? DeepLinkFactory.referralURL(code))
     }
+
+    /// Redeem SERVER-otoriter bakiyeyi kredilendirdi → otoritatif `WalletStore`'u tazele (rewardsDidCreditBalance
+    /// simetriği) ki Profil/CoinShop cüzdan-tabanlı ekranlar bayat DÜŞÜK bakiye göstermesin (redeem doğrudan API'ye).
+    func referralDidCreditBalance() {
+        Task { [composition] in await composition.walletStore.refresh() }
+    }
 }

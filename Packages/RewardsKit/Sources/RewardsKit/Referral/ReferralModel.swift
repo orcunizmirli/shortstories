@@ -142,6 +142,7 @@ public final class ReferralModel {
                 status = referral // taze durum (canRedeem artık false)
                 redeemState = .credited(coins: reward.coins) // yalnız server onayında
                 redeemCelebration += 1
+                delegate?.referralDidCreditBalance() // App WalletStore.refresh → Profil/CoinShop başlıkla yakınsar
                 analytics.trackReferralRedeemed(coinReward: reward.coins, expiresAt: reward.expiresAt)
             case let .conflict(reason):
                 if case let .alreadyRedeemed(fresh) = reason, let fresh {

@@ -261,11 +261,13 @@ checkInGeneration fence, version-monotonic bakiye guard, task eventual-consisten
   guard'ını bypass ettirir (regresyon). Mevcut davranış FAIL-CLOSED + self-healing (leaked marker B'yi geçici
   bloklar, defer saniyeler içinde temizler — hunt de LOW/kozmetik dedi). Doğru fix epoch-guard'lı defer gerektirir
   (para-claim koduna orantısız risk) → bilinçli no-op, mevcut fail-closed davranış kabul.
-- **LOW BEKLİYOR — Referral redeem WalletStore refresh sinyali yok:** `ReferralModel.redeem` `.credited` kolu
-  cüzdanı server'da kreditler ama OdulMerkezi kalıbındaki (`delegate.rewardsDidCreditBalance()`) sinyali GÖNDERMEZ →
-  redeem sonrası Profil/CoinShop başlığı bayat (DÜŞÜK) bakiye gösterir. Yön GÜVENLİ (optimistik kredi DEĞİL). Ayrı
-  commit'te düzeltilecek (ReferralDelegate + App wiring). Elenen: çift-claim/optimistik-kredi/ad-reward/account-leak
-  hepsi kodda doğrulanıp güvenli bulundu.
+- **LOW — Referral redeem WalletStore refresh sinyali yok (✅ DÜZELTİLDİ):** `ReferralModel.redeem` `.credited` kolu
+  cüzdanı server'da kreditler ama OdulMerkezi kalıbındaki (`delegate.rewardsDidCreditBalance()`) sinyali GÖNDERMİYORDU
+  → redeem sonrası Profil/CoinShop başlığı bayat (DÜŞÜK) bakiye gösteriyordu. Yön zaten GÜVENLİ (optimistik kredi
+  DEĞİL). **Fix:** `ReferralDelegate.referralDidCreditBalance()` eklendi, `.credited`'te çağrılır (conflict/hatada
+  DEĞİL), App `RewardsCoordinator` `walletStore.refresh()`'e bağlar. TDD: credited→sinyal 1 / conflict→0 (RED→GREEN
+  + revert); 161 RewardsKit yeşil, App derleme OK. Elenen: çift-claim/optimistik-kredi/ad-reward/account-leak hepsi
+  kodda doğrulanıp güvenli bulundu.
 
 ### LibraryKit/App favori-dokunuş resume (LATENT — progress-sync canlıya alınınca düzelt)
 LibraryKit adversarial hunt bulgusu (MEDIUM ama F1'de ulaşılamaz → düzeltme progress-write/sync bağlanınca):

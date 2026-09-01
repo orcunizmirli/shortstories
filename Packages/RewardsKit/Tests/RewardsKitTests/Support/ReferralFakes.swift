@@ -70,6 +70,7 @@ final class FakeReferralGateway: ReferralGateway, @unchecked Sendable {
 @MainActor
 final class ReferralDelegateSpy: ReferralDelegate {
     private(set) var shares: [(code: String, url: URL?)] = []
+    private(set) var creditBalanceCalls = 0
 
     var lastShare: (code: String, url: URL?)? {
         shares.last
@@ -77,6 +78,10 @@ final class ReferralDelegateSpy: ReferralDelegate {
 
     func referralSharesInvite(code: String, url: URL?) {
         shares.append((code, url))
+    }
+
+    func referralDidCreditBalance() {
+        creditBalanceCalls += 1
     }
 }
 
