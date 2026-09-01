@@ -283,6 +283,12 @@ checkInGeneration fence, version-monotonic bakiye guard, task eventual-consisten
     streakDays doğru diskriminatör. TDD: gün-2 claim bloklanmaz (RED gün-kör → GREEN + revert) + orijinal same-day-stale
     testi korunur. **Meta-ders TEKRAR: money/entitlement fix'lerinde bağımsız-context adversarial pass ŞART** — bu
     regresyonu self-review + per-fix test kaçırdı, bağımsız hunt yakaladı (kaydedildi [[autonomous-dev-plan]]).
+    - **KABUL EDİLEN KALINTI (KIRIK-STREAK gün-2):** streakDays diskriminatörü, gün-2'de streak KIRILMIŞSA (server
+      streak'i 0/1'e resetler < claimedStreak) meşru yeni-döngü claim'ini de düşürür. Ama konjonktür aşırı nadir:
+      gün-1'de claim + o gün Ödüller'e HİÇ dönmeme (yoksa todayClaimed=true refresh pini düşürür) + uygulamayı gece-
+      yarısı boyunca warm tutma + gün-2 claim penceresini kaçırma; cold-launch'ta kendini iyileştirir. Tam çözüm
+      CheckInState'te tarih alanı (veya kaçınılan cihaz-saati) gerektirir → kabul, F2 backend'de tarih alanı gelirse
+      revize edilir. Gün-kör Bool bu durumu ZATEN bloklıyordu → fix onu KÖTÜLEŞTİRMEZ (yalnız yaygın-durumu düzeltir).
 - **LOW REDDEDİLDİ (naif fix regresyon) — resetForAccountSwitch isClaiming/claimingTaskID temizlemiyor:** hunt
   "reset'te temizle" önerdi AMA `claimTask`/`claimToday` defer'leri GUARD'SIZ (`defer { claimingTaskID = nil }`).
   Naif temizleme → A'nın uçuştaki claim'i, switch sonrası B'nin YENİ claim marker'ını mid-flight ezip çift-claim
