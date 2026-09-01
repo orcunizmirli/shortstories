@@ -67,9 +67,9 @@ public final class OdulMerkeziModel {
     /// Bu oturumda claim edilen (veya 409'da senkron) görev id'leri — eventual-consistency guard: server
     /// bayat `.claimable` dönse bile `.claimed` tutulur, `mission_complete` tekrar atılmaz (Fix 4).
     var claimedTaskIDs: Set<String> = []
-    /// Check-in claim eventual-consistency pini (task `claimedTaskIDs` simetriği): claim-sonrası warm refresh'te
-    /// server bayat pre-claim (todayClaimed=false) dönerse downgrade'i düşürür; server onaylayınca (todayClaimed) düşer.
-    private var checkInClaimedPin = false
+    /// Check-in claim pini (Fix 4 simetriği) — claim-anı streakDays'i tutar (nil=pin yok). Warm refresh'te bayat pre-claim
+    /// (DÜŞÜK streak, !todayClaimed) düşer; server onayı VEYA yeni gün (streak korunur) → pin düş (gün-2 claim'i bloklamaz).
+    private var checkInClaimedStreak: Int?
     /// Başarılı görev claim sayacı — View haptic + coin animasyonu (yalnız SERVER onayından sonra).
     public internal(set) var taskClaimCelebration = 0
     /// Son görev claim denemesinin başarısızlığı; başarıda/yeni denemede sıfırlanır.
@@ -149,8 +149,7 @@ public final class OdulMerkeziModel {
         checkInState.map { cycle.isStreakBonusDay(cycleDay: $0.cycleDay) } ?? false
     }
 
-    /// Bugünün ödülü (buton etiketi "Ödülü Al · N coin") — takvim bugün hücresiyle TEK kaynak
-    /// (`cycle.todayReward`): server-otoriter + schedule/tablo fallback (server 0 verince buton 0 göstermesin).
+    /// Bugünün ödülü ("Ödülü Al · N coin") — `cycle.todayReward`: server + schedule/tablo fallback (server 0 → buton 0 değil).
     public var todayReward: Int {
         checkInState.map { cycle.todayReward(for: $0) } ?? 0
     }
@@ -162,9 +161,8 @@ public final class OdulMerkeziModel {
         startRefreshIfIdle()
     }
 
-    /// Tazeleme görevini başlatır — ilk çağrı TAM yükler, sonrakiler check-in + görev tazeler (07 §4/
-    /// §4.4: her görünürlükte tazele). Guard YALNIZ eşzamanlı çift-yüklemeyi engeller; görev tamamlanınca
-    /// `loadTask` serbest kalır (idempotent tazeleme — ömür boyu tek-sefer DEĞİL).
+    /// Tazeleme görevini başlatır — ilk çağrı TAM yükler, sonrakiler check-in + görev tazeler (07 §4.4). Guard YALNIZ
+    /// eşzamanlı çift-yüklemeyi engeller; görev tamamlanınca `loadTask` serbest (idempotent — ömür boyu tek-sefer DEĞİL).
     private func startRefreshIfIdle() {
         guard loadTask == nil else { return }
         loadTask = Task { [weak self] in await self?.runRefresh() }
@@ -339,17 +337,19 @@ public final class OdulMerkeziModel {
     private func applyClaimedCheckInState(_ state: CheckInState) {
         checkInState = state
         checkInGeneration += 1
-        checkInClaimedPin = true // claim-sonrası bayat pre-claim status downgrade'ini engelle (server onaylayınca düşer)
+        checkInClaimedStreak = state.streakDays // claim-sonrası bayat DÜŞÜK-streak downgrade'ini engelle (gün-farkındalıklı)
         lastSeenStreakStore.setLastSeenStreak(state.streakDays)
     }
 
     /// Check-in takvimi görünür olduğunda (08 §3.5); streak kırılması tespit edilirse `checkin_streak_break` atılır.
     private func applyLoadedState(_ state: CheckInState) {
-        // Claim-pin reconcile (task reconcileClaimed Fix 4 simetriği): claim-sonrası warm refresh'te server bayat
-        // pre-claim dönerse DÜŞÜR (buton regresyonu/sahte streak_break önle); todayClaimed onaylanınca pin düşer.
-        if checkInClaimedPin {
-            guard state.todayClaimed else { return }
-            checkInClaimedPin = false
+        // Claim-pin reconcile (GÜN-FARKINDALIKLI): bayat pre-claim (DÜŞÜK streak + !todayClaimed) → DÜŞÜR (buton
+        // regresyonu/sahte streak_break önle); yeni gün (streak korunur) VEYA server onayı → pin düş (gün-2 açık).
+        if let claimedStreak = checkInClaimedStreak {
+            if !state.todayClaimed, state.streakDays < claimedStreak {
+                return
+            }
+            checkInClaimedStreak = nil
         }
         // Kırılma tespiti: oturum-içi (previous var) bellek karşılaştırması; SOĞUK AÇILIŞTA (previous nil) KALICI
         // son-görülen streak ile (Fix 6 — kırılmalar çoğu kez oturumlar-arası; cold-launch'ta emitlenmezse KPI kör).
@@ -387,7 +387,7 @@ public extension OdulMerkeziModel {
         catalogLoadedOnce = false
         liveProgress = [:]
         claimedTaskIDs.removeAll()
-        checkInClaimedPin = false // A'nın claim-pini B'nin meşru pre-claim status'ünü düşürmesin
+        checkInClaimedStreak = nil // A'nın claim-pini B'nin meşru pre-claim status'ünü düşürmesin
         hasLoaded = false
         loadState = .loading
         lastSeenStreakStore.reset()

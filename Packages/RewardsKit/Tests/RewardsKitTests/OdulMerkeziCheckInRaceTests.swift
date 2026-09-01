@@ -94,6 +94,40 @@ struct OdulMerkeziCheckInRaceTests {
         #expect(!analytics.events.contains { $0.name == "checkin_streak_break" }) // SAHTE kırılma yok
     }
 
+    @Test func claimPinDoesNotBlockLegitimateNextDayClaim() async {
+        // REGRESYON (money-core regresyon hunt, MEDIUM): claim-pin GÜN-FARKINDALIKLI olmalı. Uygulama gece-yarısını
+        // warm geçerse gün-2'nin MEŞRU pre-claim state'i (todayClaimed=false AMA streak claim-edileni KORUR — gün-2
+        // henüz claim edilmedi) "bayat downgrade" sanılıp düşürülmemeli; aksi halde gün-2 claim butonu cold-launch'a
+        // dek kilitli kalır (kayıp coin). Bayat replica DÜŞÜK streak taşır; gün-2 legit EŞİT streak taşır → ayrışır.
+        let service = GatedCheckInService(
+            status: .mock(cycleDay: 3, todayClaimed: false, streakDays: 3), // gün-1 pre-claim
+            claim: .mock(coins: 20, coinBalance: 120, checkin: .mock(cycleDay: 4, todayClaimed: true, streakDays: 4))
+        )
+        let model = OdulMerkeziModel(
+            checkInService: service,
+            wallet: FakeRewardsWallet(100),
+            taskCatalog: FakeTaskCatalog(),
+            taskProgress: FakeTaskProgress(),
+            rewardClaiming: FakeRewardClaiming(),
+            analytics: MockAnalytics(),
+            featureFlags: MockFeatureFlags(),
+            delegate: RewardsDelegateSpy(),
+            lastSeenStreakStore: InMemoryLastSeenStreakStore(nil)
+        )
+        model.onAppear()
+        await model.pendingWork()
+        await model.claimToday() // gün-1 claim: streak 4, todayClaimed true, pin=4
+        #expect(model.canClaimToday == false)
+
+        // Ertesi gün (warm): server gün-2 legit döner — streak claim-edileni (4) KORUR, todayClaimed=false.
+        service.setStatus(.mock(cycleDay: 4, todayClaimed: false, streakDays: 4))
+        model.onAppear() // warm refreshCheckIn
+        await model.pendingWork()
+
+        #expect(model.checkInState?.todayClaimed == false) // gün-2 state UYGULANDI (pin bloklamadı)
+        #expect(model.canClaimToday == true) // gün-2 claim butonu MEŞRU AÇIK (cold-launch'a dek kilitli değil)
+    }
+
     @Test func claimInFlightDuringAccountSwitchDoesNotWriteOldAccountData() async {
         // Self-review HIGH: claim UÇUŞTAYKEN resetForAccountSwitch olursa (hesap switch), A hesabının claim
         // yanıtı (bakiye/checkin/lastSeenStreak) B state'ine YAZILMAMALI (accountEpoch fence). refreshCheckIn
@@ -163,6 +197,10 @@ final class GatedCheckInService: CheckInService, @unchecked Sendable {
 
     func armClaim() {
         lock.withLock { armedClaim = true }
+    }
+
+    func setStatus(_ state: CheckInState) {
+        lock.withLock { statusResult = state }
     }
 
     func setStatusError(_ error: Error) {

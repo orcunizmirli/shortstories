@@ -274,6 +274,15 @@ checkInGeneration fence, version-monotonic bakiye guard, task eventual-consisten
   check-in'de yoktu. **Fix:** `checkInClaimedPin` — claim'de set, `applyLoadedState`'te bayat pre-claim downgrade'i
   düşür, server `todayClaimed=true` onaylayınca düş (monoton; günlük-reset korunur), account-switch'te temizle.
   TDD: claim → warm refresh bayat pre-claim → streak/buton/lastSeenStreak/streak_break korunur (RED→GREEN + revert).
+  - **REGRESYON DÜZELTMESİ (money-core regresyon hunt, MEDIUM):** ilk pin GÜN-KÖR Bool'du → uygulama gece-yarısını
+    warm geçerse gün-2'nin MEŞRU pre-claim state'i (todayClaimed=false) "bayat downgrade" sanılıp düşürülüyor,
+    gün-2 claim butonu cold-launch'a dek kilitleniyordu (kayıp coin). İlk test hep-bayat gate kullandığından bu
+    gün-kör davranışı doğru sanıp kilitliyordu. **Fix:** pin `Bool` → `Int?` (claim-anı streakDays); reconcile
+    GÜN-FARKINDALIKLI — yalnız `state.streakDays < claimedStreak` (bayat=DÜŞÜK streak) düşürülür; yeni gün
+    (streak korunur, todayClaimed=false) VEYA server onayı → pin düşer, gün-2 açık. cycleDay=((streak-1)%7)+1 olduğundan
+    streakDays doğru diskriminatör. TDD: gün-2 claim bloklanmaz (RED gün-kör → GREEN + revert) + orijinal same-day-stale
+    testi korunur. **Meta-ders TEKRAR: money/entitlement fix'lerinde bağımsız-context adversarial pass ŞART** — bu
+    regresyonu self-review + per-fix test kaçırdı, bağımsız hunt yakaladı (kaydedildi [[autonomous-dev-plan]]).
 - **LOW REDDEDİLDİ (naif fix regresyon) — resetForAccountSwitch isClaiming/claimingTaskID temizlemiyor:** hunt
   "reset'te temizle" önerdi AMA `claimTask`/`claimToday` defer'leri GUARD'SIZ (`defer { claimingTaskID = nil }`).
   Naif temizleme → A'nın uçuştaki claim'i, switch sonrası B'nin YENİ claim marker'ını mid-flight ezip çift-claim
