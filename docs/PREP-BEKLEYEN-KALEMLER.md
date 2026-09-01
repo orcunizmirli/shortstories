@@ -888,6 +888,23 @@ format testli, 2026-08-30 ertelenenler zaten fixli). 1 HIGH App-wiring + 2 LOW p
   `:`/`,` içerirse ambiguous `ab_variants` (backend yanlış pair'lere böler). Fix: format'ta `:`/`,` içeren key/value'lu
   girdiyi ATLA (diğer deneylerin pair'lerini bozmasın). TDD testi (bozuk key/value atlanır, temizler korunur)
   revert-verify RED (guard'sız `out` bozuk delimiterlı string).
+### Launch/Onboarding/ATT/Push/NSE adversarial bug-hunt — TEMİZ + 1 LOW DÜZELTİLDİ (2026-09-01)
+Bu, kalan tek hunt-edilmemiş kullanıcı-yüzeyiydi (LaunchCoordinator/SplashView, SS-060/064 onboarding+ATT,
+SS-140/143 push payload, SS-141 NSE). Uçtan-uca izleme sonrası **HIGH/MEDIUM gerçek bug YOK** — alan iyi
+mühendislenmiş + kapsamlı testli (cold-launch push routing tek-drain + splash/onboarding deferral; NSE `deliver()`
+tek-choke `NSLock` altında tam-bir-kez + time-expire text-fallback + untrusted-şema reddi; PushPayload unknown→nil;
+kilitli-bölüm push'u server-authoritative paywall'dan geçer; ATT `NSUserTrackingUsageDescription` mevcut → flag-flip
+crash yok; analytics registry drift yok). NSE + App CI-DIŞI olduğu için bu güvence yerel doğrulamaya dayanır.
+- **#1 Onboarding izin butonları re-entrancy guard'sız (LOW CONFIRMED, analytics-only) → ✅ DÜZELTİLDİ:**
+  `OnboardingModel.requestNotificationAuthorization()`/`requestAppTracking()` yalnız faz'a guard'lıyor, sonra sistem
+  diyaloğunu `await` ediyor — faz ancak await SONRASI ilerliyor. Butona hızlı çift-tap → iki eşzamanlı çağrı da
+  faz-guard'ını geçer → `onboarding_push_prompt`/`onboarding_att_prompt` İKİ kez basılır (funnel çift-sayımı;
+  `complete()`→`finish()` zaten `completion == nil` guard'lı olduğundan durum bozulması/çift-complete YOK — yalnız
+  analitik doğruluğu). **Fix:** paylaşılan `isRequestingPermission` bayrağı (guard'a eklendi + `defer` reset) →
+  ikinci çağrı erken döner. TDD: iki çift-tap testi (setDelay ile await penceresi açılıp iki çağrı interleave
+  edilir) RED (count 2) → GREEN (count 1); 12 OnboardingPermissions testi yeşil, full-repo lint temiz. App CI-dışı
+  → yerel doğrulandı.
+
 - SS-050 kilit-sınırı reactivation (varsa gap), LibraryCatalog offline cache, WP-F1-G
   review'unda ertelenen küçük optimizasyonlar (CatalogCache `lastAccessAt`/tahliye-bütçe,
   ListemModel batch-delete). Bunlar prep GEREKTİRMEZ; sürekli döngüde ele alınır.

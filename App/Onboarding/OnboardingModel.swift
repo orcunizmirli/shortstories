@@ -87,6 +87,10 @@ final class OnboardingModel {
 
     private var startedAt: Date?
     private var didStart = false
+    /// Uçuştaki izin isteği bayrağı (re-entrancy guard): sistem-diyaloğu `await`i faz'ı henüz ilerletmeden
+    /// askıya alır → butona çift-tap iki eşzamanlı çağrıyı faz-guard'ından geçirirdi ve funnel event'i (
+    /// `onboarding_push_prompt`/`onboarding_att_prompt`) İKİ kez basardı. Bayrak ikinciyi erken döndürür.
+    private var isRequestingPermission = false
 
     init(
         initialLanguage: AppLanguage,
@@ -206,7 +210,9 @@ final class OnboardingModel {
 
     /// Ön-izinde "Bildirimleri Aç": sistem diyaloğunu tetikler, sonucu (`grant`/`deny`) loglar.
     func requestNotificationAuthorization() async {
-        guard step == .permissions, permissionsPhase == .notificationPrePrompt else { return }
+        guard step == .permissions, permissionsPhase == .notificationPrePrompt, !isRequestingPermission else { return }
+        isRequestingPermission = true
+        defer { isRequestingPermission = false }
         let result = await notifications.requestAuthorization()
         notificationOutcome = (result == .granted) ? .granted : .denied
         analytics.track("onboarding_push_prompt", parameters: [
@@ -229,7 +235,9 @@ final class OnboardingModel {
 
     /// ATT ön-izninde "Devam": sistem ATT diyaloğunu tetikler, sonucu loglar, akışı tamamlar.
     func requestAppTracking() async {
-        guard step == .permissions, permissionsPhase == .trackingPrePrompt else { return }
+        guard step == .permissions, permissionsPhase == .trackingPrePrompt, !isRequestingPermission else { return }
+        isRequestingPermission = true
+        defer { isRequestingPermission = false }
         let result = await tracking.requestAuthorization()
         trackingOutcome = result
         analytics.track("onboarding_att_prompt", parameters: [

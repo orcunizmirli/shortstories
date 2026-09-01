@@ -151,6 +151,7 @@ final class OnboardingFakeNotificationRequester: NotificationAuthorizationReques
     private let result: NotificationAuthorizationResult
     private let lock = NSLock()
     private var requested = false
+    private var delayNanoseconds: UInt64 = 0
 
     var wasRequested: Bool {
         lock.withLock { requested }
@@ -160,7 +161,16 @@ final class OnboardingFakeNotificationRequester: NotificationAuthorizationReques
         self.result = result
     }
 
+    /// Sistem-diyaloğu askısını taklit eder — çift-tap re-entrancy testi ikinci çağrıyı ilki await'teyken başlatır.
+    func setDelay(nanoseconds: UInt64) {
+        lock.withLock { delayNanoseconds = nanoseconds }
+    }
+
     func requestAuthorization() async -> NotificationAuthorizationResult {
+        let delay = lock.withLock { delayNanoseconds }
+        if delay > 0 {
+            try? await Task.sleep(nanoseconds: delay)
+        }
         lock.withLock { requested = true }
         return result
     }
@@ -171,6 +181,7 @@ final class OnboardingFakeTrackingRequester: AppTrackingRequesting, @unchecked S
     private let result: AppTrackingAuthorizationResult
     private let lock = NSLock()
     private var requested = false
+    private var delayNanoseconds: UInt64 = 0
 
     var wasRequested: Bool {
         lock.withLock { requested }
@@ -181,7 +192,16 @@ final class OnboardingFakeTrackingRequester: AppTrackingRequesting, @unchecked S
         self.result = result
     }
 
+    /// ATT sistem-diyaloğu askısını taklit eder (çift-tap re-entrancy testi için).
+    func setDelay(nanoseconds: UInt64) {
+        lock.withLock { delayNanoseconds = nanoseconds }
+    }
+
     func requestAuthorization() async -> AppTrackingAuthorizationResult {
+        let delay = lock.withLock { delayNanoseconds }
+        if delay > 0 {
+            try? await Task.sleep(nanoseconds: delay)
+        }
         lock.withLock { requested = true }
         return result
     }

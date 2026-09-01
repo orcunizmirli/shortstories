@@ -102,6 +102,48 @@ final class OnboardingPermissionsTests: XCTestCase {
         XCTAssertEqual(harness.model.completion, .completed)
     }
 
+    // MARK: - Re-entrancy (çift-tap) guard'ı — analitik funnel doğruluğu
+
+    func testDoubleTapNotificationEmitsSinglePushPrompt() async {
+        // İzin butonuna hızlı çift-tap: sistem-diyaloğu await'inde iki çağrı da faz-guard'ını geçer (faz
+        // henüz ilerlemedi). Re-entrancy guard olmadan `onboarding_push_prompt` İKİ kez basılır (funnel çift-sayımı).
+        let harness = makeOnboardingHarness(notification: .granted, attEnabled: false)
+        harness.driveToPermissions()
+        harness.model.continueFromValueProposition()
+        // ikinci çağrı ilki await'teyken başlasın (faz-guard'ı henüz değişmemiş olsun)
+        harness.notification.setDelay(nanoseconds: 30_000_000)
+
+        async let first: Void = harness.model.requestNotificationAuthorization()
+        async let second: Void = harness.model.requestNotificationAuthorization()
+        _ = await first
+        _ = await second
+
+        let pushEvents = harness.analytics.events.filter { $0.name == "onboarding_push_prompt" }
+        XCTAssertEqual(pushEvents.count, 1) // çift-tap tek funnel event üretir
+    }
+
+    func testDoubleTapTrackingEmitsSingleAttPrompt() async {
+        let harness = makeOnboardingHarness(
+            notification: .granted,
+            att: .authorized,
+            attStatus: .notDetermined,
+            attEnabled: true
+        )
+        harness.driveToPermissions()
+        harness.model.continueFromValueProposition()
+        await harness.model.requestNotificationAuthorization() // → trackingPrePrompt
+        XCTAssertEqual(harness.model.permissionsPhase, .trackingPrePrompt)
+        harness.tracking.setDelay(nanoseconds: 30_000_000)
+
+        async let first: Void = harness.model.requestAppTracking()
+        async let second: Void = harness.model.requestAppTracking()
+        _ = await first
+        _ = await second
+
+        let attEvents = harness.analytics.events.filter { $0.name == "onboarding_att_prompt" }
+        XCTAssertEqual(attEvents.count, 1) // çift-tap tek funnel event üretir
+    }
+
     func testAttActionMapping() {
         XCTAssertEqual(AppTrackingAuthorizationResult.restricted.analyticsAction, "restricted")
         XCTAssertEqual(AppTrackingAuthorizationResult.notDetermined.analyticsAction, "not_determined")
