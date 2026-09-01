@@ -56,5 +56,5 @@ public protocol SessionManaging: Sendable {
         provider: AuthProvider,
         accessToken: String,
         refreshToken: String
-    ) async
+    ) async throws
 }

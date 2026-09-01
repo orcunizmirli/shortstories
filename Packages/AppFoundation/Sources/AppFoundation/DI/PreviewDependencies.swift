@@ -86,7 +86,7 @@ public final class StubSessionManager: SessionManaging, @unchecked Sendable {
         provider: AuthProvider,
         accessToken _: String,
         refreshToken _: String
-    ) {
+    ) throws {
         lock.withLock { currentState = .linked(userID: userID, provider: provider) }
     }
 }

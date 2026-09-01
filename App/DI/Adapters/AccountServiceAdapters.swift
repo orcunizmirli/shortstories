@@ -123,11 +123,11 @@ struct APIAccountLinkingService: AccountLinkingServicing {
                 // Defense-in-depth (§575, uyumsuz backend): dönen userId pre-link'ten FARKLIYSA sıfır-kayıp DEĞİL →
                 // plain activate WalletStore/repo'ları yıkmaz (cross-account sızıntı) → tam switch-lifecycle. Erişilmez.
                 await switchDataCoordinator.flushPendingGuestData()
-                await activateLinkedSession(credentials, provider: provider)
+                try await activateLinkedSession(credentials, provider: provider)
                 await switchDataCoordinator.resetLocalUserData()
                 await switchDataCoordinator.refetchForNewAccount()
             } else {
-                await activateLinkedSession(credentials, provider: provider)
+                try await activateLinkedSession(credentials, provider: provider)
             }
             return .linked(AccountSummary(kind: .linked(provider: provider)))
         case .conflict:
@@ -150,7 +150,7 @@ struct APIAccountLinkingService: AccountLinkingServicing {
         // TODO: [SS-132 F2] `/auth/switch` sözleşmesi donduğunda `provider` alanını zorunlu kıl.
         let wire = try await client.send(AuthSwitchEndpoint(switchToken: conflict.switchToken))
         let provider = wire.provider ?? conflict.provider
-        await activateLinkedSession(wire.session, provider: provider)
+        try await activateLinkedSession(wire.session, provider: provider)
 
         // (c) RESET (switch SONRASI): yerel kullanıcı verisini sıfırla → yeni hesap misafir verisini
         // GÖRMEZ ve sonraki senkron misafir pending'lerini yeni hesaba yükleyemez.
@@ -162,10 +162,10 @@ struct APIAccountLinkingService: AccountLinkingServicing {
         return AccountSummary(kind: .linked(provider: provider))
     }
 
-    /// Bağlama/switch başarısını CANLI oturuma yansıtır: `SessionManaging.linkSession` durumu `.linked`e
-    /// yükseltir + yayar + Keychain'e yazar (tek yol; SessionState sahibi SessionManager).
-    private func activateLinkedSession(_ credentials: SessionCredentialsWire, provider: AuthProvider) async {
-        await session.linkSession(
+    /// Bağlama/switch başarısını CANLI oturuma yansıtır: `linkSession` (`.linked`e yükselt + yayınla + Keychain).
+    private func activateLinkedSession(_ credentials: SessionCredentialsWire, provider: AuthProvider) async throws {
+        // `try`: kalıcılaştırma koparsa FIRLAT → çağıran reset/refetch'i ATLAR, sahte "linked" bildirmez (regresyon-verify MEDIUM).
+        try await session.linkSession(
             userID: credentials.userId,
             provider: provider,
             accessToken: credentials.accessToken,

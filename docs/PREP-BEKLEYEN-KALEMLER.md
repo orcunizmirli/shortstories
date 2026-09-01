@@ -1027,6 +1027,25 @@ Tek gerçek defekt idempotency-key STABİLİTESİNDE (scope #2):
   Onboarding tercihleri (preferredGenres/appLanguage/subtitleLanguage/notificationOptIn) server'a YAZILMIYOR —
   eksik-istek (mis-encode değil), non-money; F2 wiring kalemi (docs/05 §4.1).
 
+### Money-core regresyon-verify (son 3 money-core commit) — 2 MEDIUM düzeltildi, 0 HIGH (2026-09-01)
+Bağımsız-bağlam adversarial pass: idempotency(c2c1d83) + unlock/verify lossy(b9a0430) + linkSession(943f6bc)
+regresyon taraması. İki HIGH fix'in çekirdeği SAĞLAM (epoch-fence/pendingUnlock guard intact; lossy transactions/
+transaction GERÇEKTEN display-only — balance/entitlement `wallet` snapshot'ından, funnel yalnız earned/purchased
+split'i under-count edebilir, crash yok; cross-episode/price key-reuse çürütüldü). Per-fix TDD'nin kaçırdığı 2
+MEDIUM yakalandı (meta-dersin tam değeri):
+- **#1 `.insufficientCoins` Idempotency-Key'i koruyordu (MEDIUM → ✅ DÜZELTİLDİ, commit c4d333d):** bir önceki
+  idempotency fix'inde lint-uzunluğu için "returnedFromCoinStore ile redundant" sanılıp kaldırılan reset HATALIYDI —
+  satın-alma-DIŞI bakiye artışı (canlı balanceUpdates observer) `returnedFromCoinStore`'u atlar → re-tap bayat
+  402-key → sunucu cache'li 402 → coin'i olmasına rağmen unlock bloke. Fix: `.insufficientCoins`'de de key nil
+  (`.priceChanged` simetrik). TDD RED(key-1==key-1)→GREEN.
+- **#2 switch linkSession'ın sessiz başarısızlığını algılayamıyordu (MEDIUM → ✅ DÜZELTİLDİ):** `linkSession`
+  `async→Void` sessiz erken-dönüş → `switchToExistingAccount` hatayı göremez, reset/refetch'i yürütüp sahte
+  "linked" başarısı + mevcut hesap verisi churn'ü bildiriyordu (money sızıntısı yok — refetch A token'ıyla A'ya
+  yakınsar). Fix: `linkSession` `async throws` (setAtomically propagate); `activateLinkedSession` + 3 call-site
+  `try await` → yazım koparsa reset/refetch ATLANIR, hata propagate eder. TDD: abort testi (reset/refetch
+  çağrılmaz) + revert-verify (`try?`→churn RED); 326 AppFoundation + 6 App testi yeşil. 3 SessionManaging
+  conformer (SessionManager/Stub/Mock) + ~10 test çağrısı throws'a uyarlandı.
+
 - SS-050 kilit-sınırı reactivation (varsa gap), LibraryCatalog offline cache, WP-F1-G
   review'unda ertelenen küçük optimizasyonlar (CatalogCache `lastAccessAt`/tahliye-bütçe,
   ListemModel batch-delete). Bunlar prep GEREKTİRMEZ; sürekli döngüde ele alınır.

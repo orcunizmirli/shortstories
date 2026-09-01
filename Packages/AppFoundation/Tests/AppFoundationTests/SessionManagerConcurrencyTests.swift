@@ -84,10 +84,12 @@ struct SessionManagerConcurrencyTests {
         try await mgr.bootstrapGuestSessionIfNeeded() // at_1 / rt_1 seed
 
         store.arm() // sonraki refreshToken yazımı koparacak
-        mgr.linkSession(userID: "g1", provider: .apple, accessToken: "at_linked", refreshToken: "rt_linked")
+        // Kalıcılaştırma koptu → linkSession FIRLATIR (çağıran hatayı görür, sahte başarı bildirmez).
+        #expect(throws: (any Error).self) {
+            try mgr.linkSession(userID: "g1", provider: .apple, accessToken: "at_linked", refreshToken: "rt_linked")
+        }
 
-        // Kalıcılaştırma koptu → kimlik yükseltilmez; state (rolled-back) guest token'la tutarlı kalır
-        // (auth hunt MEDIUM: state ile Keychain'deki token ayrışmaz → UI ↔ sunucu-kimliği tutarlı).
+        // Kimlik yükseltilmez; state (rolled-back) guest token'la tutarlı kalır (UI ↔ sunucu-kimliği tutarlı).
         #expect(mgr.state == .guest(userID: "g1"))
         // Access ESKİ kalmalı (refresh koptuğu için yazılmadı) → saatli bomba yok.
         #expect(try store.string(forKey: .accessToken) == "at_1")
@@ -107,7 +109,7 @@ struct SessionManagerConcurrencyTests {
         await gated.awaitEntered() // /auth/guest uçuşta (gate'te asılı)
 
         // Link araya girer: generation bump + linked token'lar + .linked.
-        mgr.linkSession(userID: "user456", provider: .apple, accessToken: "at_linked", refreshToken: "rt_linked")
+        try mgr.linkSession(userID: "user456", provider: .apple, accessToken: "at_linked", refreshToken: "rt_linked")
 
         gated.allow() // misafir yanıtı şimdi çözülür
         _ = try? await bootstrap.value

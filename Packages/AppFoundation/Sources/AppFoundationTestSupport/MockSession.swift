@@ -68,7 +68,7 @@ public final class MockSession: SessionManaging, @unchecked Sendable {
         provider: AuthProvider,
         accessToken _: String,
         refreshToken _: String
-    ) {
+    ) throws {
         let newState = SessionState.linked(userID: userID, provider: provider)
         let subscribers: [AsyncStream<SessionState>.Continuation]? = lock.withLock {
             guard currentState != newState else { return nil }

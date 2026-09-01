@@ -108,30 +108,22 @@ public final class SessionManager: SessionManaging {
         provider: AuthProvider,
         accessToken: String,
         refreshToken: String
-    ) {
+    ) throws {
         // Uçuştaki misafir bootstrap yanıtını fence et: bu link, o yanıttan SONRA gelirse yanıt bu
         // linked token'ları ezmemeli (audit MEDIUM). MainActor senkron → yakalama+kontrol atomik.
         sessionGeneration &+= 1
-        // 3 anahtar (refresh/access/snapshot) ATOMİK yazılır (`setAtomically`): herhangi biri koparsa TÜMÜ
-        // yedeklere geri alınır → torn-write YOK (audit MEDIUM: snapshot-torn "guest snapshot + linked token"
-        // ayrışması engellenir; eskiden refresh-önce sıralaması yalnız token-torn'u kapatıyordu).
-        do {
-            let snapshot = StoredSessionSnapshot(userID: userID, provider: provider)
-            try secureStore.setAtomically([
-                (.refreshToken, Data(refreshToken.utf8)),
-                (.accessToken, Data(accessToken.utf8)),
-                (.sessionSnapshot, JSONEncoder().encode(snapshot))
-            ])
-        } catch {
-            // Kalıcılaştırma koptu → keychain yedeklere geri alındı (tutarlı eski kimlik; token'lar A'da).
-            // Bellek-içi durumu B'ye YÜKSELTMEYİZ (auth hunt MEDIUM): AuthInterceptor access token'ı HER
-            // istekte Keychain'den TAZE okur → linkSession token'ı bellekte tutmaz; state .linked(B) yapılırsa
-            // UI B ama sunucu A ile kimlik doğrular (çapraz-hesap). Disk (token kaynağı) ile tutarlı kal;
-            // switch sessizce başarısız olur (kullanıcı eski hesapta kalır, yeniden dener). Relaunch da A okur.
-            return
-        }
-        // Tekrar-idempotent: durum zaten hedefse gereksiz yayın YAPILMAZ (abonelere kopya .linked
-        // gönderilmez).
+        // 3 anahtar (refresh/access/snapshot) ATOMİK yazılır: biri koparsa TÜMÜ yedeklere geri alınır (torn-write
+        // YOK). Yazım koparsa FIRLATIRIZ (auth hunt MEDIUM + regresyon-verify MEDIUM): (1) state'i B'ye YÜKSELTMEYİZ
+        // — AuthInterceptor token'ı HER istekte Keychain'den TAZE okur; state .linked(B) yapılırsa UI B ama sunucu
+        // A ile doğrular (çapraz-hesap); (2) çağıran (switch) hatayı görür → reset/refetch'i ATLAR, sahte "linked"
+        // başarısı bildirmez. Disk (token kaynağı) ile tutarlı kalınır; kullanıcı eski hesapta kalır, yeniden dener.
+        let snapshot = StoredSessionSnapshot(userID: userID, provider: provider)
+        try secureStore.setAtomically([
+            (.refreshToken, Data(refreshToken.utf8)),
+            (.accessToken, Data(accessToken.utf8)),
+            (.sessionSnapshot, JSONEncoder().encode(snapshot))
+        ])
+        // Tekrar-idempotent: durum zaten hedefse gereksiz yayın YAPILMAZ (abonelere kopya .linked gönderilmez).
         let newState = SessionState.linked(userID: userID, provider: provider)
         guard state != newState else {
             return

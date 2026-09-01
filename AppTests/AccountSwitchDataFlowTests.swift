@@ -61,6 +61,28 @@ final class AccountSwitchDataFlowTests: XCTestCase {
         XCTAssertEqual(session.linkSessionCalls, 1)
     }
 
+    /// Regresyon-verify MEDIUM: linkSession Keychain kalıcılaştırması koparsa activate FIRLATIR → reset/refetch
+    /// ATLANIR (mevcut hesap verisi gereksiz churn edilmez) + sahte "linked" başarısı değil HATA propagate eder.
+    func testLinkPersistenceFailureAbortsLifecycleAndThrows() async {
+        let client = StubSwitchAPIClient()
+        client.stub("/auth/link", data: makeLinkResponseData(userID: "different-2")) // mismatched → tam lifecycle
+        let session = StubSwitchSession(state: .guest(userID: "guest-1"))
+        session.linkSessionError = AppError.storage(.keychainUnavailable) // linkSession kalıcılaştırması kopar
+        let coordinator = SpyAccountSwitchDataCoordinator(session: session)
+        let adapter = APIAccountLinkingService(client: client, session: session, switchDataCoordinator: coordinator)
+
+        do {
+            _ = try await adapter.link(emailCredential)
+            XCTFail("linkSession kalıcılaştırma hatası propagate etmeliydi")
+        } catch {
+            // beklenen: hata çağırana yansır (sahte "linked" başarısı değil)
+        }
+
+        // flush activate ÖNCESİ çalıştı; activate FIRLATTI → reset/refetch ATLANDI (mevcut hesap churn edilmez).
+        XCTAssertEqual(coordinator.callOrder, ["flush"])
+        XCTAssertEqual(session.linkSessionCalls, 0) // linkSession state'i yükseltmedi
+    }
+
     /// Top-level `provider` alanı OLMAYAN switch yanıtı (sözleşme donmadan sunucu atlayabilir).
     private func makeSwitchResponseDataNoTopLevelProvider(userID: String) -> Data {
         let session = #"{"userId":"\#(userID)","accessToken":"at","refreshToken":"rt","provider":"apple"}"#
@@ -197,6 +219,8 @@ private final class StubSwitchSession: SessionManaging, @unchecked Sendable {
     private let lock = NSLock()
     private var currentState: SessionState
     private(set) var linkSessionCalls = 0
+    /// Set edilirse `linkSession` bu hatayı FIRLATIR (Keychain kalıcılaştırma kopması taklidi).
+    var linkSessionError: (any Error)?
 
     init(state: SessionState) {
         currentState = state
@@ -215,7 +239,10 @@ private final class StubSwitchSession: SessionManaging, @unchecked Sendable {
         lock.withLock { currentState }
     }
 
-    func linkSession(userID: String, provider: AuthProvider, accessToken _: String, refreshToken _: String) async {
+    func linkSession(userID: String, provider: AuthProvider, accessToken _: String, refreshToken _: String) async throws {
+        if let linkSessionError {
+            throw linkSessionError // kalıcılaştırma koptu → state yükselmez
+        }
         lock.withLock {
             currentState = .linked(userID: userID, provider: provider)
             linkSessionCalls += 1

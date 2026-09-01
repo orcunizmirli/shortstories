@@ -33,7 +33,7 @@ struct SessionManagerLinkSessionTests {
         #expect(manager.state == .guest(userID: "usr_ab12cd"))
 
         // Sunucu userId'yi KORUR (aynı hesaba kimlik eklenir); rotasyonlu token'lar döner.
-        manager.linkSession(
+        try manager.linkSession(
             userID: "usr_ab12cd",
             provider: .apple,
             accessToken: "at_linked",
@@ -67,7 +67,9 @@ struct SessionManagerLinkSessionTests {
         _ = try await tornManager.bootstrapGuestSessionIfNeeded() // Keychain'den .guest(guest-1)
         store.arm() // bundan sonra snapshot yazımı kopar
 
-        tornManager.linkSession(userID: "u2", provider: .apple, accessToken: "at_linked", refreshToken: "rt_linked")
+        #expect(throws: (any Error).self) {
+            try tornManager.linkSession(userID: "u2", provider: .apple, accessToken: "at_linked", refreshToken: "rt_linked")
+        }
 
         // Atomik rollback: refresh/access GUEST değerlere geri döndü (torn "linked token + guest snapshot" YOK).
         #expect(try store.string(forKey: .refreshToken) == "rt_guest")
@@ -84,7 +86,7 @@ struct SessionManagerLinkSessionTests {
         var iterator = manager.stateUpdates.makeAsyncIterator()
         #expect(await iterator.next() == .guest(userID: "usr_ab12cd"))
 
-        manager.linkSession(userID: "usr_ab12cd", provider: .google, accessToken: "at_l", refreshToken: "rt_l")
+        try manager.linkSession(userID: "usr_ab12cd", provider: .google, accessToken: "at_l", refreshToken: "rt_l")
 
         #expect(await iterator.next() == .linked(userID: "usr_ab12cd", provider: .google))
     }
@@ -94,21 +96,21 @@ struct SessionManagerLinkSessionTests {
         var iterator = manager.stateUpdates.makeAsyncIterator()
         #expect(await iterator.next() == .guest(userID: "usr_ab12cd"))
 
-        manager.linkSession(userID: "usr_ab12cd", provider: .apple, accessToken: "at_l", refreshToken: "rt_l")
+        try manager.linkSession(userID: "usr_ab12cd", provider: .apple, accessToken: "at_l", refreshToken: "rt_l")
         #expect(await iterator.next() == .linked(userID: "usr_ab12cd", provider: .apple))
 
         // İkinci ÖZDEŞ çağrı: durum aynı kalır, gereksiz yayın YAPILMAZ.
-        manager.linkSession(userID: "usr_ab12cd", provider: .apple, accessToken: "at_l", refreshToken: "rt_l")
+        try manager.linkSession(userID: "usr_ab12cd", provider: .apple, accessToken: "at_l", refreshToken: "rt_l")
         #expect(manager.state == .linked(userID: "usr_ab12cd", provider: .apple))
 
         // Kanıt: sonraki GERÇEK değişim doğrudan alınır — araya kopya .linked(.apple) GİRMEZ.
-        manager.linkSession(userID: "usr_ab12cd", provider: .google, accessToken: "at_l2", refreshToken: "rt_l2")
+        try manager.linkSession(userID: "usr_ab12cd", provider: .google, accessToken: "at_l2", refreshToken: "rt_l2")
         #expect(await iterator.next() == .linked(userID: "usr_ab12cd", provider: .google))
     }
 
     @Test func linkSessionSonrasiBootstrapNoOptur() async throws {
         try await bootstrapGuest()
-        manager.linkSession(userID: "usr_ab12cd", provider: .apple, accessToken: "at_l", refreshToken: "rt_l")
+        try manager.linkSession(userID: "usr_ab12cd", provider: .apple, accessToken: "at_l", refreshToken: "rt_l")
 
         // Bağlı durum authenticated'dır → yeniden bootstrap ağa çıkmaz, `.linked` korunur.
         let state = try await manager.bootstrapGuestSessionIfNeeded()
@@ -121,7 +123,7 @@ struct SessionManagerLinkSessionTests {
         try await bootstrapGuest()
         let managing: any SessionManaging = manager
 
-        await managing.linkSession(userID: "usr_ab12cd", provider: .email, accessToken: "at_l", refreshToken: "rt_l")
+        try await managing.linkSession(userID: "usr_ab12cd", provider: .email, accessToken: "at_l", refreshToken: "rt_l")
 
         #expect(await managing.state == .linked(userID: "usr_ab12cd", provider: .email))
     }
@@ -147,7 +149,9 @@ struct SessionManagerLinkSessionTests {
         #expect(mgr.state == .linked(userID: "userA", provider: .apple))
 
         store.arm() // sonraki accessToken yazımı (setAtomically) kopsun
-        mgr.linkSession(userID: "userB", provider: .google, accessToken: "B_access", refreshToken: "B_refresh")
+        #expect(throws: (any Error).self) {
+            try mgr.linkSession(userID: "userB", provider: .google, accessToken: "B_access", refreshToken: "B_refresh")
+        }
 
         // Kimlik B'ye YÜKSELMEDİ: Keychain hâlâ A → istekler A token'ıyla gider, state de A ile tutarlı.
         #expect(mgr.state == .linked(userID: "userA", provider: .apple))
