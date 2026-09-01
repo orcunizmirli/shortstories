@@ -1046,6 +1046,34 @@ MEDIUM yakalandı (meta-dersin tam değeri):
   çağrılmaz) + revert-verify (`try?`→churn RED); 326 AppFoundation + 6 App testi yeşil. 3 SessionManaging
   conformer (SessionManager/Stub/Mock) + ~10 test çağrısı throws'a uyarlandı.
 
+### StoreKit2 satın-alma yaşam-döngüsü hunt'ı — SAĞLAM, 1 HIGH F2-gerekli (2026-09-01)
+Satın-alma lifecycle 7 açıdan 6'sı DOĞRULANMIŞ SAĞLAM: (1) finish-after-grant (`apply()` yalnız server durably
+grant edince finish; network/5xx finish ETMEZ→unfinished; invalidReceipt terminal-finish), (2) TEK `updates` drain
+(`observerTask == nil` guard, cold-start singleton, önce `unfinished` sonra loop), (3) çift-kredi 3-katman
+(in-flight `processing` set await-öncesi + server transactionId-idempotent + `applyWallet` monotonic-version SET),
+(4) epoch-fence mid-flight switch (`applyIfCurrentEpoch`), (5) server-authoritative VIP (`grantsFullAccess==isVIP`,
+yalnız server set; lokal expiry hesabı yok), (6) phase-guard `.purchasing`+`.pending` çift-tap, (7) refund
+`revocationDate`→`refresh()`+finish (server-authoritative). Tek gerçek exposure:
+- **#1 Deferred re-delivery'de yanlış-hesap kredisi (HIGH, F2-GEREKLİ — ertelendi):** appAccountToken KURULUM-kararlı
+  (`resolveAppAccountToken` userID'yi yok sayar — DOKÜMANTE F2 stub, SS-021 `AppComposition.swift:78-80` "Faz 2'de
+  bağlanır TODO") + `PurchaseCoordinator.process()` `transaction.appAccountToken` guard'ı YOK. Senaryo (aynı-kurulum):
+  A coin alır → `/iap/verify` offline koptu → transaction unfinished. Kullanıcı B'ye SWITCH eder (Keychain token→B,
+  epoch++). Sonra `Transaction.updates`/`restore()→retryUnfinished()` A'nın transaction'ını B akitken re-deliver eder
+  → `process()` epoch=B yakalar, verify B'nin Bearer'ıyla gider (AuthInterceptor taze token=B), JWS'deki
+  appAccountToken install-stable (A==B) olduğundan server ayırt edemez → B kredilenir, `applyIfCurrentEpoch(B)` eşleşir
+  → coin B'ye; finish → A ödedi B aldı, A kurtaramaz. Epoch-fence yalnız MID-FLIGHT switch'i kapatır, deferred
+  re-delivery'yi DEĞİL. **Neden F2-gerekli/ertelendi:** hem kök (per-user appAccountToken) DOKÜMANTE F2 stub hem
+  tetikleyici (mevcut-hesaba switch) F2 flow; F1 guest-only'de switch YOK → tetiklenmez. Fix KENETLİ iki-parça:
+  (A) `AppAccountToken.token(forUserID:)` (zaten var+testli, `AppAccountTokenTests`) canlı session userID'sinden
+  purchase closure'a bağla — ama closure `@Sendable () -> UUID` sync, `session.state.userID` async → PurchaseCoordinator'a
+  canlı-userID sağlayıcı enjeksiyonu gerekir; (B) `process()`'te `transaction.appAccountToken != currentUserToken` ise
+  verify ETME, unfinished BIRAK (defer). Install-stable token'la (B) atıl → ikisi F2'de BİRLİKTE inmeli. Server de JWS
+  appAccountToken ≠ authenticated-user'ı reddetmeli. **F2 account-linking RELEASE ÖNCESİ KAPATILMALI money-exposure.**
+- **#2 `seedEntitlementsFromStoreKit()` çağrılmıyor (LOW):** `PurchaseCoordinator.seedEntitlementsFromStoreKit` +
+  `WalletStore.seedEntitlementFromStoreKit` var+testli ama App'te call-site YOK → cold-launch'ta gerçek VIP, server
+  `refresh()` dönene dek kısa süre non-VIP görünür (yalnız UX flash; playback erişimi `/playback/authorize` ile
+  server-authoritative → correctness güvenli). Fix: `coldStartPreload`'da `refresh()` ile birlikte çağır veya sil.
+
 - SS-050 kilit-sınırı reactivation (varsa gap), LibraryCatalog offline cache, WP-F1-G
   review'unda ertelenen küçük optimizasyonlar (CatalogCache `lastAccessAt`/tahliye-bütçe,
   ListemModel batch-delete). Bunlar prep GEREKTİRMEZ; sürekli döngüde ele alınır.
