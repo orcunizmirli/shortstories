@@ -191,6 +191,51 @@ final class WireContractDecodeTests: XCTestCase {
         XCTAssertEqual(adapted.value(forHTTPHeaderField: "X-Timezone"), "America/New_York")
     }
 
+    // MARK: - wire-decode hunt MEDIUM kardeş-boşlukları: liste zarfları eleman-bazlı lossy
+
+    func testMissionListDropsMalformedMissionButKeepsValidOnes() throws {
+        // Bozuk TEK görev (rewardCoins eksik) tüm Görev Merkezi'ni boşaltmasın (HistoryListWire deseni).
+        let json = """
+        { "missions": [
+            { "id": "m_ok", "kind": "watchMinutes", "title": "10 dk", "rewardCoins": 20,
+              "target": 10, "progress": 4, "state": "inProgress", "resetPolicy": "daily", "expiresAt": null },
+            { "id": "m_bad", "kind": "watchMinutes", "title": "bozuk",
+              "target": 10, "progress": 0, "state": "inProgress", "resetPolicy": "daily", "expiresAt": null }
+          ] }
+        """
+        let wire = try decode(MissionListWire.self, json)
+        XCTAssertEqual(wire.missions.count, 1, "bozuk görev (rewardCoins eksik) atlandı; geçerli kaldı")
+        XCTAssertEqual(wire.missions.first?.task.id, "m_ok")
+    }
+
+    func testCheckInScheduleDropsMalformedDayButKeepsValidOnes() throws {
+        // Bozuk TEK gün (coins eksik) tüm check-in durumunu düşürmesin; otoriter alanlar korunur.
+        let json = """
+        { "cycleDay": 3, "todayClaimed": false, "todayReward": 30,
+          "schedule": [ { "day": 1, "coins": 10, "claimed": true },
+                        { "day": 2, "claimed": false } ],
+          "streakDays": 3, "streakBonusAt": 7, "streakBonusCoins": 100 }
+        """
+        let wire = try decode(CheckInStateWire.self, json)
+        XCTAssertEqual(wire.schedule.count, 1, "bozuk gün (coins eksik) atlandı")
+        XCTAssertEqual(wire.schedule.first?.day, 1)
+        XCTAssertEqual(wire.cycleDay, 3)
+    }
+
+    func testNotificationsListDropsMalformedItemButKeepsValidOnes() throws {
+        // Bozuk TEK bildirim (body eksik) tüm Bildirim Merkezi'ni boşaltmasın.
+        let json = """
+        { "items": [
+            { "id": "n_ok", "type": "reward", "title": "T", "body": "B",
+              "createdAt": "2026-07-11T09:00:00Z", "route": "app://x", "isRead": false },
+            { "id": "n_bad", "type": "reward", "title": "T2",
+              "createdAt": "2026-07-11T09:00:00Z", "route": "app://y", "isRead": false }
+          ], "nextCursor": null }
+        """
+        let wire = try decode(NotificationsListWire.self, json)
+        XCTAssertEqual(wire.items.count, 1, "bozuk bildirim (body eksik) atlandı")
+    }
+
     // MARK: - Fixtures
 
     private func isoDate(_ raw: String) -> Date {

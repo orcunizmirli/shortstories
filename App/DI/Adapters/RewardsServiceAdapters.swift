@@ -1,4 +1,5 @@
 import AppFoundation
+import ContentKit
 import Foundation
 import RewardsKit
 
@@ -173,6 +174,42 @@ struct CheckInStateWire: Decodable, Sendable {
         let claimed: Bool
     }
 
+    private enum CodingKeys: String, CodingKey {
+        case cycleDay, todayClaimed, todayReward, schedule, streakDays, streakBonusAt, streakBonusCoins
+    }
+
+    /// Explicit memberwise init: custom `init(from:)` sentezleneni bastırır; testler wire'ı doğrudan kurar.
+    init(
+        cycleDay: Int,
+        todayClaimed: Bool,
+        todayReward: Int,
+        schedule: [DayRewardWire],
+        streakDays: Int,
+        streakBonusAt: Int?,
+        streakBonusCoins: Int?
+    ) {
+        self.cycleDay = cycleDay
+        self.todayClaimed = todayClaimed
+        self.todayReward = todayReward
+        self.schedule = schedule
+        self.streakDays = streakDays
+        self.streakBonusAt = streakBonusAt
+        self.streakBonusCoins = streakBonusCoins
+    }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        cycleDay = try container.decode(Int.self, forKey: .cycleDay)
+        todayClaimed = try container.decode(Bool.self, forKey: .todayClaimed)
+        todayReward = try container.decode(Int.self, forKey: .todayReward)
+        // `schedule` LOSSY (wire-decode hunt): bozuk TEK gün tüm check-in durumunu düşürmesin (boş→varsayılan
+        // tablo yolu zaten var; present-but-malformed gün de aynı yumuşak yola düşsün, strict throw yerine).
+        schedule = try container.decodeLossyArray(DayRewardWire.self, forKey: .schedule)
+        streakDays = try container.decode(Int.self, forKey: .streakDays)
+        streakBonusAt = try container.decodeIfPresent(Int.self, forKey: .streakBonusAt)
+        streakBonusCoins = try container.decodeIfPresent(Int.self, forKey: .streakBonusCoins)
+    }
+
     var state: CheckInState {
         CheckInState(
             cycleDay: cycleDay,
@@ -263,6 +300,17 @@ struct MissionWire: Decodable, Sendable {
 /// `GET /missions` yanıt zarfı (05 satır 941: `{ "missions": [Mission, ...] }`).
 struct MissionListWire: Decodable, Sendable {
     let missions: [MissionWire]
+
+    private enum CodingKeys: String, CodingKey {
+        case missions
+    }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        // LOSSY (wire-decode hunt MEDIUM kardeş-boşluğu): bozuk TEK görev (ör. rewardCoins eksik) tüm Görev
+        // Merkezi'ni boşaltmasın — HistoryListWire lossy deseni burada da geçerli (geçerli görevler akar).
+        missions = try container.decodeLossyArray(MissionWire.self, forKey: .missions)
+    }
 }
 
 struct MissionClaimResultWire: Decodable, Sendable {

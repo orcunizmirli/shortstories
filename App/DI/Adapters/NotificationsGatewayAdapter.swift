@@ -1,4 +1,5 @@
 import AppFoundation
+import ContentKit
 import DiscoverKit
 import Foundation
 import ProfileKit
@@ -146,6 +147,18 @@ private struct NotificationDeleteEndpoint: Endpoint {
 struct NotificationsListWire: Decodable, Sendable {
     let items: [AppNotification]
     let nextCursor: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case items, nextCursor
+    }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        // `items` LOSSY (wire-decode hunt MEDIUM kardeş-boşluğu): bozuk TEK bildirim (ör. body/createdAt eksik)
+        // tüm Bildirim Merkezi'ni boşaltmasın — HistoryListWire lossy deseni (geçerli bildirimler akar).
+        items = try container.decodeLossyArray(AppNotification.self, forKey: .items)
+        nextCursor = try container.decodeIfPresent(String.self, forKey: .nextCursor)
+    }
 }
 
 // MARK: - Model fabrikası (AppComposition eklentisi — dosya uzunluğu için burada)

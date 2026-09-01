@@ -983,6 +983,28 @@ raw-saniye takvim-günü yerine geçmesi, ama YALNIZ display/marketing/throttle 
   (bildirim "23 sa"/"1 g" sınırı), Review/RemoteConfig/WinBack throttle TTL'leri (`/86400`; hepsi server-override).
   Doğrulanmış-sağlam koda cosmetic DST için Calendar-inject churn'ü değmez → belgelendi.
 
+### Wire-decode dayanıklılık (adversarial sunucu-yanıtı) hunt'ı — 1 HIGH + 5 MEDIUM düzeltildi (2026-09-01)
+Sunucu bir GÜVEN-SINIRIDIR: bozuk/eksik/rollback'li yanıt crash/ekran-boşalması yapmamalı. İçerik katmanı
+(feed/player/catalog/discover/library-history) ContentKit `LossyArray`/`SkippableProgress` + `UnknownDecodable`
+ile ZATEN altın-standart (enum unknown-fallback, per-element lossy, non-core tarih lossy — REFUTED). Boşluklar
+ContentKit DIŞINDA EL-YAZIMI liste zarflarındaydı; hepsi aynı per-element lossy deseniyle kapatıldı:
+- **#1 unlock/verify display-only ledger satırı money+erişim kritik (HIGH → ✅):** `UnlockResponseWire.transactions`
+  / `VerifyResponseWire.transaction` DISPLAY-ONLY ama strict-per-element → bozuk tek satır tüm 200 zarfını (coin
+  ÇEKİLDİ + bölüm AÇILDI) çökertip `unlock()` `default:throw` → WalletStore rollback+`.failed` (kullanıcı ödedi ama
+  "başarısız", idempotent retry → KALICI). Fix: WalletKit-yerel lossy → transactions/transaction lossy; otoriter
+  unlock/wallet/granted strict (fail-closed). Commit b9a0430.
+- **#2 CoinPackageCatalog.packages (MEDIUM → ✅):** bozuk tek paket Coin Mağazası'nı boşaltıyordu → lossy (b9a0430).
+- **#3 arama results DOMAIN Series strict (MEDIUM → ✅):** catalog/feed SeriesWire-lossy ama arama değil → bozuk seri
+  ızgarayı boşaltıyordu. Fix: ContentKit `decodeLossyArray` public yapıldı → arama lossy. Commit 465558c.
+- **#4/#5/#6 missions / notifications / check-in schedule (MEDIUM → ✅):** el-yazımı App-adapter liste zarfları
+  strict-per-element → bozuk tek eleman Görev/Bildirim Merkezi'ni / check-in durumunu boşaltıyordu (HistoryListWire
+  lossy deseninin kaçırılan kardeşleri). Fix: `import ContentKit` + `decodeLossyArray` (App-target; yerel TDD +
+  revert-verify; CI-dışı). Ledger/catalog/search/history dahil TÜM liste zarfları artık per-element lossy.
+- **#7 AuthLinkWire.Status unknown-tolerant değil (LOW, ERTELENDİ):** `POST /auth/link` bilinmeyen `status`
+  (ör. gelecekte "pending") tüm link yanıtını throw eder → link decode hatasıyla başarısız. Tek-obje, kullanıcı-
+  tetikli, GÜVENLİ başarısız (crash/blank yok). Fix `.unknown` case + switch default gerektirir (`UnknownDecodable`
+  disiplini); düşük öncelik, gerekçeyle ertelendi.
+
 - SS-050 kilit-sınırı reactivation (varsa gap), LibraryCatalog offline cache, WP-F1-G
   review'unda ertelenen küçük optimizasyonlar (CatalogCache `lastAccessAt`/tahliye-bütçe,
   ListemModel batch-delete). Bunlar prep GEREKTİRMEZ; sürekli döngüde ele alınır.
