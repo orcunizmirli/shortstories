@@ -245,6 +245,24 @@ account-fence'ler SAĞLAM doğrulandı):
 - **#3 AD-unlock account-epoch fence yok + WalletFlow sheet switch'te reset olmaz (LOW, ACCEPTED):** tam-ekran modal
   reklam mid-ad hesap-switch'i engeller; post-ad pencere alt-saniye + feed-reset + server-reload mitige → near-unreachable.
 
+### PlayerKit engine/pool adversarial bug-hunt (2026-09-01)
+Playback engine + PlayerPool internals hunt: çoğu clean (activeIndex id-re-derive, KVO removal, generation-guard,
+dedup/claim-before-await SAĞLAM). 2 slot-koruma bulgusu düzeltildi + 2 LOW accepted:
+- **#1 activate demote await'inde slot korumasız (MEDIUM — ✅ DÜZELTİLDİ):** `acquire` defer'i lease slotunun
+  `isAuthorizing`'ini temizler + slot henüz `activeSlot` değil → `demotePreviousActive` await'inde eşzamanlı warm
+  `reclaimableSlot` onu geri alıp BAŞKA bölüm yükleyebilir (aktif kart yanlış video). **Fix:** demote boyunca
+  `isAuthorizing=true` (dosyanın acquire/reuseWarmSlot deseniyle birebir), `activeSlot` yazılınca aç.
+- **#2 recycle isAuthorizing slotları hariç tutmuyordu (LOW — ✅ DÜZELTİLDİ):** `recycle` yalnız `activeSlot`'u
+  atlıyordu (`reclaimableSlot` isAuthorizing'i de hariç tutar) → uçuştaki warm'ın claim'i prepare ortasında
+  temizlenip öksüz buffering. **Fix:** `where index != activeSlot && !isAuthorizing`. TDD: recycleUcustakiWarm
+  SlotunuTemizlemez (gated warm + recycle → slot korunur) RED→GREEN + revert-verify; 284 PlayerKit yeşil.
+  (#1 2-satırlık invariant-match: no-regression + #2'nin isAuthorizing-exclusion kanıtıyla doğrulandı; deterministik
+  demote-race testi full-pool+gated-pause gerektirir → dar yarış için orantısız.)
+- **#3 mid-playback `.failed` yüzeylenmiyor (LOW, ACCEPTED):** `statusUpdates()` tüketicisi yok → aktivasyon-sonrası
+  hata sessiz donuk kare. Sınıflı hata-UI SS-051 (belgeli gelecek dilim) → accepted.
+- **#4 entitled/VIP premium bölümlerde prefetch yok (LOW, ACCEPTED):** `lockedIndexes` yalnız access-kind'dan (sync
+  policy entitlement await edemez) → VIP-owned kilitli bölüm cold-start. Bilinçli sadeleştirme (403 gürültüsü) → accepted.
+
 ### ContentKit bug-hunt — ertelenen 1 kalem (2026-08-30)
 ContentKit (Wire decode/Models/API) adversarial bug-hunt'ının 3 kept bulgusundan 2'si düzeltildi
 (2 commit: SeriesWire genres/tags lossy MEDIUM + boş-string nextCursor normalize LOW); 1'i cross-package

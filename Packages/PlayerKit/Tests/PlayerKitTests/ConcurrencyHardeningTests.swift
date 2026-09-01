@@ -68,21 +68,40 @@ private func loadCount(of backend: FakeVideoPlaying) -> Int {
 /// eklenmiş kontrollü askı noktalarıyla (CheckedContinuation kapıları) yarışı
 /// DETERMİNİSTİK kurar — zamanlayıcı/sleep tabanlı kumar yoktur.
 struct PlayerPoolConcurrencyTests {
+    @Test func recycleUcustakiWarmSlotunuTemizlemez() async throws {
+        // isAuthorizing asimetrisi: warm authorize'da askıdayken recycle pencere-dışı isAuthorizing slotu temizlerse
+        // claim prepare ortasında silinir (öksüz buffering) → `recycle` `reclaimableSlot` gibi isAuthorizing'i atlamalı.
+        let box = RaceBackendBox()
+        let service = GatedPlaybackService()
+        let pool = makePool(backendBox: box, playback: service)
+        // Aktif e1'i hazırla (gate+open).
+        let primeTask = Task { try await pool.activate(Fixture.episode(id: "e1"), atFeedIndex: 1) }
+        await service.gate.awaitEntered("e1")
+        service.gate.open("e1")
+        _ = try await primeTask.value
+        // Warm e9 authorize'da askıda → slot isAuthorizing (feedIndex 9, pencere-dışı).
+        let warmTask = Task { await pool.prepareNext(Fixture.episode(id: "e9"), atFeedIndex: 9) }
+        await service.gate.awaitEntered("e9")
+        await pool.recycle(keeping: 0 ... 2) // feedIndex 9 pencere-dışı: fix'siz isAuthorizing slotu temizlenir
+        service.gate.open("e9")
+        await warmTask.value
+        // FIX: recycle isAuthorizing slotu temizlemedi → warm e9'u kendi slotuna yükledi (ensureClaimIntact geçti).
+        let ids = await pool.snapshotEpisodeIDs()
+        #expect(ids.contains(EpisodeID("e9")))
+        #expect(ids.contains(EpisodeID("e1"))) // aktif korundu
+    }
+
     @Test func esZamanliFarkliBolumAcquirelariAyniSlotuEzmez() async throws {
-        // Bulgu 1/7 (claim-önce-await): warm(e5) authorize'da askıdayken activate(e6)
-        // girer; rezervasyon senkron yazılmazsa ikisi AYNI slotu seçip birbirini ezer.
+        // Bulgu 1/7: warm(e5) authorize'da askıdayken activate(e6) girer; senkron rezervasyon yoksa ikisi AYNI slotu ezer.
         let box = RaceBackendBox()
         let service = GatedPlaybackService()
         let pool = makePool(backendBox: box, playback: service)
         let warmEpisode = Fixture.episode(id: "e5")
         let activeEpisode = Fixture.episode(id: "e6")
-
         let warmTask = Task { await pool.prepareNext(warmEpisode, atFeedIndex: 5) }
         await service.gate.awaitEntered("e5") // warm authorize suspension'ında
-
         let activateTask = Task { try await pool.activate(activeEpisode, atFeedIndex: 6) }
         await service.gate.awaitEntered("e6") // activate de authorize'a ulaştı
-
         service.gate.open("e5")
         service.gate.open("e6")
         let handle = try await activateTask.value
@@ -105,8 +124,7 @@ struct PlayerPoolConcurrencyTests {
     }
 
     @Test func ayniBolumIcinEsZamanliAcquireTekYuklemeYapar() async throws {
-        // Bulgu 7 (dedup korkuluğu): warm(e7) claim'i authorize'da askıdayken
-        // activate(e7) gelir — mükerrer acquire dedup'a takılmalı, çift prepare OLMAMALI.
+        // Bulgu 7 (dedup): warm(e7) claim'i askıdayken activate(e7) gelir — mükerrer acquire dedup'a takılır, çift prepare OLMAZ.
         let box = RaceBackendBox()
         let service = GatedPlaybackService()
         let pool = makePool(backendBox: box, playback: service)

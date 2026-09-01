@@ -97,8 +97,7 @@ public actor PlayerPool {
     /// Bölümü aktifleştirir: warm slot varsa aynı engine'le (cold start yok — 04 §3.3),
     /// yoksa en uzak slot geri alınıp yüklenir. Önceki aktif demote edilir (1 sn buffer),
     /// yeni aktif otomatik buffer'a geçer ve beklemeden oynatılır (04 §4.1).
-    /// Kilitli ve entitlement'sız bölüm OYNATILMAZ (04 §9.1); `AppError.content(.episodeLocked)`
-    /// fırlatılır — UnlockSheet akışını çağıran katman (feed VC → Coordinator) tetikler.
+    /// Kilitli+entitlement'sız bölüm OYNATILMAZ (04 §9.1): `.episodeLocked` fırlar (UnlockSheet'i çağıran katman tetikler).
     func activate(
         _ episode: Episode,
         atFeedIndex feedIndex: Int,
@@ -120,8 +119,11 @@ public actor PlayerPool {
         )
         // Epoch korkuluğu: askıdayken drain geldiyse yazma/başlatma yok — temiz iptal.
         guard drainEpoch == epoch else { throw CancellationError() }
+        // Slot korkuluğu (MEDIUM): demote await'inde slot isAuthorizing/activeSlot DEĞİL → warm reclaim eder; kapat/aç.
+        slots[lease.slot].isAuthorizing = true
         await demotePreviousActive(except: lease.slot)
         activeSlot = lease.slot
+        slots[lease.slot].isAuthorizing = false
         activeFeedIndex = feedIndex
         // Warm-hit'te buffer yerinde otomatik moda çekilir (04 §4.1 promoteToActive).
         await lease.engine.applyBufferPolicy(.active)
@@ -129,11 +131,9 @@ public actor PlayerPool {
         return PlaybackHandle(episodeID: lease.episodeID, engine: lease.engine)
     }
 
-    /// Komşu bölümü ısındırır: item yüklü + paused + 1 sn buffer (04 §3.2).
-    /// Kilitli ve entitlement'sız bölüm ISINDIRILMAZ (04 §9.1 kural 4) — boşa
-    /// authorize isteği ve 403 gürültüsü önlenir.
-    /// Dönüş (EpisodeWarming sözleşmesi): `true` = tamamlandı/kilitli (RETRY ETME), `false` = geçici hata/iptal
-    /// (pencere-içi yeniden denenebilir; iptal ayrıca PrefetchController'da `Task.isCancelled` ile de dışlanır).
+    /// Komşu bölümü ısındırır (item yüklü + paused + 1 sn buffer, 04 §3.2). Kilitli/entitlement'sız ISINDIRILMAZ
+    /// (04 §9.1: boşa authorize + 403 gürültüsü). Dönüş: `true` = tamamlandı/kilitli (RETRY ETME), `false` = geçici
+    /// hata/iptal (pencere-içi yeniden denenebilir; iptal PrefetchController'da `Task.isCancelled` ile de dışlanır).
     @discardableResult
     func prepareNext(_ episode: Episode, atFeedIndex feedIndex: Int) async -> Bool {
         guard await isPlayable(episode) else {
@@ -157,14 +157,14 @@ public actor PlayerPool {
 
     /// Pencere dışına düşen slot'ları boşaltır (03 §7.1); item gider, player kalır.
     func recycle(keeping window: ClosedRange<Int>) async {
-        for index in slots.indices where index != activeSlot {
+        // `isAuthorizing` slotlar da atlanır (`reclaimableSlot` simetriği): uçuştaki warm claim'i silinmesin (LOW).
+        for index in slots.indices where index != activeSlot && !slots[index].isAuthorizing {
             guard let feedIndex = slots[index].feedIndex, !window.contains(feedIndex) else { continue }
             await clearSlot(index)
         }
     }
 
-    /// Aktif bölüm değişti (kaydırma yerleşti): rolleri ve pencereyi günceller.
-    /// Feed VC dilimi (SS-044) bu noktadan sürer; prefetch tetiği PrefetchController'dadır.
+    /// Aktif bölüm değişti (kaydırma yerleşti): rolleri + pencereyi günceller (prefetch tetiği PrefetchController'da).
     func advanceWindow(activeEpisodeID: EpisodeID, direction _: ScrollDirection) async {
         guard let newActive = slots.firstIndex(where: { $0.episodeID == activeEpisodeID }) else {
             logger.debug("PlayerPool: advanceWindow slot bulunamadı episodeID=\(activeEpisodeID.rawValue)")
