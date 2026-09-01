@@ -43,8 +43,10 @@ struct LossyArray<Element: Decodable>: Decodable {
 
 extension KeyedDecodingContainer {
     /// `decodeIfPresent([Element].self)`in dayanıklı karşılığı: alan yok/`null` → `[]`; alan varsa
-    /// eleman-bazlı lossy decode (bozuk elemanlar atlanır, kalan liste döner).
-    func decodeLossyArray<Element: Decodable>(
+    /// eleman-bazlı lossy decode (bozuk elemanlar atlanır, kalan liste döner). `public`: aynı "bozuk tek
+    /// eleman ekranı boşaltmasın" korumasını ContentKit dışındaki tüketiciler de (DiscoverKit arama,
+    /// App bildirim/görev/check-in wire zarfları) kullanır (wire-decode hunt MEDIUM kardeş-boşlukları).
+    public func decodeLossyArray<Element: Decodable>(
         _: Element.Type,
         forKey key: Key
     ) throws -> [Element] {

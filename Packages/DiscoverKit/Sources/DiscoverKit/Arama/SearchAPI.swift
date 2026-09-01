@@ -53,6 +53,18 @@ struct SuggestionWire: Decodable, Sendable {
 struct SearchResultsResponse: Decodable, Sendable {
     let results: [Series]
     let nextCursor: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case results, nextCursor
+    }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        // `results` LOSSY (wire-decode hunt MEDIUM kardeş-boşluğu): bozuk TEK dizi (ör. episodeCount/updatedAt
+        // eksik) tüm arama ızgarasını boşaltmasın — catalog/feed'in SeriesWire koruması aramada da geçerli olsun.
+        results = try container.decodeLossyArray(Series.self, forKey: .results)
+        nextCursor = try container.decodeIfPresent(String.self, forKey: .nextCursor)
+    }
 }
 
 /// `{ queries: ["ceo romance", ...] }`.

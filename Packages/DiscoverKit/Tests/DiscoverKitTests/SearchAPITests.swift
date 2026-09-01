@@ -58,6 +58,38 @@ struct SearchAPITests {
         #expect(!page.isLastPage)
     }
 
+    @Test func searchBozukSeriTumIzgarayiBosaltmaz() async throws {
+        // wire-decode hunt MEDIUM kardeş-boşluğu: bozuk TEK seri (episodeCount:null) strict decode'da tüm
+        // arama ızgarasını çökertiyordu (catalog/feed SeriesWire-korumalı, arama değildi). Lossy: bozuk atlanır.
+        let client = MockAPIClient()
+        client.stub("/search", with: data("""
+        { "results": [
+          { "id": "srs_ok", "title": "OK", "synopsis": "s",
+            "coverURL": "https://cdn.example.com/c.jpg", "bannerURL": null,
+            "genres": [], "tags": [],
+            "episodeCount": 60, "releasedEpisodeCount": 60, "freeEpisodeCount": 5,
+            "releaseState": "completed", "nextEpisodeAt": null,
+            "stats": { "viewCount": 10, "favoriteCount": 2, "trendingRank": null },
+            "localeInfo": { "audioLanguage": "en", "subtitleLanguages": ["en"] },
+            "updatedAt": "2023-11-14T00:00:00Z" },
+          { "id": "srs_bad", "title": "BAD", "synopsis": "s",
+            "coverURL": "https://cdn.example.com/c.jpg", "bannerURL": null,
+            "genres": [], "tags": [],
+            "episodeCount": null, "releasedEpisodeCount": 60, "freeEpisodeCount": 5,
+            "releaseState": "completed", "nextEpisodeAt": null,
+            "stats": { "viewCount": 10, "favoriteCount": 2, "trendingRank": null },
+            "localeInfo": { "audioLanguage": "en", "subtitleLanguages": ["en"] },
+            "updatedAt": "2023-11-14T00:00:00Z" }
+        ], "nextCursor": null }
+        """))
+        let api = SearchAPI(client: client)
+
+        let page = try await api.search(query: "x", cursor: nil)
+
+        #expect(page.items.count == 1) // yalnız geçerli seri (bozuk atlandı)
+        #expect(page.items[0].id == SeriesID("srs_ok"))
+    }
+
     @Test func popularReturnsQueries() async throws {
         let client = MockAPIClient()
         client.stub("/search/popular", with: data("""
